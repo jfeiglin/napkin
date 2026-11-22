@@ -49,7 +49,9 @@ and number of draws. The publisher matches each baseline draw to the alternative
 same sample seed. Shared draw sites use the same random numbers when the model executes them in
 both runs. The receipt reports the mean and linearly interpolated empirical 5th and 95th
 percentiles of each outcome and of the signed differences calculated within each pair of draws.
-The percentiles describe variation across simulated outcomes. Relative changes use each draw's
+The percentiles describe variation across simulated outcomes. Each draw uses the reading’s native
+comparison scale to display roundoff-level residues as zero. Differences use the larger of the
+two scales. Other numbers retain full precision during the calculation. Relative changes use each draw's
 baseline, and every draw must have a positive baseline on a ratio scale. A refused, stopped or
 incomplete study causes the sampled command to fail before it writes any results.
 

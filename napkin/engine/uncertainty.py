@@ -45,7 +45,8 @@ from .timeline.record import Reader, key_of, named
 class Sample:
     """One sample: its seed, the values of the study's paths at its times ([path][time], each in its
     declared unit, or `Unavailable`), the draws of its run ((site, owner, value) in the order of the
-    trace), the number of its near-ties, and why it stopped before its horizon (None when it did not)."""
+    trace), the number of its near-ties, and why it stopped before its horizon (None when it did not).
+    When requested, scales are in the reading units at the same paths and times as the values."""
 
     seed: int
     values: tuple[tuple, ...]
