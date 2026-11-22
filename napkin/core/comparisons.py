@@ -9,6 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import MAX_EMAX, MIN_EMIN, Context, Decimal
 from fractions import Fraction
+from typing import NamedTuple
 
 from . import expr
 
@@ -51,6 +52,12 @@ _DECIMAL_OPS = {
 }
 
 
+def _wide_number(value):
+    if isinstance(value, Fraction):
+        return _WIDE.divide(Decimal(value.numerator), Decimal(value.denominator))
+    return Decimal(value)
+
+
 def _arithmetic(op, a, b):
     if op is operator.pow and a == 0 and b < 0:
         return 0.0  # an exactly cancelled contribution to a finite reciprocal
@@ -63,7 +70,7 @@ def _arithmetic(op, a, b):
             return result
         if result == 0 and (op in (operator.add, operator.sub) or a == 0 or b == 0):
             return result
-    result = _DECIMAL_OPS[op](Decimal(a), Decimal(b))
+    result = _DECIMAL_OPS[op](_wide_number(a), _wide_number(b))
     rounded = float(result)
     if result.is_zero() or sys.float_info.min <= abs(rounded) <= sys.float_info.max:
         return rounded
@@ -93,6 +100,41 @@ def signed_gap(a, b, gap=None):
     if math.isinf(gap) and math.isfinite(a) and math.isfinite(b):
         return _arithmetic(operator.sub, float(a), float(b))
     return gap
+
+
+def band_from_floor_width(factor, floor_width, a, b, maximum=max):
+    """Combine a precomputed absolute band and the operands' relative band, also for vector rows."""
+    return maximum(floor_width, factor * maximum(_magnitude(a), _magnitude(b)))
+
+
+def band_width(factor, floor, a, b):
+    """The closed equality band's width in the operands' unit."""
+    if isinstance(a, Fraction) and isinstance(b, Fraction):
+        exact_factor = Fraction(str(factor))
+        return band_from_floor_width(exact_factor, exact_factor * Fraction(str(floor)), a, b)
+    if not isinstance(floor, Decimal) and not isinstance(a, Decimal) and not isinstance(b, Decimal):
+        width = band_from_floor_width(factor, floor * factor, a, b)
+        if math.isfinite(width) or not all(map(math.isfinite, (floor, a, b))):
+            return width
+    size = max(floor, _magnitude(a), _magnitude(b))
+    return _arithmetic(operator.mul, size, factor)
+
+
+def numeric_gap_band(factor, floor, a, b, gap=None):
+    """Compare authored rational operands exactly; keep a located physical gap when supplied."""
+    if gap is None and isinstance(a, Fraction) and isinstance(b, Fraction):
+        return a - b, band_width(factor, floor, a, b)
+    return signed_gap(a, b, gap), band_width(factor, floor, a, b)
+
+
+def collapsed_interval(factor, floor, low, high):
+    """For reversed finite endpoints in the closed band, return their common point and that band."""
+    difference, band = numeric_gap_band(factor, floor, low, high)
+    if not against('eq', difference, band):
+        return None
+    if isinstance(difference, Decimal):  # subtracting these two finite floats overflowed
+        return low / 2 + high / 2, band
+    return high + difference / 2, band
 
 
 def recorded_number(value):
@@ -144,6 +186,14 @@ class UnresolvedScale(LookupError):
     """A choice or exponent in a scale needs a value at the point of comparison."""
 
 
+class Binding(NamedTuple):
+    """A unit's size, the source of a comparison floor, and the live formula for exact reads."""
+
+    unit: float
+    floor: float | Decimal | str | expr.Node | SelectedScale
+    definition: expr.Node | None = None
+
+
 class Comparisons:
     """The scale of a numeric operand in the canonical units of this evaluation.
 
@@ -169,7 +219,11 @@ class Comparisons:
         return row
 
     def _binding(self, name):
-        return self.named(name) if self.named is not None else (1.0, 1.0)
+        found = self.named(name) if self.named is not None else (1.0, 1.0)
+        if isinstance(found, Binding):
+            return found
+        unit, floor = found
+        return Binding(unit, floor, floor if isinstance(floor, expr.Node) else None)
 
     def control_names(self, roots):
         """Names a generated program can need to choose a floor, through its named formulas."""
@@ -180,7 +234,7 @@ class Comparisons:
                 continue
             seen.add(node)
             if isinstance(node, expr.Ref):
-                definition = self._binding(node.name)[1]
+                definition = self._binding(node.name).floor
                 if isinstance(definition, expr.Node):
                     pending.append(definition)
                 elif isinstance(definition, SelectedScale):
@@ -216,10 +270,11 @@ class Comparisons:
             if isinstance(node, expr.Ref):
                 if node not in definitions:
                     definitions[node] = self._binding(node.name)
-                unit, own = definitions[node]
+                binding = definitions[node]
+                unit, own = binding.unit, binding.floor
                 if isinstance(own, SelectedScale):
                     own = read(own)
-                    definitions[node] = unit, own
+                    definitions[node] = binding._replace(floor=own)
                 if isinstance(own, expr.Node):
                     if own not in found:
                         pending.append(own)
@@ -329,22 +384,14 @@ class Comparisons:
         return recorded_number(size)
 
     def band_floor(self, left, right, read=None):
-        return float(self._width(self.floor(left, right, read)))
-
-    def _width(self, size):
-        if not isinstance(size, Decimal):
-            width = size * self.factor
-            if math.isfinite(width) or not math.isfinite(size):
-                return width
-        return _arithmetic(operator.mul, size, self.factor)
+        return float(band_width(self.factor, self.floor(left, right, read), 0, 0))
 
     def band(self, left, right, a, b, read=None):
-        size = max(self.floor(left, right, read), abs(a), abs(b))
-        return float(self._width(size))
+        return float(band_width(self.factor, self.floor(left, right, read), a, b))
 
     def literal_value(self, node):
-        """An operand fixed entirely by authored literals, including a retained formula
-        with no scale of its own. The binding cache is cleared when definitions change."""
+        """An operand fixed entirely by authored literals. An explicit floor preserves
+        the formula that supplied the value. A change of definitions clears the binding cache."""
         bound = bool(expr.names(node))
         cache = self.floors if bound else self.literal_gaps
         # Neighbouring outputs can traverse the same retained definition chain. Its
@@ -360,13 +407,29 @@ class Comparisons:
             if isinstance(n, expr.Ref) and self.named is not None:
                 if self._literal_reference is not None:
                     return 'literal', (), self._literal_reference(n.name)
-                definition = self._binding(n.name)[1]
+                definition = self._binding(n.name).definition
                 if isinstance(definition, expr.Node):
                     return 'pos', (definition,), None
             return node_parts(n)
 
-        literals = Literals(parts, self.units.exact_scale if self.units is not None else None, self.factor)
-        return literals.value(node, known)
+        literals = Literals(
+            parts, self.units.exact_scale if self.units is not None else None, self.factor, self.literal_floor
+        )
+        try:
+            return literals.value(node, known)
+        except UnresolvedScale:
+            return None
+
+    def literal_floor(self, left, right):
+        """Resolve a floor using only values fixed by the authored expressions."""
+
+        def read(node):
+            value = self.literal_value(node)
+            if value is None:
+                raise UnresolvedScale(node)
+            return value
+
+        return self.floor(left, right, read)
 
     def rounded_literal(self, node):
         """The once-rounded value when all selected operands are authored literals."""
@@ -389,7 +452,7 @@ class Comparisons:
         return rounded if replacement is None else replacement
 
     def literal_gap(self, left, right, *, bindings=False):
-        """Exact gap and relative band of two literal operands. A vectorized template
+        """Exact gap and comparison band of two literal operands. A vectorized template
         with row-specific bindings resolves its actual operands on each row."""
         bound = bool(expr.names(left) or expr.names(right))
         if bound and (bindings or self.named is None):
@@ -399,9 +462,14 @@ class Comparisons:
         if key not in cache:
             a = self.literal_value(left)
             b = self.literal_value(right) if isinstance(a, Fraction) else None
-            cache[key] = (
-                (a - b, Fraction(str(self.factor)) * max(abs(a), abs(b))) if isinstance(b, Fraction) else None
-            )
+            result = None
+            if isinstance(b, Fraction):
+                try:
+                    floor = self.literal_floor(left, right) if bound else 0
+                    result = numeric_gap_band(self.factor, floor, a, b)
+                except UnresolvedScale:
+                    pass  # this floor needs the live evaluation
+            cache[key] = result
         return cache[key]
 
     def gap_band(self, left, right, a, b, read=None, gap=None):
@@ -410,8 +478,7 @@ class Comparisons:
             exact = self.literal_gap(left, right)
             if exact is not None:
                 return exact
-        size = max(self.floor(left, right, read), abs(a), abs(b))
-        return signed_gap(a, b, gap), self._width(size)
+        return numeric_gap_band(self.factor, self.floor(left, right, read), a, b, gap)
 
     def ordered(self, op, left, right, a, b, read=None):
         if (

@@ -33,7 +33,7 @@ import math
 from collections import ChainMap
 
 from . import evaluation, expr, ops
-from .comparisons import UnresolvedScale
+from .comparisons import UnresolvedScale, against, numeric_gap_band
 from .errors import ExpressionError
 
 # Marks in a context: some narrowed interval has no value; a condition narrows an expression that is
@@ -577,7 +577,7 @@ def _within(prover, node, context, seen):
         )
     except UnresolvedScale:
         # Only the known operands give a guaranteed band across all possible choices.
-        reversed_ = low - high > policy.factor * max(abs(low), abs(high))
+        reversed_ = against('gt', *numeric_gap_band(policy.factor, 0, low, high))
     if reversed_:
         raise ExpressionError('Cannot prove the ends of a membership test are ordered')
     return (0, 1)

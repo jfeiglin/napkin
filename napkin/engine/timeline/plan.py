@@ -128,7 +128,7 @@ import math
 from dataclasses import dataclass, replace
 
 from ...core import expr as nodes
-from ...core.comparisons import SelectedScale
+from ...core.comparisons import Binding, SelectedScale
 from ...core.errors import ExpressionError
 from ...core.units import rational
 from ...expressions import UnitSystem, evaluate
@@ -638,29 +638,31 @@ class Plan:
         self._classify_asserts()
 
     def comparison_quantity(self, name, scales, lookup=None, resolve=None, latest=None, *, units=None):
-        """The declared unit size and the explicit floor or defining formula for a name."""
+        """The value's unit, its floor and the formula that supplies its live value."""
         units = self.units if units is None else units
         value = self.values.get(name) if lookup is None else lookup(name)
         unit = units.scale(value.unit) if value is not None and value.unit else 1.0
         if latest is None and name in self.frozen_scales:
-            return unit, self.frozen_scales[name]
+            return Binding(unit, self.frozen_scales[name])
+        definition = value.node if value is not None and value.kind == FORMULA else None
         if name in scales:
-            return unit, scales[name]
+            return Binding(unit, scales[name], definition)
         if value is not None:
             if value.scale is not None:
                 if resolve is not None:
-                    return unit, resolve(name, value.scale)
+                    return Binding(unit, resolve(name, value.scale), definition)
                 if not nodes.names(value.scale):
-                    return unit, abs(float(evaluate(value.scale, {}, units)))
+                    return Binding(unit, abs(float(evaluate(value.scale, {}, units))), definition)
             elif value.kind == FORMULA:
-                return unit, value.node
+                return Binding(unit, definition, definition)
             elif value.kind == DYNAMIC and self.dynamic[name].op == 'at':
                 projection = self.dynamic[name]
                 if projection.key is None:
                     members = self.occurrences[projection.source[1:]]
                     owner = latest(members) if latest is not None else members[-1] if members else None
                     if owner is not None:
-                        return unit, nodes.ref(self.project(('occurrence', owner), projection.steps))
+                        selected_node = nodes.ref(self.project(('occurrence', owner), projection.steps))
+                        return Binding(unit, selected_node, selected_node)
 
                 def choose(read):
                     members = self.members_at(projection.source, read)
@@ -671,7 +673,7 @@ class Plan:
                 controls = self.dynamic_reads(name) - set(names)
                 if projection.key is not None:
                     controls.update(nodes.names(projection.key))
-                return unit, SelectedScale(choose, controls, names)
+                return Binding(unit, SelectedScale(choose, controls, names))
             elif value.kind == DYNAMIC and self.dynamic[name].op in ('sum', 'min', 'max'):
                 dynamic = self.dynamic[name]
 
@@ -682,24 +684,26 @@ class Plan:
                     )
 
                 names = tuple(self.project(m, dynamic.steps) for m in self.members_ever(dynamic.source))
-                return unit, SelectedScale(choose, self.dynamic_reads(name) - set(names), names)
+                return Binding(unit, SelectedScale(choose, self.dynamic_reads(name) - set(names), names))
             elif value.kind == REDUCE and self.reductions[name].op in ('sum', 'min', 'max'):
                 reduction = self.reductions[name]
                 if not reduction.names:
-                    return unit, unit
+                    return Binding(unit, unit)
                 if all(test is None for test in reduction.tests):
-                    return unit, node_of(reduction, range(len(reduction.tests)))
+                    selected_node = node_of(reduction, range(len(reduction.tests)))
+                    return Binding(unit, selected_node, selected_node)
 
                 def choose(read):
                     return node_of(reduction, kept(reduction.tests, read, units))
 
                 tests = {n for test in reduction.tests if test is not None for n in nodes.names(test)}
-                return unit, SelectedScale(choose, tests, reduction.names)
+                return Binding(unit, SelectedScale(choose, tests, reduction.names))
             elif value.kind == LOOKUP:
                 keyed = self.keyed[name]
                 fixed = self._chosen(keyed)
                 if fixed:
-                    return unit, nodes.ref(fixed)
+                    selected_node = nodes.ref(fixed)
+                    return Binding(unit, selected_node, selected_node)
 
                 def choose(read):
                     k = selected(keyed, read, units, None)
@@ -710,8 +714,8 @@ class Plan:
                 keys = set(nodes.names(keyed.key))
                 keys.update(k for k in keyed.keys if isinstance(k, str))
                 keys.update(n for test in keyed.tests if test is not None for n in nodes.names(test))
-                return unit, SelectedScale(choose, keys, keyed.names)
-        return unit, unit
+                return Binding(unit, SelectedScale(choose, keys, keyed.names))
+        return Binding(unit, unit, definition)
 
     def _refuse_kept_in_solvers(self):
         """A solver's problem reads a where over the flows of an endpoint whose members change in a

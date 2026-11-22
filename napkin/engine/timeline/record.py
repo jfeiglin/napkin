@@ -1707,11 +1707,13 @@ class Reader:
             place = bisect_right(members, self.comparison_time, key=self.starts.__getitem__)
             return members[place - 1] if place else None
 
-        unit, size = self.plan.comparison_quantity(
-            name, self.comparison_scales, self._comparison_value, latest=latest
+        binding = self.plan.comparison_quantity(
+            name, self.comparison_scales, self._comparison_value, latest=latest, units=self.units
         )
         frozen = self.frozen_scales.get(name)
-        return (unit, frozen[1]) if frozen and frozen[0] <= self.comparison_time else (unit, size)
+        if frozen and frozen[0] <= self.comparison_time:
+            return binding._replace(floor=frozen[1], definition=None)
+        return binding
 
     def _comparison_value(self, name):
         if name not in self.plan.values:

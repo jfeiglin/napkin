@@ -19,6 +19,7 @@ The codes:
 - `none_value`: a constant None; the language has no `none` (D4).
 - `duplicate_name`: two templates, enums, members, or parts of one scope with one name.
 - `unknown_unit`: a unit spelling that is not in the program's table.
+- `range`: fixed endpoints of a numeric declaration reversed beyond its comparison band.
 - `kind`: a record whose kind and contents disagree (a formula without a `Formula`, a range on a
   yes/no, a flow with legs and ends, a parameter with an initializer, an unknown rating, a reference
   to an occurrence that is no local of an event or starts from no path of an occurrence of its
@@ -62,6 +63,8 @@ from fractions import Fraction
 from typing import Any
 
 from ..core import expr as nodes
+from ..core.comparisons import DEFAULT_FACTOR
+from ..core.literals import Literals, node_parts
 from . import parts as p
 from .refs import (
     FAMILIES,
@@ -497,6 +500,7 @@ class _Checker(Resolver):
         super().__init__(
             program, lambda code, part, message: self.diagnostics.append(Diagnostic(code, part, message))
         )
+        self.literals = Literals(node_parts, lambda unit: program.unit(unit).scale, DEFAULT_FACTOR)
         self.solved = {}  # the key of a value or a rate -> the origins of the solvers that set it
         self.assigned = {}  # the key of a value -> the origins of the statements that assign it
         self.ends = {}  # the key of a store -> the origins of the flows and moves that name it
@@ -589,6 +593,7 @@ class _Checker(Resolver):
     def value(self, value, scope, members, parameter=False):
         """A value of a template (with its members), of the root (members None), or of an event."""
         where = value.origin
+        prior = len(self.diagnostics)
         if value.kind not in p.KINDS:
             self.fail('kind', where, f'no kind of value {value.kind!r}')
             return
@@ -616,9 +621,27 @@ class _Checker(Resolver):
             self.init(value, value.init, scope, where)
         for bound in (value.lower, value.upper, value.scale):
             self.check_expr(bound, scope, where)
+        if number and len(self.diagnostics) == prior:
+            self.closed_range(value)
         for endpoint in (value.outflow, value.inflow):
             if endpoint is not None:
                 self.endpoint(endpoint, value, scope)
+
+    def closed_range(self, value):
+        """Check endpoints that authoring fixes, in the declared quantity's scale."""
+        if value.lower is None or value.upper is None:
+            return
+        lo = self.literals.value(value.lower.node)
+        hi = self.literals.value(value.upper.node)
+        if not isinstance(lo, Fraction) or not isinstance(hi, Fraction):
+            return
+        floor = (
+            self.program.unit(value.type.unit).scale
+            if value.scale is None
+            else self.literals.value(value.scale.node)
+        )
+        if isinstance(floor, Fraction) and self.literals.ordered('gt', lo, hi, floor=abs(floor)):
+            self.fail('range', value.origin, f'the range of {value.name} is reversed')
 
     def init(self, value, init, scope, where):
         """An initializer of a value: its form must fit the value's kind."""
@@ -1106,11 +1129,14 @@ class _Checker(Resolver):
         for binding in solver.inputs:
             self.resolve(binding.source, Scope(template), binding.origin)
         for unknown in solver.unknowns:
+            prior = len(self.diagnostics)
             if unknown.kind != p.STATE or not isinstance(unknown.type, p.Number):
                 self.fail('kind', unknown.origin, f'the unknown {unknown.name!r} is a number')
             for part in (unknown.init, unknown.lower, unknown.upper, unknown.scale):
                 self.check_expr(part, scope, unknown.origin, 'a solver')
             self.type(unknown.type, unknown.origin)
+            if len(self.diagnostics) == prior:
+                self.closed_range(unknown)
         for entry in solver.solve_for:
             self.solve_for(entry, scope, solver)
         for constraint in solver.constraints:

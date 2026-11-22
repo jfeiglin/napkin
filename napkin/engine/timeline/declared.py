@@ -105,6 +105,7 @@ from scipy.sparse.linalg import lsmr, splu
 
 from ...core import expr as nodes
 from ...core import ops
+from ...core.comparisons import collapsed_interval
 from ...core.errors import ExpressionError
 from ...core.units import rational
 from .. import departure
@@ -487,9 +488,9 @@ class Former:
         upper = math.inf if high is None else high
         if lower > upper:
             own = abs(scale) if scale is not None else plan.comparison_quantity(name, {})[0]
-            band = plan.units.comparisons.factor * max(own, abs(lower), abs(upper))
-            if lower - upper <= band:
-                lower = upper = upper + (lower - upper) / 2
+            point = collapsed_interval(plan.units.comparisons.factor, own, lower, upper)
+            if point is not None:
+                lower = upper = point[0]
         if scale is None:
             width = upper - lower
             scale = width if math.isfinite(width) and width > 0 else 1.0
@@ -705,10 +706,11 @@ class Former:
         for part in node.args:
             values.append((yield self._value(part, label)))
         x, low, high = values
-        if not isinstance(low, Affine | list) and not isinstance(high, Affine | list) and low > high:
+        if not isinstance(low, Affine | list) and not isinstance(high, Affine | list):
             if self.plan.units.comparisons.ordered('gt', node.args[1], node.args[2], low, high, self.value):
                 raise ExpressionError(f'{ops.REVERSED}: [{low!r}, {high!r}]')
-            low = high = high + (low - high) / 2
+            if low > high:
+                low = high = high + (low - high) / 2
         return self._chain(chain, [low, x, high], label)
 
     def _refused(self, what):

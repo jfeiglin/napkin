@@ -60,13 +60,12 @@ from dataclasses import dataclass, replace
 import numpy as np
 
 from ...core import expr as nodes
-from ...core.comparisons import Comparisons
+from ...core.comparisons import Comparisons, band_width, collapsed_interval
 from ...core.errors import ExpressionError
 from ...expressions import evaluate
 from ...program.checkpoint import CheckpointError
 from ...program.config import ConfigurationError
 from ...program.record import Unavailable
-from ..allocation import StockFaces
 from ..continuous.system import run_settings, step_cap
 from ..continuous.walk import walked
 from ..errors import SimulationError
@@ -469,7 +468,7 @@ class Run:
         return self.plan.numerics.atol_factor * max(self.own_scale(name), max(map(abs, amounts), default=0.0))
 
     def comparison_band(self, name, a, b):
-        return StockFaces.band(self.plan.units.comparisons.factor, self.own_scale(name), a, b)
+        return band_width(self.plan.units.comparisons.factor, self.own_scale(name), a, b)
 
     def admitted(self, name, low, high, value):
         """An input or parameter is inside its declared range up to the comparison band."""
@@ -483,10 +482,11 @@ class Run:
         low = -math.inf if lower is None else lower
         high = math.inf if upper is None else upper
         if low > high:
-            band = self.comparison_band(name, low, high)
-            if low - high > band:
+            point = collapsed_interval(self.plan.units.comparisons.factor, self.own_scale(name), low, high)
+            if point is None:
                 raise SimulationError(f'{name}: the range [{low}, {high}] is reversed')
-            low = high = high + 0.5 * (low - high)
+            low, band = point
+            high = low
             if abs(value - low) <= band:
                 value = low
         return low, high, value

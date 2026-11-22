@@ -36,7 +36,7 @@ import numpy as np
 from scipy import special
 
 from . import expr, ops
-from .comparisons import Comparisons, UnresolvedScale, against
+from .comparisons import Comparisons, UnresolvedScale, against, band_from_floor_width
 from .errors import ExpressionError
 from .evaluation import value as scalar_value
 
@@ -175,7 +175,7 @@ class _Pass:
                 floor = policy.band_floor(left, right)
             except UnresolvedScale:
                 floor = [self.row_floor(left, right, i) for i in self.places(places)]
-        return np.maximum(floor, policy.factor * np.maximum(np.abs(a), np.abs(b)))
+        return band_from_floor_width(policy.factor, floor, a, b, np.maximum)
 
     def bound_names(self, nodes):
         if not self.bindings or self.registry.comparisons.named is None:

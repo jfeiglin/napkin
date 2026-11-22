@@ -11,12 +11,13 @@ import math
 from fractions import Fraction
 
 from . import expr
-from .comparisons import against
+from .comparisons import against, numeric_gap_band
 
 
 class Literals:
-    def __init__(self, parts, scale, factor):
+    def __init__(self, parts, scale, factor, floor=None):
         self.parts, self.scale, self.factor = parts, scale, factor
+        self.floor = floor
 
     def value(self, node, known=None):
         """Evaluate selected operands once, reusing completed subtrees for these bindings.
@@ -70,12 +71,12 @@ class Literals:
             return not decides
         if op == 'compare':
             left = yield args[0]
-            for symbol, second in zip(data, args[1:]):
+            for symbol, first, second in zip(data, args, args[1:]):
                 right = yield second
                 if left is None or right is None:
                     return None
                 if isinstance(left, Fraction) and isinstance(right, Fraction):
-                    holds = self.ordered(symbol, left, right)
+                    holds = self.ordered(symbol, left, right, self.floor(first, second) if self.floor else 0)
                 elif symbol in ('eq', 'ne'):
                     holds = (left == right) == (symbol == 'eq')
                 else:
@@ -99,16 +100,20 @@ class Literals:
         if op == 'q':
             return values[0] * self.scale(data)
         if op == 'within':
-            value, low, high = values
-            if self.ordered('gt', low, high):
+
+            def ordered(symbol, a, b):
+                floor = self.floor(args[a], args[b]) if self.floor else 0
+                return self.ordered(symbol, values[a], values[b], floor)
+
+            if ordered('gt', 1, 2):
                 return None
-            return self.ordered('le', low, value) and self.ordered('le', value, high)
+            return ordered('le', 1, 0) and ordered('le', 0, 2)
         return _EXACT[op](*values) if op in _EXACT else None
 
     def gap_band(self, a, b, floor=0):
         """An authored literal adds no comparison floor, in any unit. A range can
         supply the declared scale of the quantity to which it belongs."""
-        return a - b, Fraction(str(self.factor)) * max(floor or 0, abs(a), abs(b))
+        return numeric_gap_band(self.factor, floor or 0, a, b)
 
     def ordered(self, op, a, b, floor=0):
         return against(op, *self.gap_band(a, b, floor))

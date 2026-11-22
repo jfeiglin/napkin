@@ -178,7 +178,7 @@ from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from functools import cached_property
 
-from ..core.comparisons import DEFAULT_FACTOR
+from ..core.comparisons import DEFAULT_FACTOR, against, collapsed_interval, numeric_gap_band
 from ..core.expr import DEEPEST
 from ..core.literals import Literals
 from ..core.units import dimension_power, rational, scale_of
@@ -2627,7 +2627,12 @@ class Resolver:
                 self.bound(end, scope, declared, node) for end in (node.range.low, node.range.high)
             )
             self.interval(
-                lower, upper, f'the range of {node.name}', node.range, (node.range.low, node.range.high)
+                lower,
+                upper,
+                f'the range of {node.name}',
+                node.range,
+                (node.range.low, node.range.high),
+                floor=self.scale(declared),
             )
         kind = LINK if isinstance(declared, Ent) else STATE
         return DeclaredValue(path, node.name, kind, declared, None, lower, upper, line=node.line)
@@ -2861,12 +2866,15 @@ class Resolver:
                 floor = self.scale(value.type) if value.scale is None else self.exact(value.scale)
                 if floor is None:
                     return
-                band = Fraction(1, 10**9) * max(abs(floor), abs(lo), abs(hi))
-                if lo - hi <= band and abs(at - (lo + hi) / 2) <= band:
-                    return
-        for bound, sign, side in ((value.lower, 1, 'below'), (value.upper, -1, 'above')):
+                collapsed = collapsed_interval(DEFAULT_FACTOR, abs(floor), lo, hi)
+                if collapsed is not None:
+                    midpoint, band = collapsed
+                    if against('eq', at - midpoint, band):
+                        return
+        # A fixed authored datum must lie in the exact support of its declared range.
+        for bound, op, side in ((value.lower, 'lt', 'below'), (value.upper, 'gt', 'above')):
             end = None if bound is None else self.exact(bound)
-            if end is not None and sign * (at - end) < 0:
+            if end is not None and against(op, *numeric_gap_band(0, 0, at, end)):
                 if isinstance(found, Const):
                     shown = f'{found.value} {found.type.unit}'.strip()
                 else:

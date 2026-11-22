@@ -619,6 +619,22 @@ def test_a_name_that_a_program_assigns_again_has_its_last_value():
         assert env == ({'x': 1.5, 'a': 5.0, 'b': 11.5, 'c': 16.5} if write else {'x': 1.5})
 
 
+@pytest.mark.parametrize('guard', ['x > 0', 'not within(x, 0, 0)'])
+def test_a_folded_conditional_reads_the_scaled_formulas_comparison_band(guard):
+    from napkin.core.comparisons import Binding
+    from napkin.core.units import UnitSystem
+
+    units = UnitSystem({})
+    choice = expr.read(f'7 if {guard} else 2')
+    bindings = {
+        'x': Binding(1, 100, expr.const(5e-8)),
+        'choice': Binding(1, choice, choice),
+    }
+    units.comparisons.named = bindings.__getitem__
+    assert evaluation.value(choice, {'x': 5e-8}, units) == 2
+    assert units.comparisons.literal_value(expr.ref('choice')) == 2
+
+
 # The name of the failure of a membership whose interval is reversed, in every evaluator.
 REVERSED = 'the interval of a membership test is reversed'
 

@@ -147,6 +147,7 @@ GO = 'tank.go.step[0].do[0]'  # the first statement of the first stage of `tank.
 
 # (code, what the case declares, the origin that the refusal names)
 CASES = [
+    ('range', lambda b: b.root(value('hold', 'h', 1, lower=q(60, 'h'), upper=q(1, 'h'))), 'hold'),
     ('unknown_name', lambda b: tank(b, flow('drain', this.waterr, SINK, request=q(1, 'L/h'))), 'tank.drain'),
     ('unknown_name', lambda b: b.entity('tank', value('water', 'L', 8), volume=3), 'tank'),
     ('unknown_name', lambda b: b.root(value('total', 'L', formula(named('nowhere').water))), 'total'),
@@ -377,7 +378,7 @@ def test_each_code_has_a_case():
     for line in checker.__doc__.splitlines():
         if line.startswith('- `'):
             documented.update(re.findall(r'`(\w+)`', line.split(':')[0]))
-    assert len(documented) == 30
+    assert len(documented) == 31
     assert documented - {'unbound_symbol', 'none_value'} == {case[0] for case in CASES}
 
 

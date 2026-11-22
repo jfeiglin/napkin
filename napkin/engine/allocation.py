@@ -63,10 +63,6 @@ class StockFaces:
         """Extend the field to an integrator trial outside its physical domain."""
         return np.clip(values, self.lower, self.upper)
 
-    @staticmethod
-    def band(factor, scale, value, target):
-        return factor * max(scale, abs(value), abs(target))
-
     def contact(self, row, value, slope, at, name):
         """The next physically distinct bound on a held line. A sub-band outward
         residual already at its face can reach a material breach, never that same root again."""
