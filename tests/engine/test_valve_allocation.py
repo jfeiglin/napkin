@@ -63,6 +63,18 @@ def test_a_valve_opening_across_its_capacity(method, cap, monkeypatch):
 
 
 @pytest.mark.parametrize('method', [ComponentWay, Sparse, MovingDeclared])
+def test_a_switch_can_read_the_selected_scale_of_a_held_formula(method, monkeypatch):
+    model = """plant:
+    water: L = 0 L
+    input capacity = 1 L/h
+    available = formula(this.capacity if this.capacity > 0 L/h else 0 L/h)
+    flow tap: SOURCE -> this.water
+        request = formula(this.available if t / (1 h) * 2 L/h > this.available else 0 L/h)
+"""
+    check(model, method, monkeypatch, [0, 1, 1, 1], [0, F(1, 100), F(1, 2), F(3, 2)])
+
+
+@pytest.mark.parametrize('method', [ComponentWay, Sparse, MovingDeclared])
 def test_a_stock_switch_reselects_each_enclosing_operand_and_keeps_the_outgoing_slope(method, monkeypatch):
     # driver = t². At the switch, max jumps from 1/4 to 2, min from 1/4 to 1,
     # and the outer if selects the moving rate t + 1/2. Neither outer limit was crossed on approach.

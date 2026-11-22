@@ -1036,7 +1036,18 @@ class Sparse(MovingTransfers, Way):
         """A function: the value of a side of a switch (a node of `surfaces`) at time t and state y."""
         found = dict(zip(self.sided, self._sides_of(t, y))) if self._sides_of is not None else {}
         units = self.plan.units
-        return lambda node: float(lazily(self.region.expression(node), found.__getitem__, units, t))
+        trial = _Evaluation(self.vector, t, y)
+
+        def read(name):
+            if name not in found:
+                # The selected arm of a named formula can ask for a comparison-scale
+                # dependency outside the switch operands. Use the same trial state.
+                if self.vector.derived(name):
+                    trial.compute([name])
+                found[name] = trial.read(name)
+            return found[name]
+
+        return lambda node: float(lazily(self.region.expression(node), read, units, t))
 
     def choose(self, signs):
         """Install the same branches in the vector field and in its switch operands."""
