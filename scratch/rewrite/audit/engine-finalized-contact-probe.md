@@ -55,7 +55,7 @@ The probe built the frozen 30,000-place event model in a fresh process per timed
 | 2 | F/M | 0.1648 | 0.1591 | 0.1405 | 0.1317 |
 | 3 | M/F | 0.1665 | 0.1651 | 0.1514 | 0.1359 |
 
-The median paired change for a cold pass across the full population was -0.0057 seconds. The direct benchmark above measures end-to-end 1,200-place performance on the final engine. At 30,000 places the end-to-end guard ran on `fc9a9ed7`. The predicate timings describe the affected operation in isolation and are insufficient to give an exact total for `caecf100`.
+The median paired change for a cold pass across the full population was -0.0057 seconds. The direct benchmark above measures end-to-end 1,200-place performance on the final engine. The 30,000-place end-to-end guard ran on `fc9a9ed7` in 7,522.483178 s against 7,498.460000 s on baseline, a ratio of 1.003204 within the 1.10 limit. Both recorded 482,500 starts and 84 L. The measured engine peaked at 8.835 GiB. The full-run JSON receipt SHA-256 is `a3e17fd70043fc4f12a70f0add9dc7f48d12c7465b5e70142fb1ffcb81820d3c`. The predicate timings describe the affected operation in isolation and are insufficient to give an exact total for `caecf100`.
 
 ### Reduced end-to-end comparisons
 
