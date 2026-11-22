@@ -45,11 +45,17 @@ def main(argv=None):
     parser.add_argument(
         '--only', action='append', choices=sorted(builders()), help='Restrict to named builders'
     )
-    parser.add_argument(
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument(
         '--scenario',
         action='append',
         metavar='ID',
         help='Publish only this scenario (repeatable); skip aggregate builders',
+    )
+    selection.add_argument(
+        '--model',
+        metavar='PATH',
+        help='Render the selected readings of one current-language model to its results/readings.md',
     )
     parser.add_argument('--jobs', type=int, default=4, help='Worker processes for studies and spreads')
     parser.add_argument(
@@ -60,6 +66,24 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.jobs < 1:
         parser.error('--jobs is a whole number of at least 1')
+    if args.model:
+        if args.only or args.committed_spreads:
+            parser.error(
+                '--model renders its readings directly and takes neither --only nor --committed-spreads'
+            )
+        from .readings import publish
+
+        store.activate(store.default_directory())
+        try:
+            target, matches = publish(args.model, check=args.check, jobs=args.jobs)
+        except (OSError, ValueError) as error:
+            print(error, file=sys.stderr)
+            return 1
+        if not matches:
+            print(f'{target} differs from the completed run records', file=sys.stderr)
+            return 1
+        print(f'{"Verified" if args.check else "Wrote"} {target}')
+        return 0
     if args.committed_spreads and not args.check:
         parser.error('--committed-spreads goes with --check: --write samples every spread')
     try:

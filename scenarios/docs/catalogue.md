@@ -6,6 +6,23 @@ the check (`tools/check.py`) and the publisher (`tools/publish/`). The compiler 
 rules, so a model outside the catalogue need not follow them. This page and the catalogue's other
 guides are in `scenarios/docs/`.
 
+## Publishing readings from a current model
+
+Give the publisher a package folder or an entry file to write its `results/readings.md`. The page lists
+the values selected by `brief.toml` at the start and horizon of each named run, with units and the
+evidence the run exercised at each time. Featured runs come first. A package with no named runs has
+one default run. A value described in the model's `not_estimated` notes appears with its stated reason.
+
+```sh
+python -m tools.publish --model scenarios/cyber_learning_loop/defensive_response --write
+python -m tools.publish --model scenarios/cyber_learning_loop/defensive_response --check
+```
+
+`--check` compares the generated page byte for byte. The public record and its compiler side table
+supply the values, units and citations. An incomplete run or a compiler evidence diagnostic
+(`no_record` or `datum`) prevents publication. The existing historical briefs, methods pages, spread
+summaries and run tables remain separate published artifacts. [Example readings](../cyber_learning_loop/defensive_response/results/readings.md)
+
 ## Folders and names
 
 - A scenario of the catalogue is a package: a folder `scenarios/<package>/` with its main file,

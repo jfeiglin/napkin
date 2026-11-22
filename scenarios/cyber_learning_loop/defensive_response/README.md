@@ -2,6 +2,8 @@
 
 This standalone entry follows a security team's response to aggregate observed incident volume. A volume of 1 represents its reference period. A workload surge raises the attention level the team can sustain. Actual attention approaches that level over time and recovers when volume falls. The horizon is 25 years.
 
+The published reference readings show each value at the start and horizon with its unit and supporting records. [Reference readings](results/readings.md)
+
 ```sh
 python -m napkin run scenarios/cyber_learning_loop/defensive_response --value observations.pressure,defender_attention,defenders.hardening,defenders.closing --at 0h,1year,2years,25years
 ```
