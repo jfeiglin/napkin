@@ -3,6 +3,7 @@
 from collections import defaultdict
 from dataclasses import dataclass, replace
 from fractions import Fraction
+from functools import lru_cache
 from itertools import zip_longest
 from unittest.mock import patch
 
@@ -14,6 +15,8 @@ from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
 from napkin.program.config import Configuration, Request
 from napkin.program.record import Key, Unavailable
 from tests.engine.port_cases import HORIZON, Case, Spelling, builder_program, text_program
+from tests.engine.stage_broadcast_cases import check_broadcast_stage
+from tests.engine.stage_read_cases import check_scalar_stage
 from tests.reference.evaluate import label
 from tests.reference.from_program import run_of, scale_at, value_at, values_at
 
@@ -30,6 +33,9 @@ TRANSFORMS = (
     'checkpoint',
     'sparse',
     'roundoff',
+    'stage_scalar',
+    'stage_selection',
+    'stage_ordering',
 )
 GUARD = 'plant.observe.step[0]'
 
@@ -279,48 +285,61 @@ def compare(result, reference, seed, transform):
     return None
 
 
-def check_seed(seed, transforms, record_property):
+@lru_cache(maxsize=1)
+def plant_baseline(seed):
+    """Adjacent deep cases share the unchanged plant and its two independently computed views."""
     case = Case.of(seed)
     original = text_program(case, Spelling())
     expected = oracle_view(case, original.program)
     original_view = engine_view(case, original.program, checkpoint=False, sparse=False)
     base_tie = compare(original_view, expected, seed, 'original vs reference')
-    for name in transforms:
-        spelling = Spelling(**{name: True}) if name in Spelling.__dataclass_fields__ else Spelling()
-        if name in ('sparse', 'roundoff'):
-            candidate = original.program
-        elif name == 'builder':
-            candidate = builder_program(case, spelling)
-        elif name == 'artifact':
-            candidate = load_artifact(original.artifact().data()).program
-        elif name == 'checkpoint':
-            candidate = original.program
-        else:
-            candidate = text_program(case, spelling).program
-        for probe in (-2, 2) if name == 'roundoff' else (0,):
-            label = f'{name} {probe:+d}' if probe else name
-            with (
-                patch('napkin.engine.timeline.plan.LIMIT', 0 if name == 'sparse' else 150),
-                patch.object(stocks, 'LEDGER_PROBE', probe),
-            ):
-                changed = engine_view(
-                    case, candidate, checkpoint=name == 'checkpoint', sparse=name == 'sparse'
-                )
-            oracle_tie = compare(changed, expected, seed, label + ' vs reference')
-            pair_tie = compare(changed, original_view, seed, label + ' vs original')
-            if base_tie or oracle_tie or pair_tie:
-                record_property(f'near-tie-{label}', repr((seed, base_tie, oracle_tie, pair_tie)))
+    return case, original, expected, original_view, base_tie
+
+
+def check_transform(seed, name, record_property):
+    if name == 'stage_scalar':
+        check_scalar_stage(seed)
+        return
+    if name in ('stage_selection', 'stage_ordering'):
+        check_broadcast_stage(seed, name.removeprefix('stage_'))
+        return
+    case, original, expected, original_view, base_tie = plant_baseline(seed)
+    spelling = Spelling(**{name: True}) if name in Spelling.__dataclass_fields__ else Spelling()
+    if name in ('sparse', 'roundoff'):
+        candidate = original.program
+    elif name == 'builder':
+        candidate = builder_program(case, spelling)
+    elif name == 'artifact':
+        candidate = load_artifact(original.artifact().data()).program
+    elif name == 'checkpoint':
+        candidate = original.program
+    else:
+        candidate = text_program(case, spelling).program
+    for probe in (-2, 2) if name == 'roundoff' else (0,):
+        label = f'{name} {probe:+d}' if probe else name
+        with (
+            patch('napkin.engine.timeline.plan.LIMIT', 0 if name == 'sparse' else 150),
+            patch.object(stocks, 'LEDGER_PROBE', probe),
+        ):
+            changed = engine_view(case, candidate, checkpoint=name == 'checkpoint', sparse=name == 'sparse')
+        oracle_tie = compare(changed, expected, seed, label + ' vs reference')
+        pair_tie = compare(changed, original_view, seed, label + ' vs original')
+        if base_tie or oracle_tie or pair_tie:
+            record_property(f'near-tie-{label}', repr((seed, base_tie, oracle_tie, pair_tie)))
 
 
 @pytest.mark.parametrize('seed', range(300))
 def test_port_transform(seed, record_property):
-    check_seed(seed, (TRANSFORMS[seed % len(TRANSFORMS)],), record_property)
+    transform = TRANSFORMS[seed % len(TRANSFORMS)]
+    record_property('transform', transform)
+    check_transform(seed, transform, record_property)
 
 
 @pytest.mark.deep
+@pytest.mark.parametrize('transform', TRANSFORMS)
 @pytest.mark.parametrize('seed', range(2000))
-def test_all_port_transforms(seed, record_property):
-    check_seed(seed, TRANSFORMS, record_property)
+def test_all_port_transforms(seed, transform, record_property):
+    check_transform(seed, transform, record_property)
 
 
 def test_only_a_flagged_decision_can_end_a_pair_and_prior_moves_still_count():

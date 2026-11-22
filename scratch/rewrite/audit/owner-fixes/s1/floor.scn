@@ -1,0 +1,10 @@
+box:
+    narrow: number = 0.000001 scale 1
+    wide: number = 0.000001 scale 10000
+    probe = formula(this.narrow)
+    equal = false
+    change = event():
+        after 1 h:
+            this.probe = formula(this.wide)
+            this.equal = this.probe == 0
+box.change.start()

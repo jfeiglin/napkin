@@ -1,0 +1,15 @@
+Machine:
+    rank = 1
+    act = event():
+        after 0 h:
+            dispatcher.winner = this.rank
+m0: Machine
+m1: Machine
+    rank = 2
+dispatcher:
+    winner = 0
+    send = event():
+        after 1 h:
+            m0.rank = 3
+            Machine.instances.by(rank).act.start()
+dispatcher.send.start()
