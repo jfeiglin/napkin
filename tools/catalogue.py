@@ -95,6 +95,15 @@ class Owner:
         """{collection: records} of the evidence that the owner's folder owns."""
         from napkin.model import load_json
 
+        if self.folder.is_dir() and not self.evidence.exists() and not self.evidence.is_symlink():
+            # Inline records and evidence inherited from a model's library need no owned files.
+            # Validate those references before accepting the absence of the entire directory.
+            from napkin.model.library import load_library
+
+            entry = paths.entry(self.folder)
+            if entry.is_file():
+                load_library(entry)
+            return {kind: [] for kind in COLLECTIONS}
         return {
             kind: load_json(self.evidence / f'{kind}.json', evidence=kind == 'claims') for kind in COLLECTIONS
         }

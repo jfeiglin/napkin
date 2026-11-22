@@ -8,7 +8,9 @@ catalogue as a whole.
 from collections import Counter
 
 from napkin import SCHEMA_VERSION
-from napkin.model.evidence import dependencies_of
+from napkin.model.compile import Compiled
+from napkin.model.evidence import citations, dependencies_of
+from napkin.model.language.evidence import document
 from napkin.model.load import dump_json
 
 from .. import catalogue
@@ -16,13 +18,19 @@ from .. import catalogue
 STATUSES = ('verified', 'partial', 'unverified')
 
 
-def dossier(library, scenarios):
+def dossier(library, scenarios, *, effective_library=None):
     """The dossier of the library's sources and claims, each claim with the scenarios that reach it:
-    `scenarios` is {name: semantic model}."""
+    `scenarios` maps names to compiled models or semantic models with citations. When claims
+    reach shared records, the effective library supplies the entire dependency chain."""
     claims = {c['id']: c for c in library['claims']}
     reach = {cid: [] for cid in claims}
     for name, sc in sorted(scenarios.items()):
-        linked = dependencies_of(((c.kind, c.id, c.where) for c in sc.citations), library)['claims']
+        named = (
+            citations(document(sc.declared.tree))
+            if isinstance(sc, Compiled)
+            else ((c.kind, c.id, c.where) for c in sc.citations)
+        )
+        linked = dependencies_of(named, library if effective_library is None else effective_library)['claims']
         for cid in sorted(set(linked) & claims.keys()):
             reach[cid].append(name)
     by_source = {}
@@ -102,7 +110,11 @@ def artifacts(ctx):
     _ = ctx.models
     outputs = {}
     for sid in ctx.paths:
-        record = dossier(catalogue.locate(sid, ctx.root).collections(), {sid: ctx.models[sid].scenario})
+        record = dossier(
+            catalogue.locate(sid, ctx.root).collections(),
+            {sid: ctx.models[sid]},
+            effective_library=ctx.libraries[sid],
+        )
         record['scenario'] = sid
         for source in record['sources']:
             source['scenario'] = sid

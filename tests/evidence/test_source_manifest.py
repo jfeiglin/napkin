@@ -173,3 +173,45 @@ def test_scenario_manifest_import_commands_keep_the_owner(tmp_path):
         'python -m tools.evidence.manifest --scenario SC99 --import doc=/path/to/raw-document'
     )
     assert document['shared']['sources'] == [] and document['library_source_count'] == 1
+
+
+def test_inline_evidence_needs_no_owned_files_in_a_manifest_or_dossier(tmp_path):
+    from tests.evidence.support import SERVICE, evidence_library
+    from tools.publish import Context, build
+
+    library = evidence_library()
+    library['sources'][0]['custom']['verification']['url'] = 'https://example.test/source'
+    write_package(tmp_path, {'model.scn': SERVICE}, library)
+    inline = tmp_path / 'scenarios' / 'observations'
+    inline.mkdir()
+    (inline / 'model.scn').write_text(
+        'scenario "Observations"\n    horizon 1 h\ninput rate = 3 @r\nrecord r: assumption "Local estimate."\n'
+    )
+    result = json.loads(artifacts(tmp_path)[PATH])
+    rows = {row['scenario']: row for row in result['scenarios']}
+    assert rows['observations']['sources'] == []
+    assert result['library_source_count'] == rows['SC99']['library_source_count'] == 1
+
+    dossiers = build(Context(tmp_path), only=['dossier'])
+    local = json.loads(dossiers['scenarios/observations/results/source-verification.json'])
+    assert local['sources'] == [] and local['summary']['claims'] == 0
+    sourced = json.loads(dossiers['scenarios/SC99/results/source-verification.json'])
+    assert {claim['id'] for claim in sourced['sources'][0]['claims']} == {'C-ACCESS', 'C-ACTION'}
+    assert all(claim['reachable_from_scenarios'] == ['SC99'] for claim in sourced['sources'][0]['claims'])
+
+
+def test_missing_or_partial_owned_evidence_cannot_hide_a_source_reference(tmp_path):
+    from napkin.model.ir import ModelError
+    from tests.evidence.support import SERVICE, evidence_library
+
+    write_package(tmp_path, {'model.scn': SERVICE}, evidence_library())
+    folder = tmp_path / 'scenarios' / 'SC99' / 'evidence'
+    (folder / 'sources.json').unlink()
+    with pytest.raises(FileNotFoundError, match=r'sources\.json'):
+        artifacts(tmp_path)
+    (folder / 'sources.json').write_text('{bad JSON')
+    with pytest.raises(ValueError):
+        artifacts(tmp_path)
+    folder.rename(tmp_path / 'archived-evidence')
+    with pytest.raises(ModelError, match=r'Unknown (claim|assumption)'):
+        artifacts(tmp_path)
