@@ -82,6 +82,14 @@ class Reached:
     steps: tuple = ()
 
 
+def _member_template(type_):
+    """The template of the members that a link (`Ent`) or a collection (`Many` of `Ent`) holds, or
+    None for any other type."""
+    if isinstance(type_, s.Many):
+        type_ = type_.of
+    return type_.template if isinstance(type_, s.Ent) else None
+
+
 def walk_expression(expression, item=()):
     """Each read of a typed expression with the members that an item of a `where` stands for in it:
     (read, item). The reads inside the test of a `where` and the key of a lookup come after the read
@@ -209,6 +217,13 @@ class Things:
         template, or None."""
         return self.declared.part(f'{template}.{name}')
 
+    def init(self, member, value):
+        """The initializer of a value for a member: the member's own, else its template's. A
+        template value that each member gives has no initializer of its own (`semantic.py`)."""
+        declared = self.declared.part(member)
+        own = next((given for given in getattr(declared, 'values', ()) if given.name == value.name), None)
+        return value.init if own is None else own.init
+
     def title_of(self, member):
         """The words of a member: its card's title, and for a row its card's title and its id."""
         card = self.cards.get(self.card_of.get(member))
@@ -309,7 +324,8 @@ class Things:
                 return None
             return self._walk(self.members_of(template), read.steps)
         start = self.start_members(read.start, members, item)
-        return self._walk(start, read.steps)
+        template = read.start[1] if read.start[0] == 'instances' else None
+        return self._walk(start, read.steps, template)
 
     def start_members(self, start, members, item=()):
         """The members that the start of a read stands for."""
@@ -333,21 +349,33 @@ class Things:
         found = self.reached(read, members, item)
         return () if found is None or found.what != 'member' else found.members
 
-    def _walk(self, current, steps):
+    def _walk(self, current, steps, template=None):
+        """Follow the steps of a read from the members `current`. The template of an empty set of
+        members comes from the type of the link or collection that emptied it (or from the start
+        of the read), so a value read over no members is still that value: a sum over an empty
+        collection is an empty sum, not words."""
         for k, step in enumerate(steps):
-            if not current:
+            if current:
+                template = self.template_of.get(current[0])
+                if template is None:
+                    return None
+            elif template is None:
                 return Reached('member', (), None)
-            template = self.template_of.get(current[0])
-            if template is None:
-                return None
             part = self.part(template, step)
             if isinstance(part, s.DeclaredValue) and part.kind == s.LINK:
                 targets = (self.links.get(m, {}).get(step) for m in current)
                 current = tuple(dict.fromkeys(m for m in targets if m is not None))
+                template = _member_template(part.type)
                 continue
             if isinstance(part, s.DeclaredValue) and part.kind == s.COLLECTION:
-                found = (m for owner in current for m in self.member_set(part.init, (owner,)))
+                found = (
+                    m
+                    for owner in current
+                    if (init := self.init(owner, part)) is not None
+                    for m in self.member_set(init, (owner,))
+                )
                 current = tuple(dict.fromkeys(found))
+                template = _member_template(part.type)
                 continue
             rest = tuple(steps[k + 1 :])
             if isinstance(part, s.DeclaredValue):

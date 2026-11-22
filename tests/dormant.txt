@@ -7,7 +7,6 @@
 # Stage S0 (2026-11-18): every test that compiles old model text or reads the catalogue.
 scenarios/tests/
 scenarios/cyber_learning_loop/tests/
-tests/draw/test_catalogue.py
 tests/publish/
 tests/evidence/test_catalogue.py
 tests/evidence/test_scientific_spec.py

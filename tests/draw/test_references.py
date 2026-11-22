@@ -384,6 +384,8 @@ def ids_of(found):
 
 def leaks(refs, ids):
     """(entry number, field, ID) of each ID that a visible field shows, as a whole word."""
+    if not ids:
+        return []  # an empty alternation would match the empty string everywhere
     pattern = re.compile(
         r'(?<![\w-])(' + '|'.join(map(re.escape, sorted(ids, key=len, reverse=True))) + r')(?![\w-])'
     )
