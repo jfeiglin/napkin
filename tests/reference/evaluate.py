@@ -999,7 +999,8 @@ class Ev:
                     found = item
                     continue
                 previous = self.attr(found[1], c.key_field) if c.key_field else found[0]
-                if self.sign(item[0] - found[0], (key, previous)) >= 0:
+                order = self.sign(item[0] - found[0], (key, previous))
+                if order > 0 or (order == 0 and item[1].number > found[1].number):
                     found = item
             if found is None:
                 at = x(0) if isinstance(x, Poly) else x

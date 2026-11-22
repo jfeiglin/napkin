@@ -16,4 +16,6 @@ On the same commit the public builder accepts `box.stock.outflow.flows.at(key).a
 
 ## Separate reference finding
 
-With the same two entities and equal ranks, `<second, first>.by(rank).at(cursor).weight` returns 8 in production and 2 in the original reference. The reference iterates the literal in authored order. This finding needs a separate reference correction.
+With the same two entities and equal ranks, `<second, first>.by(rank).at(cursor).weight` returns 8 in production and 2 in the original reference. At `d2a5b27`, the reference iterated the literal in authored order and replaced the winner on equal keys. Its tie reproduction failed with 13 passing controls.
+
+**POINT.** The reference evaluator now compares the members' creation numbers on an equal explicit or natural key. It still prefers the greatest eligible key. The lookup retains the identity of the original member through projections and filters. This correction applies within a collection of one element type. The tests cover literals in both orders, distinct increasing and decreasing keys, equal-request flows and simultaneous occurrences. The focused post-fix run passed all 149 cases. A search of reference collection construction and lookup found one `.at` winner-selection loop in `Ev._call`.
