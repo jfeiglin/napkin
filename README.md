@@ -98,6 +98,7 @@ python3 -m venv .venv
 | --- | --- |
 | [docs/cli.md](docs/cli.md) | Each command, flag and output of `napkin` |
 | [docs/language.md](docs/language.md) | Each line of the model language |
+| [docs/migration.md](docs/migration.md) | Porting a scenario while preserving its event and stock behavior |
 | [docs/modeling-guide.md](docs/modeling-guide.md) | How to design a model and check it |
 | [docs/python-api.md](docs/python-api.md) | How to load, run, sample and play a model from Python |
 | [docs/engine.md](docs/engine.md) | How the engine runs a model |
