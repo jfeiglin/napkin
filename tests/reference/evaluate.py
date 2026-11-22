@@ -1026,7 +1026,10 @@ class Ev:
             return Coll((i for i, k in zip(c.items, keep) if k), c.key_field)
         if method == 'by':
             field = args[0]._a[0]
-            keyed = ((self.num(self.attr(member, field)), member, member) for _, _, member in c.items)
+            keyed = []
+            for _, _, value in c.items:
+                member = self.deref(value)  # A projected entity link is stored in a cell.
+                keyed.append((self.num(self.attr(member, field)), member, value))
             return Coll(keyed, field)
         if method == 'at':
             x = self.num(args[0])
