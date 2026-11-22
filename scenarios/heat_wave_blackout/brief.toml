@@ -1,10 +1,50 @@
 show = ["deaths", "casualties", "late_deaths", "economic_loss", "supply.resident_hours", "thermal_exposure",
-    "device_admissions", "places.admissions", "outstanding_work"]
+    "device_admissions", "places.admissions", "outstanding_work", "incident.accepted", "incident.prevented", "crews.rework_done"]
 # The inputs that the brief lists.
 drivers = ["supply.people_served", "places.powered_share", "places.start_delay", "outreach.start_time",
     "utility.check_time", "crews.work", "heat_wave.length"]
 featured = ["standard", "early_cooling"]
 choice_group = "Cooling response"
+
+[[comparison]]
+run = "early_cooling"
+against = "standard"
+
+[[comparison]]
+run = "powered_places"
+against = "early_cooling"
+
+[[comparison]]
+run = "delayed_cooling"
+against = "standard"
+
+[[comparison]]
+run = "delayed_cooling_with_power"
+against = "delayed_cooling"
+
+[[comparison]]
+run = "delayed_cooling_with_access"
+against = "delayed_cooling_with_power"
+
+[[comparison]]
+run = "delayed_cooling_with_backup"
+against = "delayed_cooling"
+
+[[comparison]]
+run = "fixed_inspections"
+against = "standard"
+
+[[comparison]]
+run = "clearance_inspections"
+against = "fixed_inspections"
+
+[[comparison]]
+run = "rapid_fixed_inspections"
+against = "fixed_inspections"
+
+[[comparison]]
+run = "acknowledged_stop"
+against = "fixed_inspections"
 
 [[sweep]]
 id = "backup_0_private_0"
@@ -267,3 +307,12 @@ id = "outdoor_plus_3"
 description = "Daily mean outdoor temperature 3 °C higher"
 run = "standard"
 set = {"heat_wave.outdoor" = 42.35}
+
+[[spread]]
+id = "inspection_spacing"
+description = "Inspection interval, hold duration and work sampled once per seed and shared by the response and stop-order choices."
+runs = ["fixed_inspections", "rapid_fixed_inspections", "acknowledged_stop"]
+samples = 4
+seed = 41
+method = "random"
+outputs = ["incident.accepted", "crews.rework_done", "supply.resident_hours"]
