@@ -17,6 +17,8 @@ from napkin.program.record import Key, Unavailable
 from tests.engine.authored_number_cases import check_authored_number
 from tests.engine.comparison_band_cases import check_comparison_band
 from tests.engine.port_cases import HORIZON, Case, Spelling, builder_program, text_program
+from tests.engine.reversible_bound_cases import check_reversible_bounds
+from tests.engine.simultaneous_bound_cases import check_simultaneous_bounds
 from tests.engine.stage_broadcast_cases import check_broadcast_stage
 from tests.engine.stage_read_cases import check_scalar_stage
 from tests.engine.stock_balance_cases import check_stock_balance
@@ -54,6 +56,8 @@ TRANSFORMS = (
     'stock_inventory',
     'stock_capacity',
     'stock_edit',
+    'reversible_bounds',
+    'simultaneous_bounds',
 )
 GUARD = 'plant.observe.step[0]'
 
@@ -315,6 +319,12 @@ def plant_baseline(seed):
 
 
 def check_transform(seed, name, record_property):
+    if name == 'reversible_bounds':
+        check_reversible_bounds(seed)
+        return
+    if name == 'simultaneous_bounds':
+        check_simultaneous_bounds(seed)
+        return
     if name == 'stock_edit':
         check_stock_edit(seed)
         return

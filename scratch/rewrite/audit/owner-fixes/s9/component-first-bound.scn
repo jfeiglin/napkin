@@ -1,0 +1,11 @@
+scenario "Two bounded tanks"
+    horizon 3 h
+yard:
+    a: L = 1 L in [0 L,]
+    b: L = 2 L in [0 L,]
+    flow forward: this.a -> this.b
+        request = formula(max(0 L/h, (-3 L/h + (2 L/h/h) * t)))
+        capacity = formula(max(0 L/h, (-3 L/h + (2 L/h/h) * t)))
+    flow backward: this.b -> this.a
+        request = formula(max(0 L/h, -(-3 L/h + (2 L/h/h) * t)))
+        capacity = formula(max(0 L/h, -(-3 L/h + (2 L/h/h) * t)))

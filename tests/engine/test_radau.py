@@ -548,3 +548,62 @@ def test_a_root_that_cannot_be_evaluated_fails_as_it_fails_alone():
     with pytest.raises(ExpressionError) as caught:
         together.values(0.0, state)
     assert str(caught.value) == str(alone.value)
+
+
+def interior_stock_step(direction=-1, *, starts_on_face=False, guard=None, band_exit=None, check=None):
+    """One full Radau step for (t - 1/8)(t - 3/16), optionally multiplied by t.
+    Mirroring the polynomial at 10 gives the same contacts with an upper bound."""
+    system, environment, initial, _ = roots_of_each_kind()
+    stock = system.index['s.a' if direction < 0 else 's.b']
+    clock = system.index['s.cash']
+    bound = 0 if direction < 0 else 10
+    a, b = 1 / 8, 3 / 16
+    initial[stock] = bound if starts_on_face else bound - direction * a * b
+    initial[clock] = 0
+    watched = [Root('bound', direction, (stock, bound, 0), (stock, bound))]
+    if guard is not None:
+        watched.append(Root('guard', 1, (clock, read(f"q({guard}, 'person')"), 0)))
+
+    def rates(t, _):
+        derivative = 3 * t * t - 2 * (a + b) * t + a * b if starts_on_face else 2 * t - (a + b)
+        values = np.zeros_like(initial)
+        values[stock], values[clock] = -direction * derivative, 1
+        return values
+
+    return integrate.radau(
+        rates,
+        (0, 1),
+        initial,
+        roots=Roots(system, environment, watched),
+        first_step=1,
+        check=check,
+        held_comparisons=[] if band_exit is None else [(clock, 0, band_exit)],
+        comparison_factor=1e-10,
+        **TIGHT,
+    )
+
+
+@pytest.mark.parametrize('direction', [-1, 1], ids=['lower', 'upper'])
+@pytest.mark.parametrize('check', [None, 0.4], ids=['one-step', 'checked-step'])
+@pytest.mark.parametrize('starts_on_face', [False, True], ids=['interior', 'depart-and-return'])
+def test_interior_stock_step_locates_the_first_contact(direction, check, starts_on_face):
+    result = interior_stock_step(direction, starts_on_face=starts_on_face, check=check)
+    assert result.t.tolist() == pytest.approx([0, 1 / 8], abs=1e-12)
+    assert result.t_events[0].tolist() == pytest.approx([1 / 8], abs=1e-12)
+
+
+@pytest.mark.parametrize('guard, winner', [(1 / 16, 1), (7 / 8, 0)])
+def test_interior_stock_step_orders_guards_and_bound_contacts(guard, winner):
+    result = interior_stock_step(guard=guard)
+    assert result.t[-1] == pytest.approx(min(guard, 1 / 8), abs=1e-12)
+    assert result.t_events[winner].tolist() == pytest.approx([result.t[-1]], abs=1e-12)
+
+
+@pytest.mark.parametrize('band_exit', [1 / 16, 7 / 8])
+def test_interior_stock_step_obeys_the_accepted_band_exit_cutoff(band_exit):
+    result = interior_stock_step(band_exit=band_exit)
+    assert result.t[-1] == pytest.approx(min(band_exit, 1 / 8), abs=1e-12)
+    if band_exit < 1 / 8:
+        assert result.t_events[0].size == 0 and result.root_candidates == []
+    else:
+        assert result.t_events[0].tolist() == pytest.approx([1 / 8], abs=1e-12)

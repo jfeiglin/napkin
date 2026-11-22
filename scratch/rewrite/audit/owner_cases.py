@@ -12,6 +12,8 @@ from pathlib import Path
 from tests.engine import (
     authored_number_cases,
     comparison_band_cases,
+    reversible_bound_cases,
+    simultaneous_bound_cases,
     stage_broadcast_cases,
     stage_read_cases,
     stock_balance_cases,
@@ -36,6 +38,8 @@ FAMILIES = {
     's4/inventory': lambda seed: stock_balance_cases.check_stock_balance(seed, 'inventory'),
     's4/capacity': lambda seed: stock_balance_cases.check_stock_balance(seed, 'capacity'),
     's4/edit': stock_edit_cases.check_stock_edit,
+    's9/reversible': reversible_bound_cases.check_reversible_bounds,
+    's9/simultaneous': simultaneous_bound_cases.check_simultaneous_bounds,
 }
 
 
@@ -72,6 +76,8 @@ def run_cases(ids, destination):
         's4/inventory': stock_balance_cases,
         's4/capacity': stock_balance_cases,
         's4/edit': stock_edit_cases,
+        's9/reversible': reversible_bound_cases,
+        's9/simultaneous': simultaneous_bound_cases,
     }
     sources_by_module = {
         module: {module.__name__: hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()}
