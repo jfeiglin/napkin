@@ -10,6 +10,8 @@ import pytest
 from scenarios.heat_wave_blackout.tests.support import readings
 from scenarios.heat_wave_blackout.tests.support import study as recovery_study
 
+pytestmark = pytest.mark.deep  # Whole 1,800-hour runs under edited conditions.
+
 RUN = 'standard'
 GROUPS = ('residents', 'device_users', 'confined')
 BANDS = ('under_65', '65_to_74', '75_and_over')

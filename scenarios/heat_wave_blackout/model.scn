@@ -627,7 +627,7 @@ moves: @counts_quantity_value
             this.state = ACTIVE
     stands_down = event(): @families_see_need
         "Private moves are no longer needed."
-        when this.state == WAITING and (this.window == CLOSED or supply.supply == ON or heat_wave.state == OVER) and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power) >= this.start_time:
+        when this.state == WAITING and (this.window == CLOSED or count(supply.come_back.occurrences) > 0 or heat_wave.state == OVER) and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power) >= this.start_time:
             this.stands_down.start()
         after 0 h:
             this.state = ENDED
@@ -845,9 +845,11 @@ Residents: @counts_quantity_value
         capacity = formula(heat_wave.heat_on * (1 - supply.service) * (this.wait_h + this.wait_s + this.private_h + this.private_s))
     # The people in this pool leave in proportion to health status. Death acts at
     # the same rate on both groups, so the remaining well share follows q' = -h_ill*q.
-    # Tracking q directly avoids dividing two vanishing population stocks.
+    # Transfer that share from well to ill. The ill share starts at zero and
+    # remains measurable even while the well share rounds to one.
     private_well_share: fraction = 1 in [0, 1] @private_movers_leave
-    flow private_illness_share: this.private_well_share -> SINK @private_movers_leave
+    private_ill_share: fraction = 0 in [0, 1] @private_movers_leave
+    flow private_illness_share: this.private_well_share -> this.private_ill_share @private_movers_leave
         request = formula(this.h_ill * this.private_well_share)
         capacity = formula(this.h_ill * this.private_well_share)
     readonly leaving: formula(people) = formula(this.private_h + this.private_s) @counts_quantity_value
@@ -862,8 +864,8 @@ Residents: @counts_quantity_value
         capacity = formula(this.move_rate * this.private_well_share)
     flow move_ill: this.private_s -> this.moved_s @private_movers_leave
         "People in homes with heatstroke who move privately leave the area with their families."
-        request = formula(this.move_rate * (1 - this.private_well_share) if this.leaving > 0 people else 0 people/h)
-        capacity = formula(this.move_rate * (1 - this.private_well_share))
+        request = formula(this.move_rate * this.private_ill_share if this.leaving > 0 people else 0 people/h)
+        capacity = formula(this.move_rate * this.private_ill_share)
     flow die_waiting_well: this.wait_h -> this.dead @heat_excess
         "People who wait at home for a cooled place die from the heat."
         request = formula(this.h_death * this.wait_h)
