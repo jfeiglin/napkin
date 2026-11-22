@@ -1,0 +1,8 @@
+{
+  "schema_version": "0.0.1",
+  "model_hash": "c61ccb66ea1b163ee5aa502990107e83475c953a5a048e8e99e5bd763ac10971",
+  "set": {
+    "quality_review.effort_range": "uniform(288 work_h, 384 work_h)",
+    "quality_review.gap_factor": "uniform(0.75, 1.25)"
+  }
+}

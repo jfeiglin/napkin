@@ -304,10 +304,9 @@ The **core tests** prove that the software works:
   a module included, reads and keeps its format, and every scenario builds. Each `style.toml` and
   `brief.toml` reads and names what its model declares, and the model admits the edit document of
   each spread.
-- The language: the acceptance fixture F5 is one model file that uses each construct of the language
-  once (`tests/acceptance/`). It formats to itself and reads back to the same parts. Its event order
-  and its final outputs match the closed forms of `F5.expect.yaml`, which the strict loader
-  `tests/acceptance/strict_yaml.py` reads. A case can change the fixture's file with a list of steps.
+- The language acceptance test (`tests/acceptance/test_every_construct.py`) compiles a package,
+  a module, and a variant that exercise the language. The test checks formatting, event order,
+  and values worked out from the fixture's equations.
 - The compiler: one test for each class of compile diagnostic (`tests/model/test_compile.py`), and
   the evidence index and trail (`tests/evidence/test_index.py`, `tests/engine/test_evidence_trail.py`).
 - The rules of the language, each on a small model with a closed form. For example:
@@ -547,8 +546,8 @@ example and the acceptance fixture. It holds no Monte Carlo sample of a spread a
 
 ### The committed summaries
 
-The current catalogue publisher renders each runnable entry's `results/readings.md` and
-`results/source-dossier.json`. The whole-catalogue command also renders the active source
+The catalogue publisher renders each runnable entry’s `results/brief.md`, `results/readings.md`
+and `results/source-dossier.json`. The whole-catalogue command also renders the active source
 manifest. A scoped check or refresh covers only its selected package or variants.
 
 ```sh
@@ -556,10 +555,10 @@ python -B -m tools.publish --check --scenario ID
 python -B -m tools.publish --write --scenario ID --jobs 1
 ```
 
-`--only readings` and `--only dossier` select one format. Use `--only manifest` for the
+`--only briefs`, `--only readings` and `--only dossier` select individual formats. Use `--only manifest` for the
 whole-catalogue source manifest. The regular checker uses these current publications.
 `tools.check --spreads` and the current release check also execute the declared sample studies.
-Historical briefs, campaign tables and HTML retain their earlier revision and paths.
+The [historical briefs](https://github.com/jfeiglin/napkin/tree/8488047/scenarios) accompany the earlier catalogue.
 [Current publication commands and coverage](tools/publish/README.md)
 
 ### Releasing

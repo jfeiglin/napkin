@@ -135,7 +135,6 @@ def test_scoped_and_whole_catalogue_own_only_current_artifacts(tmp_path, monkeyp
         historical.extend(
             results / filename
             for filename in (
-                'brief.md',
                 'methods.md',
                 'source-verification.json',
                 'assumption-review.json',
@@ -151,7 +150,7 @@ def test_scoped_and_whole_catalogue_own_only_current_artifacts(tmp_path, monkeyp
     manifest_file = tmp_path / manifest.PATH
     scoped = ['--scenario', 'SC97', '--jobs', '1']
     assert main(['--write', *scoped]) == 0
-    current = first / 'readings.md', first / 'source-dossier.json'
+    current = first / 'brief.md', first / 'readings.md', first / 'source-dossier.json'
     assert all(path.is_file() for path in current)
     assert not manifest_file.exists()
     assert not (second / 'readings.md').exists() and not (second / 'source-dossier.json').exists()
@@ -175,7 +174,6 @@ def test_scoped_and_whole_catalogue_own_only_current_artifacts(tmp_path, monkeyp
 @pytest.mark.parametrize(
     'request_args',
     [
-        ['--only', 'briefs'],
         ['--only', 'html'],
         ['--only', 'runs'],
         ['--only', 'methods'],
@@ -229,6 +227,7 @@ def test_selecting_a_catalogue_family_writes_each_variant_once(tmp_path, monkeyp
     assert not (root / 'results').exists()
     for folder in variants:
         assert sorted(f.name for f in (folder / 'results').iterdir()) == [
+            'brief.md',
             'readings.md',
             'source-dossier.json',
         ]

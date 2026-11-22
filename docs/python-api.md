@@ -10,8 +10,7 @@ and analyses the dynamics of a run. These names are the public API:
 | `load_package(path, …)` | Builds each model of a package: its own model, or the model of each variant. |
 | `evaluate_study(model, …)` | Checks an edit document and simulates the runs ([Studies](#studies)). |
 | `sample_result(study, …)` | Gives the report of a study. |
-| `evaluate_uncertainty(model, …)` | Runs the runs many times with their distributions drawn ([Uncertainty](#uncertainty)). |
-| `uncertainty_report(result, …)` | Gives the report of such a study, with a summary of each outcome. |
+| `monte_carlo(program, configuration, paths, times, settings)` | Samples one run and summarizes the requested readings ([Uncertainty](#uncertainty)). |
 | `Session(model, run, …)` | Plays one run, one decision at a time ([Session](#session)). |
 | `actors(model)`, `instances(model, template)` | List the actors with their choices, and the instances of a template ([Views](#views)). |
 | `napkin.dynamics` | Finds rest states, branches of rest states and thresholds, and ranks the inputs ([Dynamics](#dynamics)). |
@@ -517,97 +516,33 @@ report = reports.study_of(core, runs=None, times=[30.0], rows=['cells_4'], setti
 
 ## Uncertainty
 
-`evaluate_uncertainty(model, edits=None, settings=None, numerical_settings=None, *, runs=None,
-times=None, run_samples=None, check_samples=None)` runs a Monte Carlo study
-([engine.md](engine.md#monte-carlo-studies)). The central study comes first, with every check of a
-study, and each distribution at its central value. Then each run that has a distribution, or an event
-whose outcome goes by chance, draws its samples. Each sample is checked before any sample runs. A
-sample that fails, in its check or in its run, rejects the whole study, and the result keeps no
-sample.
-
-- `settings` is a `SamplingSettings(samples=200, seed=0, method='random')` (`napkin.engine`):
-  `samples` from 1 to 100,000, `seed` from 0 to 2^63 − 1, and `method` `random`, `latin` or
-  `sobol` ([Estimators](#estimators)).
-- An edit document can give an input a distribution, written as in a model file.
-- `times` asks each sample for its outcomes at those times, in hours.
-- `check_samples` and `run_samples` let a caller check and run the samples in other processes, or stop
-  the study with `StudyCancelled`. `napkin sample` runs its samples in a pool of processes in this way
-  ([engine.md](engine.md#the-spread)).
-
-The result is an `UncertaintyResult`: `study` (the central study), `settings`, `admissible`,
-`diagnostics`, and `samples` (`{run: {values, runs, rows, events}}`, each a list with one item for
-each sample).
-
-`uncertainty_report(result, reporting_times=None)` gives the report of the central study, as
-`sample_result` gives it, with an `uncertainty` section: `settings`, and for each sampled run its
-number of `samples`, the `events` (how many times each outcome of an event that goes by chance
-happened), the `inputs` (each drawn input's `distribution` and its `draws`) and the `outcomes`.
+`napkin.monte_carlo` reads the requested values at the requested times in one median run and
+in independently seeded samples. Supply a compiled model’s program and configuration.
+`SamplingSettings(samples, seed)` accepts 1 through 100,000 samples and a seed from 0 through 2^63 − 1.
 
 ```python
 import napkin
 from napkin.engine import SamplingSettings
 
-model = napkin.load_scenario('examples/piano_tuners/model.scn')
-result = napkin.evaluate_uncertainty(model, settings=SamplingSettings(samples=200, seed=0))
-report = napkin.uncertainty_report(result)
-spread = report['uncertainty']['runs']['base']
-outcome = spread['outcomes']['tunings_done']
-print(outcome['uncertain_inputs'])
-final = outcome['points']['final']
-print({key: round(value) for key, value in final.items() if isinstance(value, float)})
-print(final['drivers'])
+model = napkin.load_scenario('examples/piano_tuners')
+result = napkin.monte_carlo(model.program, model.configuration, ['tunings_done'], [8760],
+                            SamplingSettings(samples=200, seed=0), model=model.declared)
+if result.refused:
+    raise ValueError(result.refused)
+tunings = result.spread('tunings_done', 8760)
+print(tunings.unit, tunings.summary.mean.value)
 ```
 
-```
-['tuners.rate']
-{'central': 2924, 'mean': 2864, 'sd': 313, 'sem': 22, 'min': 2023, 'max': 3517, 'p5': 2316, 'p25': 2644, 'p50': 2874, 'p75': 3111, 'p95': 3355}
-{'tuners.rate': 1.0}
-```
-
-These are the numbers that `napkin sample examples/piano_tuners` prints. Each outcome has its
-`uncertain_inputs`, the drawn inputs that it can depend on, and its `points`: at each report point,
-the central run's value (`central`), the mean, the standard deviation (`sd`) and its standard error
-(`sem`), the minimum and maximum, the 5th, 25th, 50th, 75th and 95th percentiles, and the `drivers`,
-the rank correlation of each uncertain input with the outcome. A summary is estimated only when the
-outcome is estimated in the central run and in each sample. Otherwise it is
-`{'estimated': False, 'statuses': […]}`. With `reporting_times`, each outcome also has its `series`:
-its percentiles at each of those times.
-
-The spread of a result is the spread of the inputs that the model assumes, carried through the model.
-It is not a measured interval.
+Each sample records its seed, the requested values, the executed draws and any early stop.
+A study that stops early records the reason in `refused`. A completed study reports the central
+value, mean with interval, percentiles, extremes and correlations with sampled draws.
+A value without a numerical summary has `summary.estimated == False` and a reason.
 
 ### Estimators
 
-`napkin.engine.estimators` and `napkin.engine.expectations` have other estimators of a study
-([engine.md](engine.md#estimators) says what each assumes). A caller asks for each by name.
-
-```python
-import napkin
-from napkin.engine import SamplingSettings, evaluate_uncertainty, estimators, expectations
-
-model = napkin.load_scenario('examples/piano_tuners/model.scn')
-settings = SamplingSettings(samples=64, seed=0, method='sobol')  # 8 blocks of 8 points
-result = evaluate_uncertainty(model, None, settings)
-weighted = expectations.weighted(model, 'base', None, settings)
-```
-
-- `SamplingSettings(samples, seed, 'sobol', replicates=8)`: scrambled Sobol' points in independent
-  blocks. The samples are `replicates` blocks of a power of two each, and the standard error of
-  each summary of the report is that of the means of the blocks.
-- `estimators.mean_interval(values, confidence=0.95)`, `estimators.replicate_interval(blocks)` and
-  `estimators.quantile_interval(values, p)` give an interval from plain numbers:
-  `{mean, se, low, high, n}`, and for a quantile `{low, high, ranks, coverage}` or `None` with too
-  few samples. `estimators.until_narrow(sample, p, width)` makes a study larger until the interval
-  of a quantile is narrow enough, and keeps its confidence.
-- `expectations.weighted(model, run, edits=None, settings=None, numerical_settings=None, *,
-  limit=4096, confidence=0.95)` gives the mean of each outcome at the horizon with the outcomes of
-  the chance events weighted: `{admissible, run, samples, paths, settings, confidence, outcomes,
-  events}`. `outcomes[name]` is `{estimated, mean, se, low, high, sd, unit}`; `se`, `low` and
-  `high` are `None` when nothing but the outcomes is drawn. A study that is refused has
-  `admissible` false and its `diagnostics`.
-- `timeline.run(plan, values, outcomes=places)` and `run_sample(model, run, values, None, times,
-  luck, outcomes=places)` are a run with given outcomes; `estimators.every_path(run)` runs every
-  path.
+`napkin.engine.expectations.mean`, `quantile` and `exceedance` estimate a statistic from a
+sequence of sampled numbers. Each returns an estimate with its sample count, confidence and
+interval bounds. See [the engine](engine.md#estimators) for the interval assumptions.
 
 ## Session
 

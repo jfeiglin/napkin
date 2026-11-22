@@ -37,5 +37,18 @@
     "thermal_exposure": 1644420.0,
     "supply.share_restored": 1.0,
     "outstanding_work": 0.0
+  },
+  "delayed_cooling": {
+    "deaths": 34.0916,
+    "casualties": 63.2683,
+    "late_deaths": 0.816949,
+    "device_admissions": 30.5753,
+    "places.admissions": 0.0,
+    "economic_loss": 0.0517995,
+    "crews.restoration_cost": 5.4996e-05,
+    "supply.resident_hours": 1950000.0,
+    "thermal_exposure": 1681100.0,
+    "supply.share_restored": 1.0,
+    "outstanding_work": 0.0
   }
 }

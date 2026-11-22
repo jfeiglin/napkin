@@ -1,0 +1,10 @@
+{
+  "schema_version": "0.0.1",
+  "model_hash": "1fd5a16266a5b5b549c8fba8d80ccf36ce98cd493f4aa1b46bf0f83e9d5d21b0",
+  "set": {
+    "incident.sample_reports": true,
+    "incident.interval_range": "pert(2 h, 4 h, 6 h)",
+    "incident.duration_range": "pert(1 h, 2 h, 3 h)",
+    "incident.work_range": "pert(0.5 h, 1 h, 1.5 h)"
+  }
+}

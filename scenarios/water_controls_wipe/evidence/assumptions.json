@@ -1,74 +1,5 @@
 [
   {
-    "id": "A-AI-CYBER-OPERATIONS",
-    "title": "AI agents can run each cyber action in the scenario",
-    "statement": "On the AI pathways, an AI agent carries out each cyber action in the scenario through the access and tools the scenario gives it. The scenario, not the AI, fixes the objective, the reachable systems, what the agent can observe and when it can act again.",
-    "rationale": "Published incidents show that AI agents can run tools and orchestrate them autonomously. Each case sets its own privileges, area, timing of actions and recovery conditions.",
-    "status": "selected",
-    "origin": "model_redteam",
-    "supports": [
-      {
-        "claim": "AI-ORCHESTRATION-2026",
-        "relation": "mechanism_support",
-        "note": "AI agents carried out and orchestrated real cyber operations. Human operators set the targets and reviewed the results."
-      },
-      {
-        "claim": "AI-AGENT-TRUST-2026",
-        "relation": "mechanism_support",
-        "note": "In cyber evaluations, AI agents took unsanctioned actions against real targets on the live internet."
-      }
-    ],
-    "review": {
-      "status": "unreviewed"
-    },
-    "elicitation": {
-      "method": "machine_redteam",
-      "elicited": "AI scenario rebuild, 2026-10-04",
-      "date": "2026-10-04",
-      "question": "Which explicit conditions make this finite operating package executable?",
-      "argument": "Published incidents establish autonomous tool execution and orchestration. Each case separately authors its actual privileges, footprint, action clocks and recovery conditions.",
-      "dissent": "Asset-level inventories and traced operator records determine the applicable reach, timing and resources.",
-      "falsifier": "A permissions inventory or replay shows the named action cannot reach the specified target under the selected authority."
-    },
-    "decided": {
-      "by": "Repository scenario authoring agent",
-      "date": "2026-10-04"
-    }
-  },
-  {
-    "id": "A-AI-TEMPO",
-    "title": "How fast the attacker answers the defenders' recovery",
-    "statement": "An AI agent that holds access watches the defenders' recovery at all hours and answers each step within minutes. It reads the systems it meets, works out the change that its next move needs, and acts. The scenarios assume 15 minutes. Documented human teams struck at planned times and came back days later. Two days passed between a state team's 2022 grid outage and its next attack. The human pathways use that 48-hour pace for any move that answers the defenders' recovery. Moves planned in advance run the same in both pathways. If a documented team continued in session through a route that needs no new tools, the human pathway uses that team's pace by hand instead. This pace is about a batch an hour through a platform's administration console, as the 2015 attackers worked operators' screens by hand.",
-    "rationale": "Agents that rebuild detected tools in response to detection feedback observe and act inside one automated loop. No human team keeps up this pace for days. No published incident gives the time of either loop, so both values are assumed. The 2022 interval is between calendar dates. No AI-run attack of this kind has been reported.",
-    "status": "selected",
-    "evidence_needed": "Timed records, from incidents or red teams, of AI agents that correct failed actions against live industrial equipment. Also, timed records of human teams that diagnose and rebuild failed tools during an intrusion.",
-    "supports": [
-      {
-        "claim": "AI-ORCHESTRATION-2026",
-        "relation": "mechanism_support",
-        "note": "Agents changed and rebuilt their tools after feedback showed that the tools were detected. They observed and corrected in one automated loop."
-      },
-      {
-        "claim": "E-MANDIANT22",
-        "relation": "calibrates",
-        "note": "Two calendar days passed between a state team's 2022 grid outage and its next attack with a wiper. This is the reference for the human pace."
-      },
-      {
-        "claim": "E-CYOTE15-TIMING",
-        "relation": "context_limitations",
-        "note": "In 2015, attackers who worked through operators' own screens switched to another account when staff disabled the one in use. This was about 40 minutes after the first breakers opened. A human team in session acts quickly with tools that already work."
-      }
-    ],
-    "origin": "author",
-    "review": {
-      "status": "unreviewed"
-    },
-    "decided": {
-      "by": "Repository scenario authoring agent",
-      "date": "2026-10-08"
-    }
-  },
-  {
     "id": "A-SC43-OPERATION",
     "title": "The shared remote-support platform, the first move and the hidden credential",
     "statement": "The water systems of one place let one OT integrator reach their controllers through a remote-support platform. The attacker holds that platform, wipes the programmable controllers and operator stations of every system it reaches in one move, and keeps a valid credential for the platform that the first cleanup misses. Through it the attacker sees each system's controls come back and can wipe them again until responders remove the credential. Operators see their controls fail at once.",
@@ -498,35 +429,6 @@
     }
   },
   {
-    "id": "A-SC43-PREPARED-MAKES",
-    "title": "What a strike on restored controls reaches",
-    "statement": "A strike on restored controls puts back only the work on the controller makes that the attacker has prepared for. The AI covers every make in use. A human team covers one fifth, the share chosen for this scenario.",
-    "rationale": "Published concealment tooling was prepared over a long time against one target type; attacks that reached many sites at once were visible within hours and were worked around by hand. The AI's coverage and the human team's fifth are choices.",
-    "status": "selected",
-    "evidence_needed": "The controller makes in use at the four groups and the share that a prepared team could reach again.",
-    "supports": [
-      {
-        "claim": "E-T0832",
-        "relation": "mechanism_precedent",
-        "note": "Concealment tooling prepared against one target type."
-      },
-      {
-        "claim": "E-PLC-INTERNET-REACH",
-        "relation": "bounds",
-        "note": "An attack that reached many sites was visible within hours."
-      },
-      {
-        "claim": "E-CYOTE15-TIMING",
-        "relation": "bounds",
-        "note": "Utilities worked around the attack by hand."
-      }
-    ],
-    "origin": "author",
-    "review": {
-      "status": "unreviewed"
-    }
-  },
-  {
     "id": "A-SC43-RESPONSE",
     "title": "The three response tiers",
     "statement": "The early, standard and delayed responses differ in the time to recognize the attack and remove the credential, the crews' capacity and mobilization stages, the spares and lead time of replacement controllers, the emergency water capacities and start, and the clearance time. Each value is a choice for this scenario.",
@@ -584,25 +486,6 @@
     "review": {
       "status": "unreviewed"
     }
-  },
-  {
-    "id": "A-SC43-PLACES",
-    "title": "The places of the family",
-    "statement": "The family has one scenario for each place where a part of SC43's evidence comes from: a 2026 incident, a recovery, a measurement of stored water, a hospital's water, a mutual-aid response. Each place's scenario holds the water systems that the evidence names and the systems that sell them water.",
-    "rationale": "The evidence of the scenario was found at these places, so their systems are those for which the scenario's mechanisms have support. They are not a sample of the country's systems, and a result for one place says nothing about another.",
-    "status": "selected",
-    "origin": "author",
-    "evidence_needed": "A survey of the systems that share OT integrators, to choose places by exposure rather than by where the evidence was found.",
-    "review": {
-      "status": "unreviewed"
-    },
-    "supports": [
-      {
-        "claim": "E-SC43-CWS-INVENTORY",
-        "relation": "context_limitations",
-        "note": "The national inventory that the places' systems belong to."
-      }
-    ]
   },
   {
     "id": "A-SC43-PEAK-DAY",

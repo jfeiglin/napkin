@@ -1,0 +1,129 @@
+{
+  "scenario": "iv_fluid_shortage",
+  "model_hash": "c61ccb66ea1b163ee5aa502990107e83475c953a5a048e8e99e5bd763ac10971",
+  "spreads": [
+    {
+      "id": "quality_reviews",
+      "method": "random",
+      "seed": 23,
+      "samples_per_run": 6,
+      "edit_sha256": "c2a1c490c465eb98604c87a5554927f873f86a0204d08f8b96608c32b594c673",
+      "comparisons": [
+        {
+          "run": "followup_quality_review",
+          "against": "fixed_quality_review",
+          "paired_draws": 6,
+          "readings": [
+            {
+              "path": "quality_review.cleared_at",
+              "time_hours": 1440.0,
+              "unit": "h",
+              "against": {
+                "mean": 750.461,
+                "p05": 706.997,
+                "p95": 815.005
+              },
+              "run": {
+                "mean": 974.703,
+                "p05": 930.03,
+                "p95": 1024.95
+              },
+              "difference": {
+                "mean": 224.242,
+                "p05": 192.587,
+                "p95": 265.737
+              },
+              "percent_change": {
+                "mean": 30.0871,
+                "p05": 25.0682,
+                "p95": 37.5917
+              }
+            },
+            {
+              "path": "other_care_reserve.shortage_days",
+              "time_hours": 1440.0,
+              "unit": "days",
+              "against": {
+                "mean": 32.2692,
+                "p05": 30.4582,
+                "p95": 34.9586
+              },
+              "run": {
+                "mean": 36.9896,
+                "p05": 36.9896,
+                "p95": 36.9896
+              },
+              "difference": {
+                "mean": 4.72037,
+                "p05": 2.03103,
+                "p95": 6.53138
+              },
+              "percent_change": {
+                "mean": 14.9664,
+                "p05": 5.837,
+                "p95": 21.4457
+              }
+            }
+          ]
+        },
+        {
+          "run": "expedited_quality_review",
+          "against": "fixed_quality_review",
+          "paired_draws": 6,
+          "readings": [
+            {
+              "path": "quality_review.cleared_at",
+              "time_hours": 1440.0,
+              "unit": "h",
+              "against": {
+                "mean": 750.461,
+                "p05": 706.997,
+                "p95": 815.005
+              },
+              "run": {
+                "mean": 465.857,
+                "p05": 430.948,
+                "p95": 496.486
+              },
+              "difference": {
+                "mean": -284.604,
+                "p05": -347.308,
+                "p95": -210.511
+              },
+              "percent_change": {
+                "mean": -37.6947,
+                "p05": -43.1834,
+                "p95": -29.7702
+              }
+            },
+            {
+              "path": "other_care_reserve.shortage_days",
+              "time_hours": 1440.0,
+              "unit": "days",
+              "against": {
+                "mean": 32.2692,
+                "p05": 30.4582,
+                "p95": 34.9586
+              },
+              "run": {
+                "mean": 29.0,
+                "p05": 29.0,
+                "p95": 29.0
+              },
+              "difference": {
+                "mean": -3.26922,
+                "p05": -5.95856,
+                "p95": -1.4582
+              },
+              "percent_change": {
+                "mean": -9.86585,
+                "p05": -17.0233,
+                "p95": -4.78603
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

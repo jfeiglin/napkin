@@ -1,0 +1,398 @@
+{
+  "scenario": "water_controls_wipe:washington_dc",
+  "model_hash": "8e0d7d97dc060bc124ddecb01c6429aaa539f292512331b78beadebae47fb148",
+  "spreads": [
+    {
+      "id": "uncertainty",
+      "method": "random",
+      "seed": 0,
+      "samples_per_run": 50,
+      "edit_sha256": "d3dc069ba481824dcb2dc929782ed4ec3d35f81db1881cf2e52f5fd7d08dd1e9",
+      "comparisons": [
+        {
+          "run": "delayed_none",
+          "against": "early",
+          "paired_draws": 50,
+          "readings": [
+            {
+              "path": "person_days_lost",
+              "time_hours": 2160.0,
+              "unit": "person*days",
+              "against": {
+                "mean": 215921.0,
+                "p05": 143553.0,
+                "p95": 739858.0
+              },
+              "run": {
+                "mean": 1209530.0,
+                "p05": 251728.0,
+                "p95": 4141630.0
+              },
+              "difference": {
+                "mean": 993612.0,
+                "p05": 108175.0,
+                "p95": 3401770.0
+              },
+              "percent_change": {
+                "mean": 437.263,
+                "p05": 75.3551,
+                "p95": 1183.31
+              }
+            },
+            {
+              "path": "unserved_volume",
+              "time_hours": 2160.0,
+              "unit": "Mgal",
+              "against": {
+                "mean": 27.3623,
+                "p05": 18.1587,
+                "p95": 93.9955
+              },
+              "run": {
+                "mean": 156.569,
+                "p05": 33.9716,
+                "p95": 529.222
+              },
+              "difference": {
+                "mean": 129.207,
+                "p05": 15.8129,
+                "p95": 435.226
+              },
+              "percent_change": {
+                "mean": 453.107,
+                "p05": 87.0814,
+                "p95": 1203.14
+              }
+            },
+            {
+              "path": "rework_caused",
+              "time_hours": 2160.0,
+              "unit": "work_h",
+              "against": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "run": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "difference": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "percent_change": null,
+              "percent_unavailable": "A positive, ratio-scale baseline is required for every paired draw."
+            },
+            {
+              "path": "economic_loss",
+              "time_hours": 2160.0,
+              "unit": "USD2025_bn",
+              "against": {
+                "mean": 0.00934406,
+                "p05": 0.00690885,
+                "p95": 0.0269727
+              },
+              "run": {
+                "mean": 0.0495009,
+                "p05": 0.0153012,
+                "p95": 0.147965
+              },
+              "difference": {
+                "mean": 0.0401569,
+                "p05": 0.00839234,
+                "p95": 0.120992
+              },
+              "percent_change": {
+                "mean": 409.929,
+                "p05": 121.472,
+                "p95": 928.185
+              }
+            },
+            {
+              "path": "people_interrupted_now",
+              "time_hours": 2160.0,
+              "unit": "people",
+              "against": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "run": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "difference": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "percent_change": null,
+              "percent_unavailable": "A positive, ratio-scale baseline is required for every paired draw."
+            },
+            {
+              "path": "people_under_advisory",
+              "time_hours": 2160.0,
+              "unit": "people",
+              "against": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "run": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "difference": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "percent_change": null,
+              "percent_unavailable": "A positive, ratio-scale baseline is required for every paired draw."
+            },
+            {
+              "path": "restored_share",
+              "time_hours": 2160.0,
+              "unit": "fraction",
+              "against": {
+                "mean": 1.0,
+                "p05": 1.0,
+                "p95": 1.0
+              },
+              "run": {
+                "mean": 1.0,
+                "p05": 1.0,
+                "p95": 1.0
+              },
+              "difference": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "percent_change": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              }
+            },
+            {
+              "path": "emergency_water_deficit",
+              "time_hours": 2160.0,
+              "unit": "Mgal",
+              "against": {
+                "mean": 0.143553,
+                "p05": 0.143553,
+                "p95": 0.143553
+              },
+              "run": {
+                "mean": 0.287736,
+                "p05": 0.143553,
+                "p95": 1.24415
+              },
+              "difference": {
+                "mean": 0.144183,
+                "p05": 0.0,
+                "p95": 1.1006
+              },
+              "percent_change": {
+                "mean": 100.439,
+                "p05": 0.0,
+                "p95": 766.686
+              }
+            },
+            {
+              "path": "hospital_hours_constrained",
+              "time_hours": 2160.0,
+              "unit": "facility_hours",
+              "against": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "run": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "difference": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "percent_change": null,
+              "percent_unavailable": "A positive, ratio-scale baseline is required for every paired draw."
+            },
+            {
+              "path": "work_remaining",
+              "time_hours": 2160.0,
+              "unit": "work_h",
+              "against": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "run": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "difference": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "percent_change": null,
+              "percent_unavailable": "A positive, ratio-scale baseline is required for every paired draw."
+            },
+            {
+              "path": "people_followed",
+              "time_hours": 2160.0,
+              "unit": "people",
+              "against": {
+                "mean": 3868940.0,
+                "p05": 3868940.0,
+                "p95": 3868940.0
+              },
+              "run": {
+                "mean": 3868940.0,
+                "p05": 3868940.0,
+                "p95": 3868940.0
+              },
+              "difference": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "percent_change": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              }
+            },
+            {
+              "path": "support.accepted",
+              "time_hours": 2160.0,
+              "unit": "1",
+              "against": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "run": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "difference": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "percent_change": null,
+              "percent_unavailable": "A positive, ratio-scale baseline is required for every paired draw."
+            },
+            {
+              "path": "support.filtered",
+              "time_hours": 2160.0,
+              "unit": "1",
+              "against": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "run": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "difference": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "percent_change": null,
+              "percent_unavailable": "A positive, ratio-scale baseline is required for every paired draw."
+            },
+            {
+              "path": "support.waiting",
+              "time_hours": 2160.0,
+              "unit": "work_h",
+              "against": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "run": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "difference": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "percent_change": null,
+              "percent_unavailable": "A positive, ratio-scale baseline is required for every paired draw."
+            },
+            {
+              "path": "support.completed",
+              "time_hours": 2160.0,
+              "unit": "work_h",
+              "against": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "run": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "difference": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "percent_change": null,
+              "percent_unavailable": "A positive, ratio-scale baseline is required for every paired draw."
+            },
+            {
+              "path": "support.delivered",
+              "time_hours": 2160.0,
+              "unit": "Mgal",
+              "against": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "run": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "difference": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "percent_change": null,
+              "percent_unavailable": "A positive, ratio-scale baseline is required for every paired draw."
+            }
+          ]
+        }
+      ],
+      "unestimated_outputs": {
+        "deaths": "The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.",
+        "casualties": "The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.",
+        "wider_loss": "Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.",
+        "people_beyond_week": "The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero."
+      }
+    }
+  ]
+}

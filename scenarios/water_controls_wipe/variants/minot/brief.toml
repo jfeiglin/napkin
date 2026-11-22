@@ -1,9 +1,26 @@
 show = ["person_days_lost", "unserved_volume", "rework_caused", "deaths", "casualties", "economic_loss",
     "people_interrupted_now", "people_under_advisory", "restored_share", "emergency_water_deficit",
-    "hospital_hours_constrained", "work_remaining", "people_followed", "wider_loss", "people_beyond_week"]
+    "hospital_hours_constrained", "work_remaining", "people_followed", "wider_loss", "people_beyond_week",
+    "support.accepted", "support.filtered", "support.waiting", "support.completed", "support.delivered"]
 drivers = ["minot_homes.population", "minot.storage", "minot.treat_disabled", "minot.manual_share", "minot.controls_load", "controls_crew.capacity", "responders.recognition_time", "responders.removal_time", "incident.begins"]
 featured = ["early", "delayed_none"]
 choice_group = "Response"
+
+[[comparison]]
+run = "delayed_none"
+against = "early"
+
+[[comparison]]
+run = "support_daily_rapid"
+against = "support_daily"
+
+[[comparison]]
+run = "support_frequent_rapid"
+against = "support_frequent"
+
+[[comparison]]
+run = "support_recovery_rapid"
+against = "support_recovery"
 
 # The rows of the run table after the runs: each sweep runs one run with other values of some
 # inputs (`set`, by the names that edits give them, in the units of the inputs).

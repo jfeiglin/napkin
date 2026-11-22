@@ -2,8 +2,7 @@
 checkpoint of a run that a breakpoint stops: `paused`, the entry that ends its record so far, and
 `resume`, which goes on with a checkpoint in this process or another); the studies of a
 program under several configurations (`configurations`, `run_all`, `edits_for`, and the module
-`study`); Monte Carlo studies (`monte_carlo`, `SamplingSettings`); and, until a later stage replaces
-them, the numerical settings of the old compiled form.
+`study`); and Monte Carlo studies (`monte_carlo`, `SamplingSettings`).
 
 Each name of the package loads its module on first use, as the names of `napkin` do
 (`napkin/__init__.py`). So the import of one module of the engine loads no report, no study and no
@@ -15,7 +14,6 @@ from importlib import import_module as _import_module
 # The names of the package: {name: the module of the package that defines it}.
 _EXPORTS = {
     'Cancelled': 'study',
-    'NumericalSettings': 'runtime',
     'SamplingSettings': 'sampling',
     'SimulationError': 'errors',
     'configurations': 'study',

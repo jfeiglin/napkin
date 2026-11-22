@@ -72,15 +72,27 @@ manufacturer: @a_pilot_assumed_brief
             this.records_restored.start()
         after 0 h:
             release_systems.records_service = COMPLETE
+            this.credentials_reset.start()
+    credentials_reset = event(): @credential_reset
+        "The scheduled reset of release-record credentials completes."
+        after 0 h:
+            release_systems.credentials = RESET
     discrepancy_confirmed = event(): @product_reconciliation
         "The physical product review confirms that released lots should be held. Fluid on hand is set aside."
         when count(records.review_pending.occurrences) > 0 and since(records.review_pending) >= this.time_to_find:
             this.discrepancy_confirmed.start()
         after 0 h:
             records.state = HOLD
+            release_systems.credentials = RESET
             deliveries.state = HELD
-            move min(resuscitation_reserve.stock, deliveries.received_each) from resuscitation_reserve.stock to resuscitation_reserve.held
-            move min(other_care_reserve.stock, deliveries.received_each) from other_care_reserve.stock to other_care_reserve.held
+            if resuscitation_reserve.stock <= deliveries.received_each:
+                move resuscitation_reserve.stock from resuscitation_reserve.stock to resuscitation_reserve.held
+            else:
+                move deliveries.received_each from resuscitation_reserve.stock to resuscitation_reserve.held
+            if other_care_reserve.stock <= deliveries.received_each:
+                move other_care_reserve.stock from other_care_reserve.stock to other_care_reserve.held
+            else:
+                move deliveries.received_each from other_care_reserve.stock to other_care_reserve.held
             move release_team.product_work from release_team.reserve to release_team.to_reconcile
             release_team.state = RECONCILING_AGAINST_PRODUCT
     study_ends = event(): @service_recovery
@@ -95,6 +107,8 @@ release_systems: @service_recovery
     state: enum[WORKING, INTERRUPTED, RESTORED] = WORKING
     containment: enum[PENDING, COMPLETE] = PENDING
     records_service: enum[PENDING, COMPLETE] = PENDING
+    credentials: enum[UNCHANGED, RESET] = UNCHANGED @credential_reset
+        "Reset of credentials for the release records"
     status failed when this.state == INTERRUPTED
     status ok
 
@@ -113,6 +127,68 @@ records: @service_recovery
     review_pending = event(): @product_reconciliation
         "The independent product check begins for the released lot."
         after 0 h
+
+quality_review: @quality_schedule
+    "The manufacturer reviews incoming quality notices during qualification."
+    input schedule: enum[ROUTINE, FIXED, AFTER_REVIEW] = ROUTINE
+        "Schedule for follow-up quality notices"
+    input notice_limit = 2 in [1,] @quality_schedule
+        "Maximum number of notices including the first"
+    input first_delay = 0 h in [0 h, 1440 h] @quality_schedule
+        "Delay after emergency procurement before the first quality notice arrives"
+    input interval = 240 h in [1 h, 1440 h] @quality_schedule
+        "Delay to the follow-up notice"
+    input gap_factor = uniform(0.75, 1.25) @quality_schedule
+        "Variation in the interval between quality notices"
+    input effort_range = uniform(288 work_h, 384 work_h) @quality_schedule
+        "Documentation work required for one quality notice"
+    input capacity = 1 work_h/h in [0.25 work_h/h, 4 work_h/h] @quality_schedule
+        "Documentation reviewers’ capacity"
+    input followup_effort = 1 in [0.25, 4] @quality_schedule
+        "Documentation work for each follow-up notice relative to the first"
+    input intake_window = 960 h in [1 h, 1440 h] @quality_schedule
+        "Time after procurement during which follow-up notices are accepted"
+    gap = this.interval * this.gap_factor.draw() if this.schedule != ROUTINE else 0 h @quality_schedule
+        "Actual delay before the follow-up notice"
+    effort = this.effort_range.draw() if this.schedule != ROUTINE else 0 work_h @quality_schedule
+        "Work for the first notice"
+    duration = formula(this.effort / this.capacity)
+        "Time to review the first notice"
+    received = 0 @quality_schedule
+        "Quality notices received"
+    completed = 0 @quality_schedule
+        "Documentation reviews completed"
+    cleared = formula(this.completed == this.received)
+        "All quality notices received so far have been reviewed"
+    cleared_at = 0 h @quality_schedule
+        "Latest hour at which review cleared all notices received so far"
+    schedule_notice = event(delay: h): @quality_schedule
+        when this.schedule != ROUTINE and hospitals.procurement == EMERGENCY:
+            this.schedule_notice.start(this.first_delay)
+        after delay:
+            if since(hospitals.emergency_procurement) < this.intake_window:
+                this.notice.start()
+    notice = event(): @quality_schedule
+        after 0 h:
+            this.received += 1
+            deliveries.documentation_update.start(true)
+            if this.received == this.completed + 1:
+                this.review.start()
+            if this.received + 1 <= this.notice_limit and this.schedule == FIXED:
+                this.schedule_notice.start(this.gap)
+    review = event(): @quality_schedule
+        after this.duration * (1 if this.completed == 0 else this.followup_effort):
+            this.completed += 1
+            deliveries.documentation_update.start(false)
+            if this.completed < this.received:
+                this.review.start()
+            else:
+                this.clearance.start()
+            if this.received + 1 <= this.notice_limit and this.schedule == AFTER_REVIEW:
+                this.schedule_notice.start(this.gap)
+    clearance = event(): @quality_schedule
+        after 0 h:
+            this.cleared_at = t
 
 hospitals: @a_pilot_assumed_brief
     "The 100 hospitals that use the manufacturer's IV fluid. They start emergency procurement after the
@@ -244,7 +320,7 @@ release_team:
             records.state = RECONCILED
     restart_release = event(): @qualification_release_come
         "Work, procurement and containment are ready. The first qualified lot is released."
-        when this.state == READY and this.to_reconcile <= 0 and hospitals.procurement == EMERGENCY and manufacturer.release_allowed and release_systems.containment == COMPLETE:
+        when this.state == READY and this.to_reconcile <= 0 and hospitals.procurement == EMERGENCY and manufacturer.release_allowed and release_systems.containment == COMPLETE and quality_review.cleared:
             this.restart_release.start()
         after 0 h:
             this.state = RELEASED
@@ -256,7 +332,7 @@ release_team:
                 records.review_pending.start()
     reconciled_against_product = event(): @product_reconciliation
         "Product reconciliation and records recovery are complete. Replacement lots can be shipped."
-        when this.state == RECONCILING_AGAINST_PRODUCT and this.to_reconcile <= 0 and release_systems.records_service == COMPLETE:
+        when this.state == RECONCILING_AGAINST_PRODUCT and this.to_reconcile <= 0 and release_systems.records_service == COMPLETE and quality_review.cleared:
             this.reconciled_against_product.start()
         after 0 h:
             this.state = RELEASED
@@ -279,7 +355,7 @@ resuscitation_reserve: @a_pilot_assumed_brief
                 SC10-SUPPLY-CONSERVATION
     readonly need: formula(L/h) = formula(this.daily_need if release_systems.state != RESTORED else 0 L/h)
         @balances_fluid_stocks
-    readonly use_rate: formula(L/h) = formula(this.need if this.state == STOCKED or deliveries.state == ARRIVING else other_makers.supply_rate) @balances_fluid_stocks
+    readonly use_rate: formula(L/h) = formula(this.need if this.state == STOCKED or deliveries.available else other_makers.supply_rate) @balances_fluid_stocks
     readonly unmet_rate: formula(L/h) = formula(max(0, this.need - this.use_rate)) @balances_fluid_stocks
     deficit: L = 0 scale 18000 L @balances_fluid_stocks
         "Resuscitation fluid not supplied"
@@ -304,7 +380,7 @@ resuscitation_reserve: @a_pilot_assumed_brief
             outside supply or a transfer reaches them in time."
         @assumption "This text describes, in plain words, the event that the model calculates."
             assumption A-SC10-CONSEQUENCES-2026
-        when this.state == EMPTY and deliveries.state != ARRIVING and release_systems.state != RESTORED:
+        when this.state == EMPTY and not deliveries.available and release_systems.state != RESTORED:
             this.courses_missed.start()
             reset when false
 
@@ -325,7 +401,7 @@ other_care_reserve: @a_pilot_assumed_brief
                 SC10-SUPPLY-CONSERVATION
     readonly need: formula(L/h) = formula(this.daily_need if release_systems.state != RESTORED else 0 L/h)
         @balances_fluid_stocks
-    readonly use_rate: formula(L/h) = formula(this.need if this.state == STOCKED or deliveries.state == ARRIVING else 0 L/h)
+    readonly use_rate: formula(L/h) = formula(this.need if this.state == STOCKED or deliveries.available else 0 L/h)
         @balances_fluid_stocks
     readonly unmet_rate: formula(L/h) = formula(max(0, this.need - this.use_rate)) @balances_fluid_stocks
     deficit: L = 0 scale 36000 L @balances_fluid_stocks
@@ -356,7 +432,7 @@ other_care_reserve: @a_pilot_assumed_brief
             this.state = EMPTY
     procedures_postponed = event(): @a_pilot_assumed_brief @card_text_pilot
         "Hospitals postpone procedures that need IV fluid until supply returns."
-        when this.state == EMPTY and deliveries.state != ARRIVING and release_systems.state != RESTORED:
+        when this.state == EMPTY and not deliveries.available and release_systems.state != RESTORED:
             this.procedures_postponed.start()
             reset when false
 
@@ -371,9 +447,9 @@ other_makers: @a_pilot_assumed_brief
             assumption RT-SECTOR-SC10-2026
     readonly supply_rate: formula(L/h) = formula(this.daily_supply if release_systems.state != RESTORED else 0 L/h)
         @balances_fluid_stocks
-    readonly to_hospitals_rate: formula(L/h) = formula(this.supply_rate if deliveries.state != ARRIVING else 0 L/h)
+    readonly to_hospitals_rate: formula(L/h) = formula(this.supply_rate if not deliveries.available else 0 L/h)
         @balances_fluid_stocks
-    readonly elsewhere_rate: formula(L/h) = formula(this.supply_rate if deliveries.state == ARRIVING else 0 L/h)
+    readonly elsewhere_rate: formula(L/h) = formula(this.supply_rate if deliveries.available else 0 L/h)
         @balances_fluid_stocks
     buffer: L = 0 in [0,] scale 480 L @balances_fluid_stocks
         outflow.capacity = formula(this.supply_rate) @balances_fluid_stocks
@@ -425,19 +501,31 @@ deliveries: @a_pilot_assumed_brief
             assumption A-SC10-CONSEQUENCES-2026
     state: enum[AWAITING_RELEASE, ON_THE_WAY, ARRIVING, HELD] = AWAITING_RELEASE
         "Released fluid"
+    pending_notices = 0 @quality_schedule
+        "Outstanding release documentation holds after transport to the hospital"
+    available = formula(this.state == ARRIVING and this.pending_notices == 0) @balances_fluid_stocks
+        "Qualified supply arriving at the hospital"
+    documentation_update = event(admitted: bool): @quality_schedule
+        after this.lead_time:
+            if admitted:
+                this.pending_notices += 1
+            else:
+                this.pending_notices -= 1
     readonly earliest_receipt: formula(h) = formula(max(hospitals.start_delay, (release_team.ordinary_work + release_team.records_work) / release_team.pace, manufacturer.containment_time) + this.lead_time)
         @qualification_release_come
     supply_left: L = this.daily_supply * (manufacturer.study_length if records.initial_review == ADDITIONAL or records.released_lot == NEEDS_CHECK else max(0 h, manufacturer.study_length - this.earliest_receipt)) in [0,] scale 72000 L @balances_stocks_work
         outflow.capacity = formula(2 * this.delivery_rate) @balances_fluid_stocks
     readonly half_supply: formula(L/h) = formula(this.daily_supply / 2) @balances_fluid_stocks
-    readonly delivery_rate: formula(L/h) = formula(this.half_supply if this.state == ARRIVING and release_systems.state != RESTORED else 0 L/h) @balances_fluid_stocks
+    readonly delivery_rate: formula(L/h) = formula(this.half_supply if this.available and release_systems.state != RESTORED else 0 L/h) @balances_fluid_stocks
 
     readonly received_each: formula(L) = formula((this.daily_supply * manufacturer.study_length - this.supply_left) / 2)
         @identity "Released fluid each reserve has received so far: half of what the deliveries drew."
     shipping_loss: formula(USD2025_bn) = formula(this.shipping_cost if this.state == ARRIVING or this.state == HELD else 0 USD2025) in [0,] @counts_fixed_group
         "Cost of shipping released fluid"
-    status ok when this.state == ARRIVING
+    status ok when this.available
         "Released fluid meets demand"
+    status degraded when this.state == ARRIVING and this.pending_notices > 0
+        "Continuing receipts are paused during documentation review"
     status degraded when this.state == ON_THE_WAY
         "Released; first deliveries on the way"
     status failed when this.state == HELD
@@ -664,6 +752,16 @@ options "First released lot":
         "The first lot requires a product check. A confirmed discrepancy puts affected fluid on hold."
         records.released_lot = NEEDS_CHECK
 
+options "Quality documentation":
+    "Fixed notice interval":
+        quality_review.schedule = FIXED
+    "Follow up after review":
+        quality_review.schedule = AFTER_REVIEW
+
+options "Documentation staffing":
+    "Expedited review":
+        quality_review.capacity = 2 work_h/h @quality_schedule
+
 runs:
     near_ideal = "Early response" + "Routine records" + "Clear"
     subpar = "Standard response" + "Routine records" + "Clear"
@@ -674,6 +772,9 @@ runs:
         "Standard response with records review and a clear first lot"
     near_ideal_persistent = "Early response" + "Additional records" + "Clear"
     minimal_persistent = "Limited response" + "Additional records" + "Review needed"
+    fixed_quality_review = "Standard response" + "Additional records" + "Review needed" + "Fixed notice interval"
+    expedited_quality_review = "Standard response" + "Additional records" + "Review needed" + "Fixed notice interval" + "Expedited review"
+    followup_quality_review = "Standard response" + "Additional records" + "Review needed" + "Follow up after review"
 
 notes:
     premises:
@@ -691,6 +792,11 @@ notes:
     counterfactual: "Under the same standard response and qualification work, compare a first lot needing product review with a clear first lot."
     decisive: "First-lot quality is specified at release. The independent check, finite work queue and shipping lead time determine when fluid becomes available again."
     reporting:
+        quality_review:
+            completed:
+                scope: "Completed documentation reviews for the manufacturer."
+            cleared_at:
+                scope: "Last hour all received documentation cleared; zero for routine documentation."
         manufacturer:
             hours_out:
                 scope: "The fixed set of stocks and resources chosen for this scenario."
@@ -746,8 +852,6 @@ notes:
         release_work_done:
             about: "Work-hours that release staff spend to qualify lots and reconcile their records before the lots can ship. This includes work done again after altered records are found."
             scope: "The fixed set of stocks and resources chosen for this scenario."
-    comparisons:
-        subpar_persistent_human: subpar_persistent
 
 record a_pilot_assumed_brief: assumption "Assumed for this scenario, from the scenario brief."
     assumption A-SC10-pilot
@@ -767,6 +871,11 @@ record card_text_pilot: assumption "This text describes, in plain words, the eve
     assumption A-SC10-pilot
 record reset_delay: assumption "Time needed after release restarts to restore the records service. The team
     requires that service to release replacement lots after a product hold."
+record credential_reset: assumption "The response team resets release-record credentials when records service
+    is restored or a physical product check confirms a discrepancy, whichever happens first."
+record quality_schedule: assumption "The hypothetical qualification policy requires quality documentation
+    checks after procurement starts. One reviewer handles them serially. The review durations and interval are
+    exercise inputs."
 record found_by_product_check: assumption "Time from the start of the product check to confirmation of the lot
     discrepancy."
 record start_delay: assumption "Hospital procurement starts after an assumed response delay. Once procurement

@@ -6,8 +6,8 @@
       "ai_fast"
     ],
     [
-      "targets_per_attack",
-      "new_access"
+      "surveillance_program.completed",
+      "effects_program.completed"
     ]
   ],
   [
@@ -16,28 +16,17 @@
       "ai_fast"
     ],
     [
-      "targets_per_attack",
-      "new_access"
+      "surveillance_program.completed",
+      "effects_program.completed"
     ]
   ],
   [
     [
-      "defenders_ai",
-      "ai_fast"
+      "ai_fast",
+      "defenders_ai"
     ],
     [
-      "success_per_target",
-      "plan_chance"
-    ]
-  ],
-  [
-    [
-      "no_ai",
-      "wartime"
-    ],
-    [
-      "attacks_per_year",
-      "total_attacks"
+      "defenders.hardening"
     ]
   ]
 ]

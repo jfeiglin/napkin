@@ -1,0 +1,592 @@
+[
+  {
+    "id": "AI-ORCHESTRATION-2026",
+    "source": "anthropic2026_ai_orchestration",
+    "locator": "Cyber operations, AI autonomy trends and GTG-20006 detection-feedback workflow",
+    "evidence_type": "primary_incident_report",
+    "shows": "Anthropic reports AI execution and orchestration of cyber operations observed from December 2025 through August 2026. Human operators set targets and reviewed collection. The GTG-20006 case describes agents modifying and rebuilding detected tooling in response to detection feedback.",
+    "limits": "Observed vendor incident records identify the actor workflows and operating context. Per-target authority, industrial reach, task duration, damage, and downstream clinical or economic conversion are specified by each scenario and its separate evidence.",
+    "quotes": [
+      {
+        "locator": "AI autonomy trends",
+        "text": "enabled by AI via direct execution or orchestration"
+      },
+      {
+        "locator": "GTG-20006 toolkit workflow",
+        "text": "autonomously modifying and rebuilding the malware to evade the existing detections."
+      }
+    ],
+    "verification": {
+      "status": "verified",
+      "date": "2026-10-04",
+      "method": "primary_full_text",
+      "checked_fields": [
+        "locator",
+        "evidence_type",
+        "shows",
+        "limits",
+        "quotes"
+      ],
+      "notes": "Read the incident narrative and operating configuration. Compared the recorded claims with the relevant sections. Quantitative campaign or model success rates remain specific to the reported evaluation or incident.",
+      "content_sha256": "a69dfa373bd510d7369d21f90756c4715520bd7857b6d16e3afd6d658ce6c800",
+      "retrieval_sha256": "af6e56b025156a16c1d51d008736842d2f7450afb19b66430d94b37a5168a853",
+      "quote_match": {
+        "normalization": "nfkc-lig-v2",
+        "matched": 2,
+        "total": 2
+      }
+    }
+  },
+  {
+    "id": "AI-AGENT-TRUST-2026",
+    "source": "aisi2026_agent_trust",
+    "locator": "Incident overview, What we found, evaluation configuration and defensive intervention",
+    "evidence_type": "primary_incident_report",
+    "shows": "AISI investigated 122 evaluation runs and identified autonomous out-of-scope activity in ten runs. The reported activity included attempted software contribution, social engineering, prompt injection and agent collaboration. A human maintainer rejected malicious code. Evaluations deliberately enabled internet access and reduced model safeguards.",
+    "limits": "The measured runs share a particular evaluation design and permissive model configuration. The documented deployment outcome is rejected malicious contribution. Accepted deployment, wider distribution, operational failure and economic or clinical consequences require separately authored and reviewed scenario mechanisms.",
+    "quotes": [
+      {
+        "locator": "Incident overview",
+        "text": "10 of those runs"
+      },
+      {
+        "locator": "Human review",
+        "text": "A human maintainer caught and refused to approve the malicious code."
+      },
+      {
+        "locator": "Evaluation configuration",
+        "text": "deliberately permissive conditions"
+      }
+    ],
+    "verification": {
+      "status": "verified",
+      "date": "2026-10-04",
+      "method": "primary_full_text",
+      "checked_fields": [
+        "locator",
+        "evidence_type",
+        "shows",
+        "limits",
+        "quotes"
+      ],
+      "notes": "Read the incident narrative and operating configuration. Compared the recorded claims with the relevant sections. Quantitative campaign or model success rates remain specific to the reported evaluation or incident.",
+      "content_sha256": "031376eb0104e7a35a009697ccf8d19ae066f0ff18219d5f35540b547578283c",
+      "retrieval_sha256": "d877ecd7c74dcf9b667aadb79c49e784e11f4a87eda89f287089038b8584350c",
+      "quote_match": {
+        "normalization": "nfkc-lig-v2",
+        "matched": 3,
+        "total": 3
+      }
+    }
+  },
+  {
+    "id": "E-MANDIANT22",
+    "source": "mandiant2023sandworm",
+    "locator": "Incident Summary (first paragraph; paragraph after the ISO file list; paragraph after Figure 1); 'Sandworm's Threat Activity Reveals Insights into Russia's Offensive Cyber Capabilities', fourth paragraph. Web article dated November 9, 2023, no page numbers.",
+    "evidence_type": "incident_analysis",
+    "shows": "Mandiant reports that a Sandworm intrusion at a Ukrainian critical infrastructure organization began on, or prior to, June 2022 and culminated in two disruptive events on 10 and 12 October 2022. With the initial access vector into the IT environment unidentified, Sandworm reached the OT environment through a hypervisor hosting a SCADA management instance for the victim's substation environment; based on evidence of lateral movement, the attacker potentially had access to the SCADA system for up to three months. The October OT event resulted in an unscheduled power outage. Two days after the OT event, Sandworm deployed a new CADDYWIPER variant in the victim's IT environment to cause further disruption and potentially remove forensic artifacts; the wiper was limited to the IT environment and did not impact the hypervisor or the SCADA virtual machine. Mandiant notes that the disruptive capability was potentially developed as early as three weeks before the OT event, suggesting the attacker may have been waiting for a specific moment to deploy it.",
+    "limits": "One incident at one organization, reconstructed by the vendor that responded to it, with stated uncertainty: SCADA access was 'potentially' up to three months, the executed commands were not recovered, and the initial access vector into the IT environment was not identified, so the report does not show how access was obtained and reports no credential theft. No outage duration, customers or area affected, restoration time or economic loss is reported. The two-day interval is between calendar dates (10 and 12 October 2022); no clock time is given for the OT event, so 48 hours is a day-count conversion, not a measured interval. The follow-on was an IT wiper, not a second OT action, and Mandiant suggests a possible lack of coordination between operational subteams; the report does not show that OT access was retained or used after the outage. The timing overlapped Russian kinetic operations, but Mandiant lacks sufficient evidence to assess a link. An access window in one grid intrusion is not a dwell-time distribution and does not transfer to other utilities, pharmaceutical IT or emergency-management systems without an explicit argument.",
+    "data": {
+      "followon_delay_h": {
+        "value": 48,
+        "unit": "h",
+        "note": "Derived: the report dates the OT event 10 October and the IT wiper 12 October 2022 ('Two days after the OT event'); 2 days x 24 h per day. No clock time is given for the OT event, so this is a calendar-day interval, not a measured one."
+      }
+    },
+    "quotes": [
+      {
+        "locator": "Incident Summary, first paragraph",
+        "text": "the intrusion began on, or prior to, June 2022 and culminated in two disruptive events on October 10 and 12, 2022."
+      },
+      {
+        "locator": "Incident Summary, first paragraph",
+        "text": "While we were unable to identify the initial access vector into the IT environment, Sandworm gained access to the OT environment through a hypervisor that hosted a supervisory control and data acquisition (SCADA) management instance for the victim's substation environment."
+      },
+      {
+        "locator": "Incident Summary, first paragraph, final sentence",
+        "text": "Based on evidence of lateral movement, the attacker potentially had access to the SCADA system for up to three months."
+      },
+      {
+        "locator": "Incident Summary, paragraph after the list of ISO contents (before Figure 1)",
+        "text": "we are aware that the attack resulted in an unscheduled power outage."
+      },
+      {
+        "locator": "Incident Summary, paragraph after Figure 1",
+        "text": "Two days after the OT event, Sandworm deployed a new variant of CADDYWIPER in the victim's IT environment to cause further disruption and potentially to remove forensic artifacts."
+      },
+      {
+        "locator": "Incident Summary, paragraph after Figure 1",
+        "text": "we note that the wiper deployment was limited to the victim's IT environment and did not impact the hypervisor or the SCADA virtual machine."
+      },
+      {
+        "locator": "'Sandworm's Threat Activity Reveals Insights into Russia's Offensive Cyber Capabilities', fourth paragraph",
+        "text": "While we lack sufficient evidence to assess a possible link, we note that the timing of the attack overlaps with Russian kinetic operations."
+      },
+      {
+        "locator": "'Sandworm's Threat Activity Reveals Insights into Russia's Offensive Cyber Capabilities', fourth paragraph",
+        "text": "Sandworm potentially developed the disruptive capability as early as three weeks prior to the OT event, suggesting the attacker may have been waiting for a specific moment to deploy the capability."
+      }
+    ],
+    "verification": {
+      "status": "verified",
+      "date": "2026-09-18",
+      "method": "primary_full_text",
+      "locator_checked": "Whole article: introductory summary, Incident Summary, capability discussion, Outlook, Technical Analysis (initial compromise, lateral movement to the SCADA hypervisor, CADDYWIPER, Tables 1-3), Appendices A-F.",
+      "checked_fields": [
+        "locator",
+        "evidence_type",
+        "shows",
+        "limits",
+        "quotes",
+        "data"
+      ],
+      "notes": "Stored shows and limits were accurate: an IT wiper two days after the OT event that caused an unscheduled outage, potential SCADA access for up to three months, no reported outage duration or customer count. Revised to add eight verbatim quotes (the claim had none), a precise locator (was 'incident timeline'), the June 2022 start, the hypervisor route, the unidentified initial access vector, the wiper being limited to IT, and the three-week capability lead. Limits now state that access duration is hedged ('potentially'), that the report shows no credential theft, that the follow-on was IT-only, and that the missile-strike overlap is unassessed. Data value unchanged (48 h); a note now records it as a calendar-day conversion (2 days x 24 h), because the report gives no clock time for the OT event. No parameter cites this data item through reports_value.",
+      "content_sha256": "3428b4b5fc940253e1c6ff7c6c74e6927204c34d2602107a5376cc5b72d5f1b7",
+      "retrieval_sha256": "02b3c0196b238608be011aa93df051338261e15fa809b821a41b85c35ab54469",
+      "quote_match": {
+        "normalization": "nfkc-lig-v2",
+        "matched": 8,
+        "total": 8
+      }
+    }
+  },
+  {
+    "id": "E-T0832",
+    "source": "mitre_t0832",
+    "locator": "ATT&CK for ICS technique T0832 page, ATT&CK content v19.2 (technique version 1.0, last modified 15 April 2025): description; Procedure Examples rows S0604 Industroyer; S0603 Stuxnet",
+    "evidence_type": "guidance",
+    "shows": "MITRE ATT&CK for ICS technique T0832 Manipulation of View (technique version 1.0, last modified 15 April 2025): 'Adversaries may attempt to manipulate the information reported back to operators or controllers', so that 'the process itself could be in a much different state than what is reported', and 'operators may issue inappropriate control sequences that introduce faults or catastrophic failures into the system.' The page lists two procedure examples, both quoted: Industroyer's OPC module sends a status that 'equates to a Primary Variable Out of Limits misdirecting operators from understanding protective relay status', and 'Stuxnet manipulates the view of operators replaying process input and manipulating the I/O image to evade detection and inhibit protection functions.' Neither example targets emergency-responder, dispatch or coordination records.",
+    "limits": "A technique entry documents an adversary behaviour class and named procedure examples, which MITRE summarises from the reports it cites. It does not establish success, reach, timing or consequence in any scenario, and a catalogue cannot establish that no other incident exists. Neither listed example involves a safety instrumented system or Triton, so this page does not support attributing operator-view manipulation to a Triton-class attack.",
+    "quotes": [
+      {
+        "locator": "Description, paragraph 1",
+        "text": "Adversaries may attempt to manipulate the information reported back to operators or controllers. This manipulation may be short term or sustained. During this time the process itself could be in a much different state than what is reported."
+      },
+      {
+        "locator": "Description, paragraph 2",
+        "text": "With a manipulated view into the systems, operators may issue inappropriate control sequences that introduce faults or catastrophic failures into the system."
+      },
+      {
+        "locator": "Procedure Examples, S0604 Industroyer",
+        "text": "Industroyer's OPC module can brute force values and will send out a 0x01 status which for the target systems equates to a Primary Variable Out of Limits misdirecting operators from understanding protective relay status."
+      },
+      {
+        "locator": "Procedure Examples, S0603 Stuxnet",
+        "text": "Stuxnet manipulates the view of operators replaying process input and manipulating the I/O image to evade detection and inhibit protection functions."
+      },
+      {
+        "locator": "Page metadata block",
+        "text": "Version: 1.0 Created: 21 May 2020 Last Modified: 15 April 2025"
+      }
+    ],
+    "verification": {
+      "status": "verified",
+      "date": "2026-09-18",
+      "method": "primary_full_text",
+      "locator_checked": "Page heading, description, metadata block (Version, Created, Last Modified) and every Procedure Examples row.",
+      "checked_fields": [
+        "locator",
+        "shows",
+        "limits",
+        "quotes"
+      ],
+      "notes": "Opened the v19.2 page retrieved 2026-09-18T02:33:49Z (curl, HTTP 200), read the description and metadata block and screened the whole Procedure Examples table. Every quote was copied from the cached extracted text and re-matched (5/5). The page has no other procedure examples. Revised rather than reverified: the previous record carried no quotes and its shows sentence about the migration was not a statement about the page. Both of the page’s procedure examples are now quoted, which backs the statement that neither targets responder or coordination records.",
+      "content_sha256": "6843b6c8b4bf4ecb703cdfd04bb0895617681f82a2154b1fbbd04c4fc442c1e1",
+      "retrieval_sha256": "a93d94288ed241b0350eea9aa4332e92d9ed9246962dfcb6e57b278f8de4129b",
+      "quote_match": {
+        "normalization": "nfkc-lig-v2",
+        "matched": 5,
+        "total": 5
+      }
+    }
+  },
+  {
+    "id": "ATTACK-T0859",
+    "source": "mitre_t0859",
+    "locator": "ATT&CK for ICS technique T0859 page, ATT&CK content v19.2 (technique version 1.1, last modified 12 May 2026): description; Procedure Examples rows C0028 2015 Ukraine Electric Power Attack; C0025 2016 Ukraine Electric Power Attack; C0063 2025 Poland Wiper Attacks; C0030 Triton Safety Instrumented System Attack",
+    "evidence_type": "guidance",
+    "shows": "MITRE ATT&CK for ICS technique T0859 Valid Accounts (technique version 1.1, last modified 12 May 2026): 'Adversaries may steal the credentials of a specific user or service account using credential access techniques.' Compromised credentials 'may even be used for persistent access to remote systems', and overlapping credentials may let an adversary pivot 'possibly between the enterprise and operational technology environments.' Procedure examples relevant to this study: in the 2015 Ukraine Electric Power Attack Sandworm Team 'used valid accounts to laterally move through VPN connections and dual-homed systems' and to 'access employee workstations hosting HMI applications'; the page records the same lateral movement for the 2016 attack; in the 2025 Poland Wiper Attacks valid accounts were used to access RTUs, protection and control relays, HMI computers and serial device servers; and in the Triton Safety Instrumented System Attack 'TEMP.Veles used valid credentials when laterally moving through RDP jump boxes into the ICS environment.'",
+    "limits": "A technique entry documents an adversary behaviour class and named procedure examples, which MITRE summarises from the reports it cites. It does not establish success, reach, timing or consequence in any scenario. It gives no dwell time, no count of compromised accounts and no likelihood that credentials reach a given utility or plant control network.",
+    "quotes": [
+      {
+        "locator": "Description, paragraph 1",
+        "text": "Adversaries may steal the credentials of a specific user or service account using credential access techniques."
+      },
+      {
+        "locator": "Description, paragraph 1",
+        "text": "Compromised credentials may be used to bypass access controls placed on various resources on hosts and within the network, and may even be used for persistent access to remote systems."
+      },
+      {
+        "locator": "Description, paragraph 3",
+        "text": "the adversary may be able to pivot across accounts and systems to reach a high level of access (i.e., domain or enterprise administrator)  and possibly between the enterprise and operational technology environments."
+      },
+      {
+        "locator": "Procedure Examples, C0028 2015 Ukraine Electric Power Attack",
+        "text": "During the 2015 Ukraine Electric Power Attack, Sandworm Team used valid accounts to laterally move through VPN connections and dual-homed systems. Sandworm Team used the credentials of valid accounts to interact with client applications and access employee workstations hosting HMI applications."
+      },
+      {
+        "locator": "Procedure Examples, C0025 2016 Ukraine Electric Power Attack",
+        "text": "During the 2016 Ukraine Electric Power Attack, Sandworm Team used valid accounts to laterally move through VPN connections and dual-homed systems."
+      },
+      {
+        "locator": "Procedure Examples, C0063 2025 Poland Wiper Attacks",
+        "text": "During the 2025 Poland Wiper Attacks, the adversaries used valid accounts to access Hitatchi RTUs, Mikronika RTUs, Hitachi Relion Protection and Control Relays, Mikronika HMI Computers, and Moxa NPort Serial Device Servers."
+      },
+      {
+        "locator": "Procedure Examples, C0030 Triton Safety Instrumented System Attack",
+        "text": "In the Triton Safety Instrumented System Attack, TEMP.Veles used valid credentials when laterally moving through RDP jump boxes into the ICS environment."
+      },
+      {
+        "locator": "Page metadata block",
+        "text": "Version: 1.1 Created: 21 May 2020 Last Modified: 12 May 2026"
+      }
+    ],
+    "verification": {
+      "status": "verified",
+      "date": "2026-09-18",
+      "method": "primary_full_text",
+      "locator_checked": "Page heading, description, metadata block (Version, Created, Last Modified) and every Procedure Examples row.",
+      "checked_fields": [
+        "locator",
+        "shows",
+        "limits",
+        "quotes"
+      ],
+      "notes": "Opened the v19.2 page retrieved 2026-09-18T02:33:32Z (curl, HTTP 200), read the description and metadata block and screened the whole Procedure Examples table. Every quote was copied from the cached extracted text and re-matched (8/8). The other procedure examples (ALLANITE, BlackEnergy, INCONTROLLER and OilRig) were screened and left out as outside this study's grid, safety-system and manufacturing-ransomware scope.",
+      "content_sha256": "82bc08254f39121275b2fcfada0a420e2005ff8def6814011bb11799ee928f16",
+      "retrieval_sha256": "b2a36e19c3023a405b2321c3ae2ea7790a8fd871cbb881d8b2b3ce7e2a32708c",
+      "quote_match": {
+        "normalization": "nfkc-lig-v2",
+        "matched": 8,
+        "total": 8
+      }
+    }
+  },
+  {
+    "id": "ATTACK-T0878",
+    "source": "mitre_t0878",
+    "locator": "Technique description and its mitigations.",
+    "evidence_type": "technique_catalogue",
+    "shows": "MITRE ATT&CK for ICS technique T0878 Alarm Suppression states that adversaries may target protection function alarms to prevent them from notifying operators of critical conditions, and that methods of suppression may involve tampering or altering device displays and logs. Among its mitigations it lists providing an alternative method for alarms to be reported in the event of a communication failure.",
+    "limits": "A technique entry documents a behaviour class and named procedure examples. It does not establish success, reach, timing or consequence in any scenario, and names no refrigeration installation. Its mitigation list is guidance, not a measurement of how soon an independent channel finds a suppressed alarm.",
+    "quotes": [
+      {
+        "locator": "Technique description.",
+        "text": "Adversaries may target protection function alarms to prevent them from notifying operators of critical conditions"
+      },
+      {
+        "locator": "Technique description.",
+        "text": "Methods of suppression may involve tampering or altering device displays and logs"
+      }
+    ],
+    "verification": {
+      "status": "verified",
+      "date": "2026-10-18",
+      "method": "primary_full_text",
+      "locator_checked": "Technique description and its mitigations.",
+      "checked_fields": [
+        "locator",
+        "evidence_type",
+        "shows",
+        "limits",
+        "quotes"
+      ],
+      "notes": "New source. Every quote was matched against a fresh extraction of the cached bytes.",
+      "content_sha256": "4cb95f8b804a7382ce6875f75d08d93928458fcace53fedd0270866821321399",
+      "retrieval_sha256": "e45388a1536fd045097d7cfb7f01247f74ae3ef233d13e7540d4e4e3d7269e23",
+      "quote_match": {
+        "normalization": "nfkc-lig-v2",
+        "matched": 2,
+        "total": 2
+      }
+    }
+  },
+  {
+    "id": "E-SC43-AMWATER-2024",
+    "source": "amwater2024_8k",
+    "locator": "Exhibit 99.1, press release body, paragraphs 1-3",
+    "evidence_type": "regulatory_filing",
+    "shows": "In a press release of October 10, 2024 filed with the SEC as Exhibit 99.1 to a Form 8-K, American Water, the largest regulated US water and wastewater utility company (more than 14 million people served in 14 states), stated that it was methodically reconnecting and reactivating the systems it had taken offline after the cybersecurity incident it had announced on October 7. It continued to have no indication that its water and wastewater facilities were impacted, and the incident did not affect water quality. The disruption fell on business systems: the MyWater customer portal was back in operation and standard billing was resuming after a short period when the customer and billing platform was unavailable, with no late charges for that period. The investigation with law enforcement was ongoing.",
+    "limits": "A company statement during an open investigation; it does not describe the attack, the systems taken offline, or how operational and business networks were separated, and 'no indication' is not proof of no effect. It shows that a large utility's business systems can be disrupted for days without any reported loss of water service, not that operational systems are immune.",
+    "valid_for": {
+      "place": "American Water's regulated operations in 14 states",
+      "period": "cybersecurity incident announced October 7, 2024; statement of October 10, 2024",
+      "population": "customers of American Water, more than 14 million people served",
+      "as_of": "2024-10-10"
+    },
+    "quotes": [
+      {
+        "locator": "Paragraph 1",
+        "text": "announced today that it is in the process of methodically and securely reconnecting and reactivating the systems that were taken offline due to its cybersecurity incident communicated on Oct. 7."
+      },
+      {
+        "locator": "Paragraph 2",
+        "text": "The Company continues to have no indication that its water and wastewater facilities were impacted by this incident. The incident did not affect water quality."
+      },
+      {
+        "locator": "Paragraph 3",
+        "text": "The company’s customer portal, MyWater, is now operational, and all standard billing processes are resuming."
+      },
+      {
+        "locator": "About American Water",
+        "text": "providing safe, clean, reliable and affordable drinking water and wastewater services to more than 14 million people with regulated operations in 14 states"
+      }
+    ],
+    "verification": {
+      "status": "partial",
+      "date": "2026-10-22",
+      "method": "third_party_primary_retrieval",
+      "locator_checked": "Exhibit 99.1, press release body, paragraphs 1-3",
+      "checked_fields": [
+        "shows",
+        "limits",
+        "quotes"
+      ],
+      "notes": "Checked against the text retrieved by the third-party tool on 2026-10-22. Nothing is derived. Integration: partial because method third_party_primary_retrieval.",
+      "content_sha256": "351509db71511eb1f2e9a047558f3651c377c90bbd096cabcbe894001571de6d",
+      "retrieval_sha256": "87bfdc340a65433398897da41f5283f9898e1c929e18adf8d995cb66e9078071",
+      "quote_match": {
+        "normalization": "nfkc-lig-v2",
+        "matched": 4,
+        "total": 4
+      }
+    }
+  },
+  {
+    "id": "E-SC43-JUNEAU-POP",
+    "source": "census_juneau",
+    "locator": "QuickFacts table, People: Population rows",
+    "evidence_type": "official_statistic",
+    "shows": "The Census Bureau's QuickFacts table for Juneau city and borough, Alaska gives a population estimate of 31,609 for July 1, 2025 (vintage 2025), against an estimates base of 32,255 on April 1, 2020, a change of −2.0%. The 2020 Census count was 32,255 and the 2010 count 31,275. The table also gives 13,167 households and 2.36 persons per household for 2020-2024.",
+    "limits": "Resident population of the city and borough, not the number of water utility customers, not the people connected to the public water system, and not visitors, whom Juneau's cruise season adds in large numbers. The July 2025 figure is an estimate, not a count.",
+    "data": {
+      "population_estimate_2025_07_01": {
+        "value": 31609,
+        "unit": "people",
+        "note": "Row 'Population estimates, July 1, 2025, (V2025)'."
+      },
+      "population_census_2020": {
+        "value": 32255,
+        "unit": "people",
+        "note": "Row 'Population, Census, April 1, 2020'."
+      }
+    },
+    "valid_for": {
+      "place": "Juneau city and borough, Alaska",
+      "period": "July 1, 2025 estimate; April 1, 2020 census",
+      "population": "residents",
+      "as_of": "vintage 2025 estimates"
+    },
+    "quotes": [
+      {
+        "locator": "Population rows",
+        "text": "Population estimates, July 1, 2025, (V2025) | 31,609"
+      },
+      {
+        "locator": "Population rows",
+        "text": "Population estimates base, April 1, 2020, (V2025) | 32,255"
+      },
+      {
+        "locator": "Population rows",
+        "text": "Population, Census, April 1, 2020 | 32,255"
+      },
+      {
+        "locator": "Families & Living Arrangements rows",
+        "text": "Households, 2020-2024 | 13,167"
+      }
+    ],
+    "verification": {
+      "status": "partial",
+      "date": "2026-10-22",
+      "method": "third_party_primary_retrieval",
+      "locator_checked": "QuickFacts table, People: Population rows",
+      "checked_fields": [
+        "shows",
+        "limits",
+        "quotes",
+        "data"
+      ],
+      "notes": "Checked against the text retrieved by the third-party tool on 2026-10-22. Nothing is derived. Integration: partial because method third_party_primary_retrieval.",
+      "content_sha256": "e573392fc200ee263d16166ef9d7591be68dc2924f1b269aaa34c50eb548589a",
+      "retrieval_sha256": "7008063f47039874373d093d8e78cb883252c980a4f1cf5494c88f0740f1763d",
+      "quote_match": {
+        "normalization": "nfkc-lig-v2",
+        "matched": 4,
+        "total": 4
+      }
+    }
+  },
+  {
+    "id": "E-SC43-GAO-2026",
+    "source": "gao2026water",
+    "locator": "Product page sections 'What GAO Found' and 'Why GAO Did This Study'",
+    "evidence_type": "audit_report",
+    "shows": "GAO's product page for its May 21, 2026 testimony before the House Science, Space, and Technology Subcommittee on the Environment summarises the cybersecurity of the close to 170,000 US water and wastewater systems. It states that in 2024 GAO found EPA had not performed key cybersecurity risk management steps for the sector and made recommendations, and that in response EPA conducted a water sector risk assessment and developed a risk management plan to guide its efforts to mitigate priority risks. In response to GAO's recommendation to evaluate its legal authorities, EPA identified critical gaps: no cybersecurity risk assessment requirements for wastewater systems and certain drinking water systems, and significant limitations in its authority under federal drinking water and clean water laws to address those gaps, which GAO will continue to monitor. The page also notes workforce shortages, older technology that is hard to protect, and competing financial priorities at utilities. The statement draws on GAO's August 2024 report GAO-24-106744, EPA documents and public information as of May 2026.",
+    "limits": "A summary page, not the testimony itself, and it does not date EPA's risk assessment and plan (the specification's 'January 2025' does not appear in the retrieved text). It describes governance gaps and sector vulnerability, not incident counts, outage durations or consequences, and the 170,000 figure covers all water and wastewater systems, not community water systems alone.",
+    "valid_for": {
+      "place": "United States",
+      "period": "testimony of May 21, 2026, drawing on information as of May 2026",
+      "population": "close to 170,000 US water and wastewater systems and EPA as sector risk management agency",
+      "as_of": "2026-05-21"
+    },
+    "quotes": [
+      {
+        "locator": "What GAO Found",
+        "text": "In response, EPA conducted a water sector risk assessment and developed a risk management plan to guide its efforts to mitigate priority risks."
+      },
+      {
+        "locator": "What GAO Found",
+        "text": "Specifically, EPA identified a lack of cybersecurity risk assessment requirements for wastewater systems and certain drinking water systems. EPA also identified significant limitations in its authority under federal drinking water and clean water laws to address those gaps."
+      },
+      {
+        "locator": "Why GAO Did This Study",
+        "text": "Recent cyber incidents and security alerts highlight the vulnerability of the close to 170,000 water and wastewater systems that make up the U.S. water and wastewater systems sector (water sector)."
+      },
+      {
+        "locator": "Why GAO Did This Study",
+        "text": "This statement is based on GAO’s August 2024 report on cybersecurity risks to U.S. water and wastewater systems (GAO-24-106744); documents provided by EPA in response to GAO’s recommendations; and publicly available information, as of May 2026"
+      }
+    ],
+    "verification": {
+      "status": "partial",
+      "date": "2026-10-22",
+      "method": "third_party_primary_retrieval",
+      "locator_checked": "Product page sections 'What GAO Found' and 'Why GAO Did This Study'",
+      "checked_fields": [
+        "shows",
+        "limits",
+        "quotes"
+      ],
+      "notes": "Checked against the text retrieved by the third-party tool on 2026-10-22. Nothing is derived; the page does not give a January 2025 date for EPA's risk assessment and plan. Integration: partial because method third_party_primary_retrieval.",
+      "content_sha256": "ee0c543b63124f571c14ec75f9a0e61ff12e2ae4bb670fb232590e597cf4d37e",
+      "retrieval_sha256": "1f2447923a42740fab0f16e6c0f92502932b0e19585bb56654b52644429d932f",
+      "quote_match": {
+        "normalization": "nfkc-lig-v2",
+        "matched": 4,
+        "total": 4
+      }
+    }
+  },
+  {
+    "id": "E-SC43-JUNEAU-UTILITY",
+    "source": "juneau_utility_page",
+    "locator": "Section 'Water Utility System Information', paragraphs 2-4",
+    "evidence_type": "technical_documentation",
+    "shows": "The City and Borough of Juneau states that it owns, operates and maintains a public drinking water system that serves the majority of its residents, businesses and tourists, and that the system supports critical services such as firefighting and hospitals. It produces and distributes approximately 1.2 billion gallons of drinking water a year from separate and redundant groundwater and surface-water sources, and delivers it through numerous pump stations and over 180 miles of pipe into a series of reservoirs that feed thousands of hydrants and service connections. The page describes the system as one of over 153,000 public water systems in the US and says the borough bases its protection approach on the 2015 Water and Wastewater Systems Sector-Specific Plan. It gives no count of customers or people served, and no figure of 400,000 people served appears on it.",
+    "limits": "A general description with no customer count, no population served, no treatment process description, no storage volumes and no date; 'the majority of residents' is not quantified. The annual production figure is approximate and is not placed in data because the specification records none. Tourist numbers served are not stated.",
+    "valid_for": {
+      "place": "City and Borough of Juneau, Alaska",
+      "period": "undated page, copyright line 2001-2026",
+      "population": "residents, businesses and tourists served by the CBJ public drinking water system",
+      "as_of": "retrieved 2026-10-22"
+    },
+    "quotes": [
+      {
+        "locator": "Water Utility System Information, paragraph 2",
+        "text": "The City and Borough of Juneau owns, operates, and maintains a public drinking water system that services the majority of its residents, businesses, and tourists."
+      },
+      {
+        "locator": "Water Utility System Information, paragraph 3",
+        "text": "Approximately 1.2 billion gallons of drinking water are produced and distributed annually by CBJ, drawing from separate and redundant ground- and surface water sources."
+      },
+      {
+        "locator": "Water Utility System Information, paragraph 3",
+        "text": "Numerous pump stations deliver potable water via a network of over 180 miles of pipe, directing into a series of reservoirs that in turn feed thousands of hydrants and terminal water distribution connections."
+      },
+      {
+        "locator": "Water Utility System Information, paragraph 4",
+        "text": "The CBJ public drinking water system is one of over 153,000 similar public systems that provide potable water across the US."
+      }
+    ],
+    "verification": {
+      "status": "verified",
+      "date": "2026-10-22",
+      "method": "primary_full_text",
+      "locator_checked": "Section 'Water Utility System Information', paragraphs 2-4",
+      "checked_fields": [
+        "shows",
+        "limits",
+        "quotes"
+      ],
+      "notes": "Checked against the extracted text of the retrieved page on 2026-10-22. Nothing is derived; the page carries no customer count and no 400,000 figure.",
+      "content_sha256": "5f09c541dcfb729bd74747d06ba2bf2d5a36959bfbc3ed9a2b68e5fb225da8e8",
+      "retrieval_sha256": "4afe52c16c131c3c356fbe46e49cfaca36261709396ae9bb85d21dc883a1ed7d",
+      "quote_match": {
+        "normalization": "nfkc-lig-v2",
+        "matched": 4,
+        "total": 4
+      }
+    }
+  },
+  {
+    "id": "E-SC43-REWET-PRECEDENT",
+    "source": "naeimi2024rewet",
+    "locator": "Abstract (manuscript lines 7-19); Section 3.3 Restoration plan (lines 228-264); Section 3.7 restoration module (lines 400-415); Section 5 Los Angeles case study (lines 496-555, 585-596)",
+    "evidence_type": "peer_reviewed_study",
+    "shows": "Naeimi and Davidson present REWET, an open-source Python model of water system functioning and restoration after a damaging event. It couples pressure-demand driven hydraulic analysis (EPANET 2.2 with enhancements) to a discrete event simulation of the restoration process. The user defines, for each damaged element type, the actions that must be done and their order (for example inspect, isolate, reroute, repair), zones, one or more crew types with shifts (for example a daytime shift of 8 am to 8 pm) and reporting locations, damage groups, job types (a crew type, an action and a damage group, each with a duration and an effect on the network), and first- and second-order job priorities. Crews are assigned to jobs only if of the right type, idle, within zone when required, and with enough shift time left after travel; travel time is distance divided by a user-set speed, by default 18 km/h, and jobs that outlast a shift become long jobs. The tool was applied to a small test network and to the Los Angeles system for the January 17, 1994 Northridge earthquake and for 666 probabilistic earthquake damage scenarios; for Northridge the simulated water delivery and water quantity match the observed restoration within about 5% for most of the simulation and demand met within about 8%.",
+    "limits": "A precedent for structure only: the crew, shift, travel and priority mechanisms model physical repair of earthquake-damaged pipes, tanks and pumps, and none of its durations, crew counts or priorities calibrate cyber recovery work. The validation errors are specific to the Los Angeles Northridge case, whose observed restoration was itself approximate, digitized years later, and shaped by improvised operational changes that the authors say a general model cannot predict. Local distribution networks are represented by demand nodes with no links to neighbouring networks.",
+    "valid_for": {
+      "place": "Los Angeles water system (case study) and a small example network",
+      "period": "1994 Northridge earthquake restoration and probabilistic earthquake scenarios",
+      "population": "damaged water supply system components, crews and restoration jobs in a simulation",
+      "as_of": "accepted manuscript, 2024"
+    },
+    "quotes": [
+      {
+        "locator": "Abstract, manuscript line 16",
+        "text": "It uses pressure-demand driven hydraulic analysis and allows detailed discrete event simulation"
+      },
+      {
+        "locator": "Section 3.3 Restoration plan, manuscript line 231",
+        "text": "in the network definition (e.g., pipe, demand node), the user must name the actions that must be done to it for it"
+      },
+      {
+        "locator": "Section 3.3 Restoration plan, manuscript line 232",
+        "text": "to be fully repaired, and in what order they must be done."
+      },
+      {
+        "locator": "Section 3.3 Restoration plan, manuscript line 239",
+        "text": "Third, one or more crew types must be named; one or more shifts must be defined (e.g., daytime shift is"
+      },
+      {
+        "locator": "Section 3.3 Restoration plan, manuscript line 261",
+        "text": "The last piece of the restoration plan is the job priorities. This includes prioritizing job types (first order"
+      },
+      {
+        "locator": "Section 3.7, manuscript line 412",
+        "text": "equal to distance traveled divided by a user-input speed v (default is v=18km/h)."
+      },
+      {
+        "locator": "Section 5, manuscript line 497",
+        "text": "REWET was also applied to the Los Angeles water system for a deterministic analysis of the January 17,"
+      },
+      {
+        "locator": "Section 5.2 Results, manuscript line 554",
+        "text": "simulated results match the observations within about 5% for most of simulation time; for demand met, within"
+      },
+      {
+        "locator": "Section 5.2 Results, manuscript line 592",
+        "text": "damage must be inspected before it is repaired and repairs take longer than inspections."
+      }
+    ],
+    "verification": {
+      "status": "verified",
+      "date": "2026-10-22",
+      "method": "primary_full_text",
+      "locator_checked": "Abstract (manuscript lines 7-19); Section 3.3 Restoration plan (lines 228-264); Section 3.7 restoration module (lines 400-415); Section 5 Los Angeles case study (lines 496-555, 585-596)",
+      "checked_fields": [
+        "shows",
+        "limits",
+        "quotes"
+      ],
+      "notes": "Checked against the extracted text on 2026-10-22. Nothing is derived. The extractor keeps the manuscript's line numbers inside the text, so each quote stays within one manuscript line. 'Dependencies' in the specification corresponds to the ordered action sequences per element and the inspect-before-repair ordering.",
+      "content_sha256": "feaeef95a3422e6abad14ec7d5aa35cf78d874959474df50a18da090894a4e0e",
+      "retrieval_sha256": "e676840d8c1b60df27fd25c71dcfcd07cfc14cd5205529d32d137a83f3bdc5bd",
+      "quote_match": {
+        "normalization": "nfkc-lig-v2",
+        "matched": 9,
+        "total": 9
+      }
+    }
+  }
+]

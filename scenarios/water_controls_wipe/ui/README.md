@@ -1,6 +1,6 @@
 # Water service recovery dashboard
 
-Select a place on the map or from the menu, choose an authored response run, and view its modeled service history. The whole-area view shows residents with interrupted service or an advisory, the volume of unmet demand and cumulative hospital service constraints. Selecting one utility shows its service share and cumulative delivered water.
+Select a place on the map or from the menu, choose an authored response run, and view its modeled service history. The whole-area view shows residents with interrupted service or an advisory, the volume of unmet demand and cumulative hospital service constraints. The regional support runs also show dispatch workload, supplemental water delivered and the household emergency-water deficit. Selecting one utility shows its service share and cumulative delivered water.
 
 The chart and playback use six-hour observations. Enter a fractional hour and choose **Read** for a direct measurement at that time. Every value is read from the same completed engine Record for that run. Units and the model revision travel with the readings. A simulation that stops produces its diagnostic. Historical publications at `8488047` describe the earlier scenario.
 

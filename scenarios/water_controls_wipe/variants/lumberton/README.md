@@ -1,9 +1,9 @@
 # water_controls_wipe:lumberton
 
-[Recovery readings](results/readings.md) · [Historical scenario brief](results/brief.md) · [Model](model.scn) · [Historical methods](results/methods.md) ·
+[Recovery readings](results/readings.md) · [Scenario brief](results/brief.md) · [Model](model.scn) · [Historical methods](results/methods.md) ·
 [The `water_controls_wipe` package](../../README.md)
 
-This variant follows water service and recovery in Lumberton, North Carolina. The initial controls outage is an incident input. The model computes storage, deliveries, crew queues and advisory clearance over time. The recovery readings come from this model. The historical brief and methods describe revision `8488047`.
+This variant follows water service and recovery in Lumberton, North Carolina. The initial controls outage is an incident input. The model computes storage, deliveries, crew queues and advisory clearance over time. The readings and comparison brief come from the current model. The methods page describes revision `8488047`.
 
 ## The place
 
@@ -24,4 +24,23 @@ evidence. The package's shared tests check this place with the others.
 
 ```sh
 napkin run scenarios/water_controls_wipe/variants/lumberton --run delayed_none --value unserved_volume
+```
+
+## Regional dispatch study
+
+The `dispatch` study compares `support_recovery_rapid` against `support_recovery` over 12 paired draws using seed 17. Each pair uses the same spacing and workload draw. The published differences cover accepted and filtered notices, work completed, supplemental gallons delivered in millions, and unmet household water in millions of gallons. [Study definition](brief.toml) · [Sampling inputs](spreads/dispatch.json) · [Paired results](results/paired-spreads.json)
+
+Rapid response accepted one batch in every draw. Standard response averaged 6.67. Rapid response reduced
+the average workload completed by 88.17 work-hours. Both policies left the same 1,019 gallons of household
+demand unmet over the study horizon. [Paired results](results/paired-spreads.json)
+
+Dispatch capacity matters when regular deliveries compete for the last available slots. In a separate
+four-hour check, recognition takes one hour and emergency deliveries open immediately afterward. Reserving
+all slots for one supplemental batch leaves 1,019 gallons of household demand unmet. With those slots
+available, 510 gallons go unmet. [Dispatch capacity check](../../tests/test_regional_support.py)
+
+To check the published study, run this command from the checkout root.
+
+```sh
+python -m tools.publish --check --only dossier --sample-spreads --scenario water_controls_wipe:lumberton --jobs 2
 ```

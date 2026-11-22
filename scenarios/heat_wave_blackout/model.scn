@@ -303,6 +303,28 @@ incident: @records_status_events
     input hold_at = 30 h in [0 h, 1800 h] @recovery_inputs
     input hold_duration = 6 h in [0 h, 1800 h] @recovery_inputs
     input repeat_work = 0 h in [0 h, 30 h] @recovery_inputs
+    input schedule: enum[SUPPLIED, FIXED, AFTER_CLEARANCE] = SUPPLIED
+    input first_report = 26 h in [0 h, 1800 h] @inspection_exercise
+    input window_end = 48 h in [0 h, 1800 h] @inspection_exercise
+    input interval = 4 h in [0.25 h, 168 h] @inspection_exercise
+    input sample_reports = false @inspection_exercise
+    input interval_range = pert(2 h, 4 h, 6 h) @inspection_exercise
+    spacing: h = this.interval_range.draw() if this.sample_reports else this.interval @inspection_exercise
+    input detection_delay = 4 h in [0 h, 168 h] @inspection_exercise
+    input containment_delay = 8 h in [0 h, 168 h] @inspection_exercise
+    input acknowledge_stop = false @inspection_exercise
+    input report_limit = 8 in [0, 64] @inspection_exercise
+    input inspection_duration = 2 h in [0 h, 48 h] @inspection_exercise
+    input inspection_work = 1 h in [0 h, 30 h] @inspection_exercise
+    input duration_range = pert(1 h, 2 h, 3 h) @inspection_exercise
+    input work_range = pert(0.5 h, 1 h, 1.5 h) @inspection_exercise
+    report_duration: h = this.duration_range.draw() if this.sample_reports else this.inspection_duration @inspection_exercise
+    report_work: h = this.work_range.draw() if this.sample_reports else this.inspection_work @inspection_exercise
+    detected: bool = false @records_status_events
+    contained: bool = false @records_status_events
+    accepted = 0 @counts_work_done
+    prevented = 0 @counts_work_done
+    open_holds = 0 @counts_work_done
     paused: bool = false @records_status_events
     hold_begins = event(): @recovery_inputs
         when this.hold and t >= this.hold_at:
@@ -310,14 +332,53 @@ incident: @records_status_events
             reset when false
         after 0 h:
             if crews.remaining > 0 h or crews.untouched > 0 h:
-                this.paused = true
-                crews.rework_left += this.repeat_work
-                crews.rework_caused += this.repeat_work
-                crews.revision += 1
-                crews.task = IDLE
-        after this.hold_duration:
-            this.paused = false
-            crews.dispatch.start()
+                this.inspection.start(this.hold_duration, this.repeat_work, false)
+    response = event(): @inspection_exercise
+        when this.schedule != SUPPLIED and this.report_limit >= 1 and this.first_report < this.window_end and t >= this.first_report:
+            this.response.start()
+        after this.detection_delay:
+            this.detected = true
+        after this.containment_delay:
+            this.contained = true
+    report = event(): @inspection_exercise
+        when this.schedule != SUPPLIED and this.report_limit >= 1 and this.first_report < this.window_end and t >= this.first_report and crews.state != DONE:
+            this.report.start()
+        after 0 h:
+            if t < this.window_end and crews.state != DONE:
+                if t < this.first_report + this.detection_delay + this.containment_delay and (not this.acknowledge_stop or t < this.first_report + this.detection_delay):
+                    this.accepted += 1
+                    this.inspection.start(this.report_duration, this.report_work, this.schedule == AFTER_CLEARANCE)
+                else:
+                    this.prevented += 1
+                if this.schedule == FIXED and t < this.first_report + this.detection_delay + this.containment_delay:
+                    this.next_report.start()
+    inspection = event(duration: h, work: h, follow_up: bool): @recovery_inputs
+        after 0 h:
+            this.open_holds += 1
+            this.paused = true
+            crews.rework_left += work
+            crews.rework_caused += work
+            crews.revision += 1
+            crews.task = IDLE
+        after duration:
+            this.open_holds -= 1
+            if this.open_holds == 0:
+                this.paused = false
+                crews.dispatch.start()
+            if follow_up:
+                this.after_clearance.start()
+    after_clearance = event(): @inspection_exercise
+        until not this.paused and crews.rework_left <= 0 h
+        after 0 h:
+            this.next_report.start()
+    next_report = event(): @inspection_exercise
+        after this.spacing:
+            if t < this.window_end and crews.state != DONE and this.accepted + this.prevented + 1 <= this.report_limit and (not this.acknowledge_stop or t < this.first_report + this.detection_delay):
+                this.report.start()
+    assert this.spacing in [0.25 h, 168 h] @inspection_exercise
+    assert this.report_duration in [0 h, 48 h] @inspection_exercise
+    assert this.report_work in [0 h, 30 h] @inspection_exercise
+    assert this.open_holds in [0,] @counts_work_done
 
 crews: @records_status_events
     "Repair teams on the affected supply."
@@ -603,9 +664,10 @@ moves: @counts_quantity_value
     state: enum[WAITING, ACTIVE, ENDED] = WAITING
     window: enum[OPEN, CLOSED] = OPEN
     person_days: person * days = 0 scale 1 person * days @counts_extra_support
+    readonly people_away: formula(people) = formula(max(0 people, sum(this.residents.moved_h) + sum(this.residents.moved_s)) if supply.supply != ON and heat_wave.state == ONGOING else 0 people) @counts_extra_support
     flow add_person_days: SOURCE -> this.person_days @integrates_delivered
-        request = formula(sum(this.residents.moved_h) + sum(this.residents.moved_s) if supply.supply != ON and heat_wave.state == ONGOING else 0 people)
-        capacity = formula(sum(this.residents.moved_h) + sum(this.residents.moved_s) if supply.supply != ON and heat_wave.state == ONGOING else 0 people)
+        request = formula(this.people_away)
+        capacity = formula(this.people_away)
     status ok when this.state == ACTIVE
         "Families leave by their own means"
     status inactive when this.state == ENDED
@@ -1131,16 +1193,65 @@ options "Cooling response":
         places.moves_per_hour = 2000 people/h @moves_by_response
         outreach.start_time = 4 h @by_response
         places.powered_share = 1 @all_powered
+    "Delayed cooling and outreach":
+        places.start_delay = 36 h @open_by_response
+        places.moves_per_hour = 150 people/h @moves_by_response
+        outreach.start_time = 36 h @by_response
+
+options "Community protection":
+    "Usual protection":
+        "Keep the package's backup cooling, relocation and access assumptions."
+    "Powered cooling places":
+        places.powered_share = 1 @all_powered
+    "Powered places and open gates":
+        places.powered_share = 1 @all_powered
+        compound.plan_start = OPEN_ON_TIME
+    "More backup cooling and private moves":
+        residents_under_65.backup_share = 0.25 @greater_protection
+        residents_under_65.private_share = 0.25 @greater_protection
+        residents_65_to_74.backup_share = 0.25 @greater_protection
+        residents_65_to_74.private_share = 0.25 @greater_protection
+        residents_75_and_over.backup_share = 0.25 @greater_protection
+        residents_75_and_over.private_share = 0.25 @greater_protection
+        confined_under_65.backup_share = 0.25 @greater_protection
+        confined_65_to_74.backup_share = 0.25 @greater_protection
+        confined_75_and_over.backup_share = 0.25 @greater_protection
+
+options "Inspection schedule":
+    "Supplied incident only":
+        "Read the utility's supplied hold and work order."
+    "Calendar inspections":
+        incident.schedule = FIXED
+    "Inspections after clearance":
+        incident.schedule = AFTER_CLEARANCE
+
+options "Inspection response":
+    "Normal inspection response":
+        "Use the usual detection and containment times."
+    "Expedited inspection response":
+        incident.detection_delay = 1 h @inspection_exercise
+        incident.containment_delay = 3 h @inspection_exercise
+
+options "Stop order":
+    "Await independent containment":
+        "Reports may still arrive after the stop order until the response team contains the incident."
+    "Acknowledge the stop order":
+        incident.acknowledge_stop = true @inspection_exercise
 
 runs:
     standard = "Standard cooling"
     early_cooling = "Earlier cooling and outreach"
     powered_places = "Earlier cooling with backup power"
+    delayed_cooling = "Delayed cooling and outreach"
+    delayed_cooling_with_power = "Delayed cooling and outreach" + "Powered cooling places"
+    delayed_cooling_with_access = "Delayed cooling and outreach" + "Powered places and open gates"
+    delayed_cooling_with_backup = "Delayed cooling and outreach" + "More backup cooling and private moves"
+    fixed_inspections = "Standard cooling" + "Calendar inspections"
+    acknowledged_stop = "Standard cooling" + "Calendar inspections" + "Acknowledge the stop order"
+    rapid_fixed_inspections = "Standard cooling" + "Calendar inspections" + "Expedited inspection response"
+    clearance_inspections = "Standard cooling" + "Inspections after clearance"
 
 notes:
-    comparisons:
-        early_cooling: standard
-        powered_places: early_cooling
     premises:
         observation: "The utility receives an observed outage at the start of the heat wave. A safety hold and an additional work order can be supplied as incident records."
     limitations:
@@ -1572,3 +1683,10 @@ record hazus_severity: convention "Serious casualties are the people who die and
 record recovery_inputs: assumption "The outage observation, safety holds, and work orders are supplied by the
     model user. They are not forecasts."
     assumption A-SC41-RESTORATION
+
+record greater_protection: assumption "In the higher-protection comparison, one quarter of each group has
+    backup cooling and a quarter of the remaining people in homes can move privately."
+    assumption A-SC41-PROTECTION
+
+record inspection_exercise: assumption "The exercise supplies synthetic inspection reports during an observed
+    outage. Their spacing, duration, work and time to containment are illustrative."

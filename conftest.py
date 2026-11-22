@@ -35,7 +35,7 @@ def catalogue_test_modules(root):
 # One rule for the whole catalogue: the assertions of each module of a scenario's tests, its helpers
 # included, are rewritten, so an assertion of a helper that a test imports reports its values as the
 # test's own do. No scenario repeats this in a conftest of its own.
-pytest.register_assert_rewrite('tests.helpers', 'tests.build', *catalogue_test_modules(ROOT))
+pytest.register_assert_rewrite('tests.helpers', *catalogue_test_modules(ROOT))
 # The engine, language and acceptance unit tests always simulate: they test the simulation itself,
 # and some of them replace parts of the engine. Every other test takes its runs from the run store
 # (`napkin/store.py`), so the test workers and the publisher share them.
@@ -126,9 +126,6 @@ def pytest_report_header(config):
 
 
 def pytest_ignore_collect(collection_path, config):
-    # A dormant test is not collected (`tests/dormant.txt`).
-    if selection.dormant(collection_path, ROOT):
-        return True
     # The folder of a scenario that the session does not check is not collected.
     names = selection.chosen()
     if names is None:

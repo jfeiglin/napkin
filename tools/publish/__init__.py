@@ -10,9 +10,12 @@ output.
 from __future__ import annotations
 
 import contextlib
+import hashlib
+import json
 import multiprocessing
 import re
 from concurrent.futures import ProcessPoolExecutor
+from dataclasses import replace
 from decimal import Decimal
 from functools import cache, cached_property, partial
 from importlib import import_module
@@ -27,7 +30,7 @@ from ..catalogue import ROOT
 
 # These builders describe the complete catalogue or library, not a selection of scenarios.
 AGGREGATE = ('manifest',)
-HISTORICAL = ('assumptions', 'briefs', 'html', 'methods', 'runs')
+HISTORICAL = ('assumptions', 'html', 'methods', 'runs')
 # A committed location in the results folder of each owner of the catalogue: `{results}/brief.md` is
 # `scenarios/water_wipe/results/brief.md` for the scenario water_wipe (`catalogue.result`).
 RESULTS = '{results}'
@@ -147,6 +150,7 @@ def builders():
     from ..evidence import manifest
 
     return {
+        'briefs': (partial(_artifacts, 'briefs'), (f'{RESULTS}/brief.md',)),
         'readings': (partial(_artifacts, 'readings'), (f'{RESULTS}/readings.md',)),
         'dossier': (partial(_artifacts, 'dossier'), (f'{RESULTS}/source-dossier.json',)),
         'manifest': (lambda ctx: manifest.artifacts(ctx.root), (manifest.PATH,)),
@@ -161,34 +165,70 @@ def _artifacts(name, ctx):
 def sample_spreads(ctx):
     """Run each declared spread of the selection at its authored settings through the public sampler."""
     from napkin.engine import edits_for
-    from napkin.model.load import load_json
+    from napkin.model.load import parse_json
     from napkin.spread import spread
 
-    from .brief import brief_of, shown, spread_document, value_note
+    from . import paired
+    from .brief import brief_of, comparisons_of, shown, spread_document, value_note
 
+    outputs = {}
     total = 0
     for sid, model in ctx.models.items():
         brief = brief_of(model)
+        receipts = []
         for spec in brief.spreads:
             path = spread_document(model, spec)
-            body = load_json(path, exact_numbers=True)
+            edit_bytes = path.read_bytes()
+            body = parse_json(edit_bytes.decode('utf-8'), path, exact_numbers=True)
             if not isinstance(body, dict):
                 raise ValueError(f'{path}: an edit document is a JSON object')
             edits = edits_for(model, body)
-            paths = [
-                name
+            reasons = {
+                name: value_note(model, 'not_estimated', name, 'reason')
                 for name in spec.outputs or shown(brief, model)
-                if value_note(model, 'not_estimated', name, 'reason') is None
-            ]
+            }
+            paths = [name for name, reason in reasons.items() if reason is None]
+            pairs = [p for p in comparisons_of(brief, model) if p.run in spec.runs and p.against in spec.runs]
+            needed = {name for pair in pairs for name in (pair.run, pair.against)}
+            studies = {}
             for run in spec.runs:
                 ctx.progress(f'sampling {sid} {spec.id} {run}: {spec.samples} samples, seed {spec.seed}')
                 result = spread(
-                    model, paths, run=run, edits=edits, samples=spec.samples, seed=spec.seed, jobs=ctx.jobs
+                    model,
+                    paths,
+                    run=run,
+                    edits=edits,
+                    samples=spec.samples,
+                    seed=spec.seed,
+                    jobs=ctx.jobs,
+                    with_scales=run in needed,
                 )
-                if result.refused:
-                    raise ValueError(f'{sid} {spec.id} {run}: {result.refused}')
-                total += len(result.samples)
+                values = paired.keyed_samples(
+                    result, spec, f'{sid} {spec.id} {run}', with_scales=run in needed
+                )
+                if run in needed:
+                    studies[run] = (replace(result, samples=(), central=None), values)
+                total += len(values)
+            if pairs:
+                receipt = {
+                    'id': spec.id,
+                    'method': spec.method,
+                    'seed': spec.seed,
+                    'samples_per_run': spec.samples,
+                    'edit_sha256': hashlib.sha256(edit_bytes).hexdigest(),
+                    'comparisons': [paired.comparison(pair, studies) for pair in pairs],
+                }
+                omitted = {name: reason for name, reason in reasons.items() if reason is not None}
+                if omitted:
+                    receipt['unestimated_outputs'] = omitted
+                receipts.append(receipt)
+        if receipts:
+            receipt = {'scenario': sid, 'model_hash': model.model_hash, 'spreads': receipts}
+            outputs[catalogue.result(sid, paired.FILENAME)] = (
+                json.dumps(receipt, indent=2, allow_nan=False) + '\n'
+            )
     ctx.progress(f'verified {total} samples from current declared spreads')
+    return outputs
 
 
 def _located(path, locations):
@@ -212,7 +252,7 @@ def selected(only=None, scenario_ids=None):
         if name in HISTORICAL:
             raise ValueError(
                 f'{name} is a historical publication format at revision 8488047. '
-                'Current formats are readings, dossier and manifest.'
+                'Current formats are briefs, readings, dossier and manifest.'
             )
         if name not in builders():
             raise ValueError(f'Unknown publication format {name!r}')
@@ -315,10 +355,13 @@ def orphans(outputs, root=ROOT, names=None, *, scenario_ids=None):
     record no longer written."""
     root = Path(root)
     names = selected(scenario_ids=scenario_ids) if names is None else names
+    from .paired import FILENAME
+
+    locations = [path for name, (_, paths) in builders().items() if name in names for path in paths]
+    if 'sample-spreads' in names:
+        locations.append(f'{RESULTS}/{FILENAME}')
     found = {
         path.relative_to(root).as_posix()
-        for name, (_, locations) in builders().items()
-        if name in names
         for pattern in _locations(locations, root, scenario_ids)
         for path in root.glob(pattern)
         if path.is_file()

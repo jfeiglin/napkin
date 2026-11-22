@@ -1,1 +1,58 @@
-defensive_response/brief.toml
+show = ["total_attacks", "attacks_per_year", "effects_program.completed", "surveillance_program.completed", "effects_program.work_rate", "surveillance_program.work_rate", "leadership.effects_share", "governance.track_record", "governance.reliance", "ai_tools.progress", "ai_tools.review_progress", "leadership.surge_experts", "leadership.payroll", "researchers.people", "operators.people", "collection_specialists.people", "analysts.people", "analysts.available", "analysts.defensive_share", "surveillance_program.staff", "effects_program.staff", "surveillance_program.capacity", "effects_program.capacity", "learning.retained", "defenders.hardening", "defenders.closing"]
+drivers = ["national_volume.annual_demand", "national_volume.work_per_case", "national_volume.availability", "ai_tools.progress_time", "ai_tools.reversal_depth", "leadership.experts", "leadership.expert_cost", "analysts.dispersion", "analysts.review_interval", "learning.training_share", "defenders.ai_hardening", "governance.threshold"]
+featured = ["no_ai", "ai_fast"]
+choice_group = "AI progress"
+
+[[comparison]]
+run = "ai_fast"
+against = "no_ai"
+
+[[comparison]]
+run = "ai_slow"
+against = "no_ai"
+
+[[comparison]]
+run = "ai_fast"
+against = "ai_slow"
+
+[[comparison]]
+run = "ai_reversal"
+against = "ai_fast"
+
+[[comparison]]
+run = "ai_fast_lessons"
+against = "ai_fast"
+
+[[comparison]]
+run = "dispersed"
+against = "dispersed_no_ai"
+
+[[comparison]]
+run = "defenders_ai"
+against = "ai_fast"
+
+[[comparison]]
+run = "analysts_one_share"
+against = "ai_fast"
+
+[[comparison]]
+run = "slow_spy_planning"
+against = "ai_fast"
+
+[[spread]]
+id = "workload_reserve"
+description = "Shared staffing reserve under uncertainty about correlated workload."
+runs = ["no_ai", "ai_fast", "dispersed", "dispersed_no_ai", "defenders_ai"]
+outputs = ["surveillance_program.completed", "effects_program.completed", "attacks_per_year", "total_attacks"]
+samples = 16
+seed = 7
+method = "random"
+
+[[spread]]
+id = "retained_practice"
+description = "Retention of institutional learning and the fraction meeting the service-reliance standard."
+runs = ["no_ai", "ai_fast", "ai_fast_lessons", "ai_reversal"]
+outputs = ["learning.retained", "governance.track_record", "governance.reliance"]
+samples = 16
+seed = 11
+method = "random"

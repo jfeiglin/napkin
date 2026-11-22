@@ -4,7 +4,7 @@ Water service, stored supplies and restoration work in Cape May County, New Jers
 
 The people that the water systems of Cape May County, New Jersey serve, the hospitals that those systems supply and the businesses that need public water there.
 
-Model revision `e8992ac0473debedfd8a6fc13a1e0231a7d99aa448cdc13930d7fc9cfed9565d`. Readings are instantaneous, without reporting lags. All times are in hours.
+Model revision `24763edeb99dd481be89d5d0629341a7781a11903b6d081915c5cba6793c91fa`. Readings are instantaneous, without reporting lags. All times are in hours.
 
 ## early
 
@@ -19,12 +19,17 @@ Model revision `e8992ac0473debedfd8a6fc13a1e0231a7d99aa448cdc13930d7fc9cfed9565d
 | people_interrupted_now | 0 | 26620 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, service_share, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
 | people_under_advisory | 0 | 0 | people | advisory, counts_people_once |
 | restored_share | 0 | 0.292961 | fraction | population_basis, cape_may_homes_population, woodbine_homes_population, service_share, counts_people_once, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
-| emergency_water_deficit | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis |
+| emergency_water_deficit | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis, support_exercise |
 | hospital_hours_constrained | 0 | 0 | facility_hours | constraint_basis |
 | work_remaining | 0 | 550 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
 | people_followed | 0 | 37650 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once |
 | wider_loss | 0 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 0 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
+| support.accepted | 0 | 0 | 1 | support_exercise |
+| support.filtered | 0 | 0 | 1 | support_exercise |
+| support.waiting | 0 | 0 | work_h | support_exercise |
+| support.completed | 0 | 0 | work_h | support_exercise |
+| support.delivered | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis, support_exercise |
 | person_days_lost | 2160 | 1109.17 | person*days | service_share, population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges |
 | unserved_volume | 2160 | 0.0750825 | Mgal | clearance, bulk_dependence, cape_may_bought, woodbine_bought, counts_stocks_flows, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage |
 | rework_caused | 2160 | 0 | work_h | keeps_count_limited, service_incident |
@@ -34,12 +39,17 @@ Model revision `e8992ac0473debedfd8a6fc13a1e0231a7d99aa448cdc13930d7fc9cfed9565d
 | people_interrupted_now | 2160 | 0 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, service_share, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
 | people_under_advisory | 2160 | 0 | people | advisory, counts_people_once |
 | restored_share | 2160 | 1 | fraction | population_basis, cape_may_homes_population, woodbine_homes_population, service_share, counts_people_once, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
-| emergency_water_deficit | 2160 | 0.00110917 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis |
+| emergency_water_deficit | 2160 | 0.00110917 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis, support_exercise |
 | hospital_hours_constrained | 2160 | 0 | facility_hours | constraint_basis |
 | work_remaining | 2160 | 0 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
 | people_followed | 2160 | 37650 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once |
 | wider_loss | 2160 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 2160 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
+| support.accepted | 2160 | 0 | 1 | support_exercise |
+| support.filtered | 2160 | 0 | 1 | support_exercise |
+| support.waiting | 2160 | 0 | work_h | support_exercise |
+| support.completed | 2160 | 0 | work_h | support_exercise |
+| support.delivered | 2160 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis, support_exercise |
 
 ## delayed_none
 
@@ -54,12 +64,17 @@ Model revision `e8992ac0473debedfd8a6fc13a1e0231a7d99aa448cdc13930d7fc9cfed9565d
 | people_interrupted_now | 0 | 26620 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, service_share, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
 | people_under_advisory | 0 | 0 | people | advisory, clearance, counts_people_once |
 | restored_share | 0 | 0.292961 | fraction | population_basis, cape_may_homes_population, woodbine_homes_population, service_share, counts_people_once, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
-| emergency_water_deficit | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, min_of_capacities, start_basis, priority_basis |
+| emergency_water_deficit | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, min_of_capacities, start_basis, priority_basis, support_exercise |
 | hospital_hours_constrained | 0 | 0 | facility_hours | constraint_basis |
 | work_remaining | 0 | 550 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
 | people_followed | 0 | 37650 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once |
 | wider_loss | 0 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 0 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
+| support.accepted | 0 | 0 | 1 | support_exercise |
+| support.filtered | 0 | 0 | 1 | support_exercise |
+| support.waiting | 0 | 0 | work_h | support_exercise |
+| support.completed | 0 | 0 | work_h | support_exercise |
+| support.delivered | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, min_of_capacities, start_basis, priority_basis, support_exercise |
 | person_days_lost | 2160 | 1109.17 | person*days | service_share, population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges |
 | unserved_volume | 2160 | 0.0750825 | Mgal | clearance, bulk_dependence, cape_may_bought, woodbine_bought, counts_stocks_flows, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage |
 | rework_caused | 2160 | 0 | work_h | keeps_count_limited, service_incident |
@@ -69,12 +84,17 @@ Model revision `e8992ac0473debedfd8a6fc13a1e0231a7d99aa448cdc13930d7fc9cfed9565d
 | people_interrupted_now | 2160 | 0 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, service_share, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
 | people_under_advisory | 2160 | 0 | people | advisory, clearance, counts_people_once |
 | restored_share | 2160 | 1 | fraction | population_basis, cape_may_homes_population, woodbine_homes_population, service_share, counts_people_once, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
-| emergency_water_deficit | 2160 | 0.00110917 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, min_of_capacities, start_basis, priority_basis |
+| emergency_water_deficit | 2160 | 0.00110917 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, min_of_capacities, start_basis, priority_basis, support_exercise |
 | hospital_hours_constrained | 2160 | 0 | facility_hours | constraint_basis |
 | work_remaining | 2160 | 0 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
 | people_followed | 2160 | 37650 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once |
 | wider_loss | 2160 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 2160 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
+| support.accepted | 2160 | 0 | 1 | support_exercise |
+| support.filtered | 2160 | 0 | 1 | support_exercise |
+| support.waiting | 2160 | 0 | work_h | support_exercise |
+| support.completed | 2160 | 0 | work_h | support_exercise |
+| support.delivered | 2160 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, min_of_capacities, start_basis, priority_basis, support_exercise |
 
 ## standard
 
@@ -89,12 +109,17 @@ Model revision `e8992ac0473debedfd8a6fc13a1e0231a7d99aa448cdc13930d7fc9cfed9565d
 | people_interrupted_now | 0 | 26620 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, service_share, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
 | people_under_advisory | 0 | 0 | people | advisory, clearance, counts_people_once |
 | restored_share | 0 | 0.292961 | fraction | population_basis, cape_may_homes_population, woodbine_homes_population, service_share, counts_people_once, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
-| emergency_water_deficit | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis |
+| emergency_water_deficit | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis, support_exercise |
 | hospital_hours_constrained | 0 | 0 | facility_hours | constraint_basis |
 | work_remaining | 0 | 550 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
 | people_followed | 0 | 37650 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once |
 | wider_loss | 0 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 0 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
+| support.accepted | 0 | 0 | 1 | support_exercise |
+| support.filtered | 0 | 0 | 1 | support_exercise |
+| support.waiting | 0 | 0 | work_h | support_exercise |
+| support.completed | 0 | 0 | work_h | support_exercise |
+| support.delivered | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis, support_exercise |
 | person_days_lost | 2160 | 1109.17 | person*days | service_share, population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges |
 | unserved_volume | 2160 | 0.0750825 | Mgal | clearance, bulk_dependence, cape_may_bought, woodbine_bought, counts_stocks_flows, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage |
 | rework_caused | 2160 | 0 | work_h | keeps_count_limited, service_incident |
@@ -104,12 +129,377 @@ Model revision `e8992ac0473debedfd8a6fc13a1e0231a7d99aa448cdc13930d7fc9cfed9565d
 | people_interrupted_now | 2160 | 0 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, service_share, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
 | people_under_advisory | 2160 | 0 | people | advisory, clearance, counts_people_once |
 | restored_share | 2160 | 1 | fraction | population_basis, cape_may_homes_population, woodbine_homes_population, service_share, counts_people_once, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
-| emergency_water_deficit | 2160 | 0.00110917 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis |
+| emergency_water_deficit | 2160 | 0.00110917 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis, support_exercise |
 | hospital_hours_constrained | 2160 | 0 | facility_hours | constraint_basis |
 | work_remaining | 2160 | 0 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
 | people_followed | 2160 | 37650 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once |
 | wider_loss | 2160 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 2160 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
+| support.accepted | 2160 | 0 | 1 | support_exercise |
+| support.filtered | 2160 | 0 | 1 | support_exercise |
+| support.waiting | 2160 | 0 | work_h | support_exercise |
+| support.completed | 2160 | 0 | work_h | support_exercise |
+| support.delivered | 2160 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis, support_exercise |
+
+## support_single
+
+| Reading | Time (h) | Value | Unit | Evidence |
+|---|---:|---|---|---|
+| person_days_lost | 0 | 0 | person*days | service_share, population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges |
+| unserved_volume | 0 | 0 | Mgal | clearance, bulk_dependence, cape_may_bought, woodbine_bought, counts_stocks_flows, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage |
+| rework_caused | 0 | 0 | work_h | keeps_count_limited, service_incident |
+| deaths | 0 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| casualties | 0 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| economic_loss | 0 | 0 | USD2025_bn | activity_transfer, economy, demand_basis, cape_may_demand, woodbine_demand, counts_stocks_flows, stored_water_bridges, cape_may_va_rate, woodbine_va_rate |
+| people_interrupted_now | 0 | 26620 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, service_share, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| people_under_advisory | 0 | 0 | people | advisory, clearance, counts_people_once |
+| restored_share | 0 | 0.292961 | fraction | population_basis, cape_may_homes_population, woodbine_homes_population, service_share, counts_people_once, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| emergency_water_deficit | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+| hospital_hours_constrained | 0 | 0 | facility_hours | constraint_basis |
+| work_remaining | 0 | 550 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| people_followed | 0 | 37650 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once |
+| wider_loss | 0 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
+| people_beyond_week | 0 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
+| support.accepted | 0 | 1 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.filtered | 0 | 0 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.waiting | 0 | 16 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.completed | 0 | 0 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.delivered | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+| person_days_lost | 2160 | 1109.17 | person*days | service_share, population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges |
+| unserved_volume | 2160 | 0.0750825 | Mgal | clearance, bulk_dependence, cape_may_bought, woodbine_bought, counts_stocks_flows, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage |
+| rework_caused | 2160 | 0 | work_h | keeps_count_limited, service_incident |
+| deaths | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| casualties | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| economic_loss | 2160 | 3.4744e-05 | USD2025_bn | activity_transfer, economy, demand_basis, cape_may_demand, woodbine_demand, counts_stocks_flows, stored_water_bridges, cape_may_va_rate, woodbine_va_rate |
+| people_interrupted_now | 2160 | 0 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, service_share, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| people_under_advisory | 2160 | 0 | people | advisory, clearance, counts_people_once |
+| restored_share | 2160 | 1 | fraction | population_basis, cape_may_homes_population, woodbine_homes_population, service_share, counts_people_once, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| emergency_water_deficit | 2160 | 0.00110917 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+| hospital_hours_constrained | 2160 | 0 | facility_hours | constraint_basis |
+| work_remaining | 2160 | 0 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| people_followed | 2160 | 37650 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once |
+| wider_loss | 2160 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
+| people_beyond_week | 2160 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
+| support.accepted | 2160 | 1 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.filtered | 2160 | 0 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.waiting | 2160 | 0 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.completed | 2160 | 16 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.delivered | 2160 | 0.0016 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+
+## support_single_rapid
+
+| Reading | Time (h) | Value | Unit | Evidence |
+|---|---:|---|---|---|
+| person_days_lost | 0 | 0 | person*days | service_share, population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges |
+| unserved_volume | 0 | 0 | Mgal | clearance, bulk_dependence, cape_may_bought, woodbine_bought, counts_stocks_flows, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage |
+| rework_caused | 0 | 0 | work_h | keeps_count_limited, service_incident |
+| deaths | 0 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| casualties | 0 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| economic_loss | 0 | 0 | USD2025_bn | activity_transfer, economy, demand_basis, cape_may_demand, woodbine_demand, counts_stocks_flows, stored_water_bridges, cape_may_va_rate, woodbine_va_rate |
+| people_interrupted_now | 0 | 26620 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, service_share, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| people_under_advisory | 0 | 0 | people | advisory, counts_people_once |
+| restored_share | 0 | 0.292961 | fraction | population_basis, cape_may_homes_population, woodbine_homes_population, service_share, counts_people_once, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| emergency_water_deficit | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+| hospital_hours_constrained | 0 | 0 | facility_hours | constraint_basis |
+| work_remaining | 0 | 550 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| people_followed | 0 | 37650 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once |
+| wider_loss | 0 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
+| people_beyond_week | 0 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
+| support.accepted | 0 | 1 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.filtered | 0 | 0 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.waiting | 0 | 16 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.completed | 0 | 0 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.delivered | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+| person_days_lost | 2160 | 1109.17 | person*days | service_share, population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges |
+| unserved_volume | 2160 | 0.0750825 | Mgal | clearance, bulk_dependence, cape_may_bought, woodbine_bought, counts_stocks_flows, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage |
+| rework_caused | 2160 | 0 | work_h | keeps_count_limited, service_incident |
+| deaths | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| casualties | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| economic_loss | 2160 | 3.4744e-05 | USD2025_bn | activity_transfer, economy, demand_basis, cape_may_demand, woodbine_demand, counts_stocks_flows, stored_water_bridges, cape_may_va_rate, woodbine_va_rate |
+| people_interrupted_now | 2160 | 0 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, service_share, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| people_under_advisory | 2160 | 0 | people | advisory, counts_people_once |
+| restored_share | 2160 | 1 | fraction | population_basis, cape_may_homes_population, woodbine_homes_population, service_share, counts_people_once, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| emergency_water_deficit | 2160 | 0.00110917 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+| hospital_hours_constrained | 2160 | 0 | facility_hours | constraint_basis |
+| work_remaining | 2160 | 0 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| people_followed | 2160 | 37650 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once |
+| wider_loss | 2160 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
+| people_beyond_week | 2160 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
+| support.accepted | 2160 | 1 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.filtered | 2160 | 0 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.waiting | 2160 | 0 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.completed | 2160 | 16 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.delivered | 2160 | 0.0016 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+
+## support_daily
+
+| Reading | Time (h) | Value | Unit | Evidence |
+|---|---:|---|---|---|
+| person_days_lost | 0 | 0 | person*days | service_share, population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges |
+| unserved_volume | 0 | 0 | Mgal | clearance, bulk_dependence, cape_may_bought, woodbine_bought, counts_stocks_flows, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage |
+| rework_caused | 0 | 0 | work_h | keeps_count_limited, service_incident |
+| deaths | 0 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| casualties | 0 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| economic_loss | 0 | 0 | USD2025_bn | activity_transfer, economy, demand_basis, cape_may_demand, woodbine_demand, counts_stocks_flows, stored_water_bridges, cape_may_va_rate, woodbine_va_rate |
+| people_interrupted_now | 0 | 26620 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, service_share, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| people_under_advisory | 0 | 0 | people | advisory, clearance, counts_people_once |
+| restored_share | 0 | 0.292961 | fraction | population_basis, cape_may_homes_population, woodbine_homes_population, service_share, counts_people_once, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| emergency_water_deficit | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+| hospital_hours_constrained | 0 | 0 | facility_hours | constraint_basis |
+| work_remaining | 0 | 550 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| people_followed | 0 | 37650 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once |
+| wider_loss | 0 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
+| people_beyond_week | 0 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
+| support.accepted | 0 | 1 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.filtered | 0 | 0 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.waiting | 0 | 16 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.completed | 0 | 0 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.delivered | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+| person_days_lost | 2160 | 1109.17 | person*days | service_share, population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges |
+| unserved_volume | 2160 | 0.0750825 | Mgal | clearance, bulk_dependence, cape_may_bought, woodbine_bought, counts_stocks_flows, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage |
+| rework_caused | 2160 | 0 | work_h | keeps_count_limited, service_incident |
+| deaths | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| casualties | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| economic_loss | 2160 | 3.4744e-05 | USD2025_bn | activity_transfer, economy, demand_basis, cape_may_demand, woodbine_demand, counts_stocks_flows, stored_water_bridges, cape_may_va_rate, woodbine_va_rate |
+| people_interrupted_now | 2160 | 0 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, service_share, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| people_under_advisory | 2160 | 0 | people | advisory, clearance, counts_people_once |
+| restored_share | 2160 | 1 | fraction | population_basis, cape_may_homes_population, woodbine_homes_population, service_share, counts_people_once, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| emergency_water_deficit | 2160 | 0.00110917 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+| hospital_hours_constrained | 2160 | 0 | facility_hours | constraint_basis |
+| work_remaining | 2160 | 0 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| people_followed | 2160 | 37650 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once |
+| wider_loss | 2160 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
+| people_beyond_week | 2160 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
+| support.accepted | 2160 | 6 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.filtered | 2160 | 2 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.waiting | 2160 | 0 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.completed | 2160 | 96 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.delivered | 2160 | 0.0096 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+
+## support_daily_rapid
+
+| Reading | Time (h) | Value | Unit | Evidence |
+|---|---:|---|---|---|
+| person_days_lost | 0 | 0 | person*days | service_share, population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges |
+| unserved_volume | 0 | 0 | Mgal | clearance, bulk_dependence, cape_may_bought, woodbine_bought, counts_stocks_flows, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage |
+| rework_caused | 0 | 0 | work_h | keeps_count_limited, service_incident |
+| deaths | 0 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| casualties | 0 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| economic_loss | 0 | 0 | USD2025_bn | activity_transfer, economy, demand_basis, cape_may_demand, woodbine_demand, counts_stocks_flows, stored_water_bridges, cape_may_va_rate, woodbine_va_rate |
+| people_interrupted_now | 0 | 26620 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, service_share, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| people_under_advisory | 0 | 0 | people | advisory, counts_people_once |
+| restored_share | 0 | 0.292961 | fraction | population_basis, cape_may_homes_population, woodbine_homes_population, service_share, counts_people_once, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| emergency_water_deficit | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+| hospital_hours_constrained | 0 | 0 | facility_hours | constraint_basis |
+| work_remaining | 0 | 550 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| people_followed | 0 | 37650 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once |
+| wider_loss | 0 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
+| people_beyond_week | 0 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
+| support.accepted | 0 | 1 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.filtered | 0 | 0 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.waiting | 0 | 16 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.completed | 0 | 0 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.delivered | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+| person_days_lost | 2160 | 1109.17 | person*days | service_share, population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges |
+| unserved_volume | 2160 | 0.0750825 | Mgal | clearance, bulk_dependence, cape_may_bought, woodbine_bought, counts_stocks_flows, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage |
+| rework_caused | 2160 | 0 | work_h | keeps_count_limited, service_incident |
+| deaths | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| casualties | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| economic_loss | 2160 | 3.4744e-05 | USD2025_bn | activity_transfer, economy, demand_basis, cape_may_demand, woodbine_demand, counts_stocks_flows, stored_water_bridges, cape_may_va_rate, woodbine_va_rate |
+| people_interrupted_now | 2160 | 0 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, service_share, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| people_under_advisory | 2160 | 0 | people | advisory, counts_people_once |
+| restored_share | 2160 | 1 | fraction | population_basis, cape_may_homes_population, woodbine_homes_population, service_share, counts_people_once, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| emergency_water_deficit | 2160 | 0.00110917 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+| hospital_hours_constrained | 2160 | 0 | facility_hours | constraint_basis |
+| work_remaining | 2160 | 0 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| people_followed | 2160 | 37650 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once |
+| wider_loss | 2160 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
+| people_beyond_week | 2160 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
+| support.accepted | 2160 | 2 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.filtered | 2160 | 6 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.waiting | 2160 | 0 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.completed | 2160 | 32 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.delivered | 2160 | 0.0032 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+
+## support_frequent
+
+| Reading | Time (h) | Value | Unit | Evidence |
+|---|---:|---|---|---|
+| person_days_lost | 0 | 0 | person*days | service_share, population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges |
+| unserved_volume | 0 | 0 | Mgal | clearance, bulk_dependence, cape_may_bought, woodbine_bought, counts_stocks_flows, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage |
+| rework_caused | 0 | 0 | work_h | keeps_count_limited, service_incident |
+| deaths | 0 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| casualties | 0 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| economic_loss | 0 | 0 | USD2025_bn | activity_transfer, economy, demand_basis, cape_may_demand, woodbine_demand, counts_stocks_flows, stored_water_bridges, cape_may_va_rate, woodbine_va_rate |
+| people_interrupted_now | 0 | 26620 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, service_share, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| people_under_advisory | 0 | 0 | people | advisory, clearance, counts_people_once |
+| restored_share | 0 | 0.292961 | fraction | population_basis, cape_may_homes_population, woodbine_homes_population, service_share, counts_people_once, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| emergency_water_deficit | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+| hospital_hours_constrained | 0 | 0 | facility_hours | constraint_basis |
+| work_remaining | 0 | 550 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| people_followed | 0 | 37650 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once |
+| wider_loss | 0 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
+| people_beyond_week | 0 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
+| support.accepted | 0 | 1 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.filtered | 0 | 0 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.waiting | 0 | 16 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.completed | 0 | 0 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.delivered | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+| person_days_lost | 2160 | 1109.17 | person*days | service_share, population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges |
+| unserved_volume | 2160 | 0.0750825 | Mgal | clearance, bulk_dependence, cape_may_bought, woodbine_bought, counts_stocks_flows, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage |
+| rework_caused | 2160 | 0 | work_h | keeps_count_limited, service_incident |
+| deaths | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| casualties | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| economic_loss | 2160 | 3.4744e-05 | USD2025_bn | activity_transfer, economy, demand_basis, cape_may_demand, woodbine_demand, counts_stocks_flows, stored_water_bridges, cape_may_va_rate, woodbine_va_rate |
+| people_interrupted_now | 2160 | 0 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, service_share, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| people_under_advisory | 2160 | 0 | people | advisory, clearance, counts_people_once |
+| restored_share | 2160 | 1 | fraction | population_basis, cape_may_homes_population, woodbine_homes_population, service_share, counts_people_once, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| emergency_water_deficit | 2160 | 0.00110917 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+| hospital_hours_constrained | 2160 | 0 | facility_hours | constraint_basis |
+| work_remaining | 2160 | 0 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| people_followed | 2160 | 37650 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once |
+| wider_loss | 2160 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
+| people_beyond_week | 2160 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
+| support.accepted | 2160 | 8 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.filtered | 2160 | 0 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.waiting | 2160 | 0 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.completed | 2160 | 128 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.delivered | 2160 | 0.0128 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+
+## support_frequent_rapid
+
+| Reading | Time (h) | Value | Unit | Evidence |
+|---|---:|---|---|---|
+| person_days_lost | 0 | 0 | person*days | service_share, population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges |
+| unserved_volume | 0 | 0 | Mgal | clearance, bulk_dependence, cape_may_bought, woodbine_bought, counts_stocks_flows, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage |
+| rework_caused | 0 | 0 | work_h | keeps_count_limited, service_incident |
+| deaths | 0 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| casualties | 0 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| economic_loss | 0 | 0 | USD2025_bn | activity_transfer, economy, demand_basis, cape_may_demand, woodbine_demand, counts_stocks_flows, stored_water_bridges, cape_may_va_rate, woodbine_va_rate |
+| people_interrupted_now | 0 | 26620 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, service_share, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| people_under_advisory | 0 | 0 | people | advisory, counts_people_once |
+| restored_share | 0 | 0.292961 | fraction | population_basis, cape_may_homes_population, woodbine_homes_population, service_share, counts_people_once, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| emergency_water_deficit | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+| hospital_hours_constrained | 0 | 0 | facility_hours | constraint_basis |
+| work_remaining | 0 | 550 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| people_followed | 0 | 37650 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once |
+| wider_loss | 0 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
+| people_beyond_week | 0 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
+| support.accepted | 0 | 1 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.filtered | 0 | 0 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.waiting | 0 | 16 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.completed | 0 | 0 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.delivered | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+| person_days_lost | 2160 | 1109.17 | person*days | service_share, population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges |
+| unserved_volume | 2160 | 0.0750825 | Mgal | clearance, bulk_dependence, cape_may_bought, woodbine_bought, counts_stocks_flows, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage |
+| rework_caused | 2160 | 0 | work_h | keeps_count_limited, service_incident |
+| deaths | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| casualties | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| economic_loss | 2160 | 3.4744e-05 | USD2025_bn | activity_transfer, economy, demand_basis, cape_may_demand, woodbine_demand, counts_stocks_flows, stored_water_bridges, cape_may_va_rate, woodbine_va_rate |
+| people_interrupted_now | 2160 | 0 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, service_share, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| people_under_advisory | 2160 | 0 | people | advisory, counts_people_once |
+| restored_share | 2160 | 1 | fraction | population_basis, cape_may_homes_population, woodbine_homes_population, service_share, counts_people_once, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| emergency_water_deficit | 2160 | 0.00110917 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+| hospital_hours_constrained | 2160 | 0 | facility_hours | constraint_basis |
+| work_remaining | 2160 | 0 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| people_followed | 2160 | 37650 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once |
+| wider_loss | 2160 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
+| people_beyond_week | 2160 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
+| support.accepted | 2160 | 4 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.filtered | 2160 | 4 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.waiting | 2160 | 0 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.completed | 2160 | 64 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.delivered | 2160 | 0.0064 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+
+## support_recovery
+
+| Reading | Time (h) | Value | Unit | Evidence |
+|---|---:|---|---|---|
+| person_days_lost | 0 | 0 | person*days | service_share, population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges |
+| unserved_volume | 0 | 0 | Mgal | clearance, bulk_dependence, cape_may_bought, woodbine_bought, counts_stocks_flows, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage |
+| rework_caused | 0 | 0 | work_h | keeps_count_limited, service_incident |
+| deaths | 0 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| casualties | 0 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| economic_loss | 0 | 0 | USD2025_bn | activity_transfer, economy, demand_basis, cape_may_demand, woodbine_demand, counts_stocks_flows, stored_water_bridges, cape_may_va_rate, woodbine_va_rate |
+| people_interrupted_now | 0 | 26620 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, service_share, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| people_under_advisory | 0 | 0 | people | advisory, clearance, counts_people_once |
+| restored_share | 0 | 0.292961 | fraction | population_basis, cape_may_homes_population, woodbine_homes_population, service_share, counts_people_once, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| emergency_water_deficit | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+| hospital_hours_constrained | 0 | 0 | facility_hours | constraint_basis |
+| work_remaining | 0 | 550 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| people_followed | 0 | 37650 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once |
+| wider_loss | 0 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
+| people_beyond_week | 0 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
+| support.accepted | 0 | 1 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.filtered | 0 | 0 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.waiting | 0 | 16 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.completed | 0 | 0 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.delivered | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+| person_days_lost | 2160 | 1109.17 | person*days | service_share, population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges |
+| unserved_volume | 2160 | 0.0750825 | Mgal | clearance, bulk_dependence, cape_may_bought, woodbine_bought, counts_stocks_flows, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage |
+| rework_caused | 2160 | 0 | work_h | keeps_count_limited, service_incident |
+| deaths | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| casualties | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| economic_loss | 2160 | 3.4744e-05 | USD2025_bn | activity_transfer, economy, demand_basis, cape_may_demand, woodbine_demand, counts_stocks_flows, stored_water_bridges, cape_may_va_rate, woodbine_va_rate |
+| people_interrupted_now | 2160 | 0 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, service_share, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| people_under_advisory | 2160 | 0 | people | advisory, clearance, counts_people_once |
+| restored_share | 2160 | 1 | fraction | population_basis, cape_may_homes_population, woodbine_homes_population, service_share, counts_people_once, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| emergency_water_deficit | 2160 | 0.00110917 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+| hospital_hours_constrained | 2160 | 0 | facility_hours | constraint_basis |
+| work_remaining | 2160 | 0 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| people_followed | 2160 | 37650 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once |
+| wider_loss | 2160 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
+| people_beyond_week | 2160 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
+| support.accepted | 2160 | 6 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.filtered | 2160 | 2 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.waiting | 2160 | 0 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.completed | 2160 | 96 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.delivered | 2160 | 0.0096 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+
+## support_recovery_rapid
+
+| Reading | Time (h) | Value | Unit | Evidence |
+|---|---:|---|---|---|
+| person_days_lost | 0 | 0 | person*days | service_share, population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges |
+| unserved_volume | 0 | 0 | Mgal | clearance, bulk_dependence, cape_may_bought, woodbine_bought, counts_stocks_flows, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage |
+| rework_caused | 0 | 0 | work_h | keeps_count_limited, service_incident |
+| deaths | 0 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| casualties | 0 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| economic_loss | 0 | 0 | USD2025_bn | activity_transfer, economy, demand_basis, cape_may_demand, woodbine_demand, counts_stocks_flows, stored_water_bridges, cape_may_va_rate, woodbine_va_rate |
+| people_interrupted_now | 0 | 26620 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, service_share, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| people_under_advisory | 0 | 0 | people | advisory, counts_people_once |
+| restored_share | 0 | 0.292961 | fraction | population_basis, cape_may_homes_population, woodbine_homes_population, service_share, counts_people_once, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| emergency_water_deficit | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+| hospital_hours_constrained | 0 | 0 | facility_hours | constraint_basis |
+| work_remaining | 0 | 550 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| people_followed | 0 | 37650 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once |
+| wider_loss | 0 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
+| people_beyond_week | 0 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
+| support.accepted | 0 | 1 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.filtered | 0 | 0 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.waiting | 0 | 16 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.completed | 0 | 0 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.delivered | 0 | 0 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+| person_days_lost | 2160 | 1109.17 | person*days | service_share, population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges |
+| unserved_volume | 2160 | 0.0750825 | Mgal | clearance, bulk_dependence, cape_may_bought, woodbine_bought, counts_stocks_flows, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage |
+| rework_caused | 2160 | 0 | work_h | keeps_count_limited, service_incident |
+| deaths | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| casualties | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
+| economic_loss | 2160 | 3.4744e-05 | USD2025_bn | activity_transfer, economy, demand_basis, cape_may_demand, woodbine_demand, counts_stocks_flows, stored_water_bridges, cape_may_va_rate, woodbine_va_rate |
+| people_interrupted_now | 2160 | 0 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once, service_share, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| people_under_advisory | 2160 | 0 | people | advisory, counts_people_once |
+| restored_share | 2160 | 1 | fraction | population_basis, cape_may_homes_population, woodbine_homes_population, service_share, counts_people_once, clearance, bulk_dependence, cape_may_bought, woodbine_bought, stored_water_bridges, demand_basis, cape_may_demand, woodbine_demand, depth, room_identity, storage_hours, losses, cape_may_nameplate, woodbine_nameplate, cape_may_sold, woodbine_sold, manual, cape_may_storage, woodbine_storage, counts_stocks_flows |
+| emergency_water_deficit | 2160 | 0.00110917 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
+| hospital_hours_constrained | 2160 | 0 | facility_hours | constraint_basis |
+| work_remaining | 2160 | 0 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| people_followed | 2160 | 37650 | people | population_basis, cape_may_homes_population, woodbine_homes_population, counts_people_once |
+| wider_loss | 2160 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
+| people_beyond_week | 2160 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
+| support.accepted | 2160 | 1 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.filtered | 2160 | 7 | 1 | service_incident, response_basis, removal_basis, support_exercise |
+| support.waiting | 2160 | 0 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.completed | 2160 | 16 | work_h | service_incident, response_basis, removal_basis, support_exercise |
+| support.delivered | 2160 | 0.0016 | Mgal | ration_basis, population_basis, cape_may_homes_population, woodbine_homes_population, counts_stocks_flows, counts_people_once, service_share, demand_basis, cape_may_demand, woodbine_demand, stored_water_bridges, service_incident, min_of_capacities, relief_by_response, start_basis, priority_basis, response_basis, removal_basis, support_exercise |
 
 ## Evidence
 
@@ -138,6 +528,8 @@ Model revision `e8992ac0473debedfd8a6fc13a1e0231a7d99aa448cdc13930d7fc9cfed9565d
 - **priority_basis** (assumption). Hospitals get the emergency water first, then the households, each in proportion to their need. Who comes first is a policy choice for this scenario.
 - **ration_basis** (source_transfer). State planning guidance uses one gallon for each person a day as the minimum emergency drinking water allocation. The scenario applies it to each person without normal service.
 - **relief_by_response** (assumption). The faster responses bring more approved water, more tankers and more staff within hours; the delayed response takes two days and brings less. Each tier is a choice for this scenario.
+- **removal_basis** (assumption). After recognition, responders take a stated time to find and remove the attacker's credential and rebuild the platform's access controls. A regional system restored its SCADA in three days and kept its shared connections isolated for more than two months; a city took three weeks of manual operation.
+- **response_basis** (assumption). Operators see their controls fail at once, but recognizing a cyber attack on the shared platform takes the integrator and the state's responders a stated time. One New Jersey system's vendor identified a potential cyberattack twelve hours after the alarm, and a state cyber centre arrived the next morning.
 - **room_identity** (identity). Usable storage is stored water or empty room for it: water that leaves the store makes room, and water that arrives fills it.
 - **sees_controls_fail** (assumption). Operators see their controls stop responding as soon as the platform runs the attacker's commands. Two New Jersey systems received alarms within minutes of losing their remote monitoring.
 - **service_incident** (assumption). The initial reported outage starts the response clock. A subsequent field report specifies the observed additional repair work in work hours.
@@ -145,6 +537,7 @@ Model revision `e8992ac0473debedfd8a6fc13a1e0231a7d99aa448cdc13930d7fc9cfed9565d
 - **start_basis** (assumption). Deliveries start a stated time after responders recognize the attack, which is a choice for this scenario.
 - **storage_hours** (source_transfer). A planning case shows that about nine tenths of nominal storage is usable once dead storage and allocations to others are excluded, and a national survey puts the storage of large systems at about 17 to 18 hours of mean production. The scenario applies the usable share to each system's reported finished-water storage.
 - **stored_water_bridges** (assumption). Customers get their normal use while usable stored water remains, less the share that the wiped pumps cannot move. Once the stored water is used up, they get only what is produced, bought or received from a seller. This is a reduced form of pressure-dependent delivery; the hydraulic form needs local calibration.
+- **support_exercise** (assumption). The exercise sends batches of regional casework to one emergency water support office. While cases wait, a share of the region's delivery capacity is reserved for them. The office completes requests with water from the shared supply. Containment filters subsequent notices.
 - **woodbine_bought** (source). Woodbine takes all its water from its two wells; NJDEP lists no contract (purchased) water.
 - **woodbine_demand** (assumption). No source reports a highest day. The 2020 yearly demand of 116.475 MGY is 0.3182 MGD; times the family median ratio 1.54385 it gives 0.4913 MGD, above the 0.457 MGD mean of the highest month (July 2020), which is a floor for the highest day. Woodbine sells no water, so 0.4913 / 1.05 = 0.4679.
 - **woodbine_homes_population** (assumption). SDWIS federal data list 2,650 people served by Woodbine (NJ0516001), the system's own report through its state.

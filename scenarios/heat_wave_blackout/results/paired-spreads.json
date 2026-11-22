@@ -1,0 +1,179 @@
+{
+  "scenario": "heat_wave_blackout",
+  "model_hash": "1fd5a16266a5b5b549c8fba8d80ccf36ce98cd493f4aa1b46bf0f83e9d5d21b0",
+  "spreads": [
+    {
+      "id": "inspection_spacing",
+      "method": "random",
+      "seed": 41,
+      "samples_per_run": 4,
+      "edit_sha256": "b9c452f5f8b889641b557006b511bbf1ba9ede64183fdb222a7afe069ba9ecc2",
+      "comparisons": [
+        {
+          "run": "rapid_fixed_inspections",
+          "against": "fixed_inspections",
+          "paired_draws": 4,
+          "readings": [
+            {
+              "path": "incident.accepted",
+              "time_hours": 1800.0,
+              "unit": "1",
+              "against": {
+                "mean": 3.25,
+                "p05": 3.0,
+                "p95": 3.85
+              },
+              "run": {
+                "mean": 1.25,
+                "p05": 1.0,
+                "p95": 1.85
+              },
+              "difference": {
+                "mean": -2.0,
+                "p05": -2.0,
+                "p95": -2.0
+              },
+              "percent_change": {
+                "mean": -62.5,
+                "p05": -66.6667,
+                "p95": -52.5
+              }
+            },
+            {
+              "path": "crews.rework_done",
+              "time_hours": 1800.0,
+              "unit": "h",
+              "against": {
+                "mean": 3.48109,
+                "p05": 2.70698,
+                "p95": 4.81275
+              },
+              "run": {
+                "mean": 1.37113,
+                "p05": 0.902328,
+                "p95": 2.32087
+              },
+              "difference": {
+                "mean": -2.10995,
+                "p05": -2.49187,
+                "p95": -1.80466
+              },
+              "percent_change": {
+                "mean": -62.5,
+                "p05": -66.6667,
+                "p95": -52.5
+              }
+            },
+            {
+              "path": "supply.resident_hours",
+              "time_hours": 1800.0,
+              "unit": "person*hours",
+              "against": {
+                "mean": 2428250.0,
+                "p05": 2315880.0,
+                "p95": 2653200.0
+              },
+              "run": {
+                "mean": 2155110.0,
+                "p05": 2093820.0,
+                "p95": 2294040.0
+              },
+              "difference": {
+                "mean": -273142.0,
+                "p05": -359163.0,
+                "p95": -221125.0
+              },
+              "percent_change": {
+                "mean": -11.138,
+                "p05": -13.4848,
+                "p95": -9.54691
+              }
+            }
+          ]
+        },
+        {
+          "run": "acknowledged_stop",
+          "against": "fixed_inspections",
+          "paired_draws": 4,
+          "readings": [
+            {
+              "path": "incident.accepted",
+              "time_hours": 1800.0,
+              "unit": "1",
+              "against": {
+                "mean": 3.25,
+                "p05": 3.0,
+                "p95": 3.85
+              },
+              "run": {
+                "mean": 1.25,
+                "p05": 1.0,
+                "p95": 1.85
+              },
+              "difference": {
+                "mean": -2.0,
+                "p05": -2.0,
+                "p95": -2.0
+              },
+              "percent_change": {
+                "mean": -62.5,
+                "p05": -66.6667,
+                "p95": -52.5
+              }
+            },
+            {
+              "path": "crews.rework_done",
+              "time_hours": 1800.0,
+              "unit": "h",
+              "against": {
+                "mean": 3.48109,
+                "p05": 2.70698,
+                "p95": 4.81275
+              },
+              "run": {
+                "mean": 1.37113,
+                "p05": 0.902328,
+                "p95": 2.32087
+              },
+              "difference": {
+                "mean": -2.10995,
+                "p05": -2.49187,
+                "p95": -1.80466
+              },
+              "percent_change": {
+                "mean": -62.5,
+                "p05": -66.6667,
+                "p95": -52.5
+              }
+            },
+            {
+              "path": "supply.resident_hours",
+              "time_hours": 1800.0,
+              "unit": "person*hours",
+              "against": {
+                "mean": 2428250.0,
+                "p05": 2315880.0,
+                "p95": 2653200.0
+              },
+              "run": {
+                "mean": 2155110.0,
+                "p05": 2093820.0,
+                "p95": 2294040.0
+              },
+              "difference": {
+                "mean": -273142.0,
+                "p05": -359163.0,
+                "p95": -221125.0
+              },
+              "percent_change": {
+                "mean": -11.138,
+                "p05": -13.4848,
+                "p95": -9.54691
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

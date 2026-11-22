@@ -1,6 +1,5 @@
 """The drawing of every catalogue model: the properties of each test file of the drawing, on every
-scenario of the catalogue. The catalogue is in the old language until stage M, so this file waits in
-`tests/dormant.txt` and runs once the catalogue is migrated.
+scenario of the catalogue.
 
 For each scenario, with its own stylesheet: the picture keeps its contract and names what its model
 declares (`test_picture.py`); its layout and its SVG hold every property (`test_layout.py`,

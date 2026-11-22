@@ -64,7 +64,7 @@ def main(argv=None):
     parser.add_argument(
         '--sample-spreads',
         action='store_true',
-        help='Also run each current declared spread at its authored sample count',
+        help='Also sample each declared spread and write or verify its paired comparison receipt',
     )
     parser.add_argument(
         '--committed-spreads',
@@ -96,7 +96,7 @@ def main(argv=None):
     if args.committed_spreads:
         parser.error(
             '--committed-spreads selects historical brief tables at revision 8488047. '
-            'Use --check for current readings and dossiers, or napkin sample for a current spread.'
+            'Use --check for current briefs, readings and dossiers, or napkin sample for a current spread.'
         )
     try:
         names = selected(args.only, args.scenario)
@@ -117,7 +117,8 @@ def main(argv=None):
     try:
         outputs = build(ctx, args.only)
         if args.sample_spreads:
-            sample_spreads(ctx)
+            outputs.update(sample_spreads(ctx))
+            names.append('sample-spreads')
     except (OSError, ValueError) as error:
         print(error, file=sys.stderr)
         return 1
@@ -137,7 +138,8 @@ def main(argv=None):
             + ', '.join(stale)
             + '\nRun: python -B -m tools.publish --write'
             + ''.join(f' --scenario {sid}' for sid in ctx.scenario_ids or ())
-            + ''.join(f' --only {name}' for name in args.only or ()),
+            + ''.join(f' --only {name}' for name in args.only or ())
+            + (' --sample-spreads' if args.sample_spreads else ''),
             file=sys.stderr,
         )
         return 1

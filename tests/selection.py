@@ -66,37 +66,3 @@ def _readers(root):
     from tools import catalogue
 
     return catalogue.readers(root)
-
-
-# The list of the dormant tests: the test files that the rewrite of the language has not reached yet
-# (scratch/rewrite/PLAN.md). A session does not collect them, so a run of a folder runs live tests only.
-# The list is empty when the rewrite is done, and then this goes.
-DORMANT = 'tests/dormant.txt'
-
-
-def dormant_paths(text):
-    """The paths that a dormant list names: one on each line, relative to the checkout, a file or a
-    folder. An empty line and a line that starts with `#` name nothing."""
-    return frozenset(
-        line.strip().rstrip('/') for line in text.splitlines() if line.strip() and not line.startswith('#')
-    )
-
-
-@cache
-def _dormant(root):
-    try:
-        return dormant_paths((root / DORMANT).read_text(encoding='utf-8'))
-    except FileNotFoundError:
-        return frozenset()
-
-
-def dormant(path, root):
-    """Whether the dormant list of the checkout at `root` names `path`, or a folder that holds it."""
-    listed = _dormant(Path(root).resolve())
-    if not listed:
-        return False
-    try:
-        relative = Path(path).resolve().relative_to(Path(root).resolve())
-    except ValueError:
-        return False
-    return any(part.as_posix() in listed for part in (relative, *relative.parents))

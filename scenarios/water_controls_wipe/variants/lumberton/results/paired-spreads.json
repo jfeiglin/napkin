@@ -1,0 +1,144 @@
+{
+  "scenario": "water_controls_wipe:lumberton",
+  "model_hash": "607b9383e6480d1bff977ddbc6b274b70fffeaa8e30dd2a18c523d44adc81ba3",
+  "spreads": [
+    {
+      "id": "dispatch",
+      "method": "random",
+      "seed": 17,
+      "samples_per_run": 12,
+      "edit_sha256": "44850c788a227761eed7d3b6490efc8457cfa0cb22074d921401a5690d0ad74d",
+      "comparisons": [
+        {
+          "run": "support_recovery_rapid",
+          "against": "support_recovery",
+          "paired_draws": 12,
+          "readings": [
+            {
+              "path": "support.accepted",
+              "time_hours": 2160.0,
+              "unit": "1",
+              "against": {
+                "mean": 6.66667,
+                "p05": 6.0,
+                "p95": 7.45
+              },
+              "run": {
+                "mean": 1.0,
+                "p05": 1.0,
+                "p95": 1.0
+              },
+              "difference": {
+                "mean": -5.66667,
+                "p05": -6.45,
+                "p95": -5.0
+              },
+              "percent_change": {
+                "mean": -84.871,
+                "p05": -86.5179,
+                "p95": -83.3333
+              }
+            },
+            {
+              "path": "support.filtered",
+              "time_hours": 2160.0,
+              "unit": "1",
+              "against": {
+                "mean": 1.33333,
+                "p05": 0.55,
+                "p95": 2.0
+              },
+              "run": {
+                "mean": 7.0,
+                "p05": 7.0,
+                "p95": 7.0
+              },
+              "difference": {
+                "mean": 5.66667,
+                "p05": 5.0,
+                "p95": 6.45
+              },
+              "percent_change": null,
+              "percent_unavailable": "A positive, ratio-scale baseline is required for every paired draw."
+            },
+            {
+              "path": "support.completed",
+              "time_hours": 2160.0,
+              "unit": "work_h",
+              "against": {
+                "mean": 103.99,
+                "p05": 89.292,
+                "p95": 116.787
+              },
+              "run": {
+                "mean": 15.8159,
+                "p05": 12.2682,
+                "p95": 19.37
+              },
+              "difference": {
+                "mean": -88.1742,
+                "p05": -98.6705,
+                "p95": -76.536
+              },
+              "percent_change": {
+                "mean": -84.871,
+                "p05": -86.5179,
+                "p95": -83.3333
+              }
+            },
+            {
+              "path": "support.delivered",
+              "time_hours": 2160.0,
+              "unit": "Mgal",
+              "against": {
+                "mean": 0.010399,
+                "p05": 0.0089292,
+                "p95": 0.0116787
+              },
+              "run": {
+                "mean": 0.00158159,
+                "p05": 0.00122682,
+                "p95": 0.001937
+              },
+              "difference": {
+                "mean": -0.00881742,
+                "p05": -0.00986705,
+                "p95": -0.0076536
+              },
+              "percent_change": {
+                "mean": -84.871,
+                "p05": -86.5179,
+                "p95": -83.3333
+              }
+            },
+            {
+              "path": "emergency_water_deficit",
+              "time_hours": 2160.0,
+              "unit": "Mgal",
+              "against": {
+                "mean": 0.00101917,
+                "p05": 0.00101917,
+                "p95": 0.00101917
+              },
+              "run": {
+                "mean": 0.00101917,
+                "p05": 0.00101917,
+                "p95": 0.00101917
+              },
+              "difference": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "percent_change": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

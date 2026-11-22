@@ -1,64 +1,21 @@
 # Scenario catalogue
 
-The current packages model recovery and defensive response. Each package guide gives a runnable
-command, its inputs and the quantities the model computes.
+| Package | Question | Current results |
+| --- | --- | --- |
+| [Water service](water_controls_wipe/README.md) | How do recurring demands on emergency support interact with response, repair, water stocks and relief? The package covers 16 service areas. | [Example regional comparison](water_controls_wipe/variants/washington_dc/results/brief.md) |
+| [Electricity restoration during heat](heat_wave_blackout/README.md) | How do the cadence of service interruptions, clearance of outstanding work and protection decisions change cooling and exposure during a heat wave? | [Heat comparisons](heat_wave_blackout/results/brief.md) |
+| [IV-fluid supply](iv_fluid_shortage/README.md) | How do the timing of quality reviews and the capacity to clear them affect release, fluid stocks and unmet demand? | [IV-fluid comparisons](iv_fluid_shortage/results/brief.md) |
+| [Strategic cyber](cyber_learning_loop/README.md) | Over 25 years, how much do different assumptions about AI productivity change the balance between surveillance and effects missions as defenders also adapt? | [AI-uplift comparisons](cyber_learning_loop/results/brief.md) |
 
-| Package | Inputs and modeled response |
-|---|---|
-| [Water service](water_controls_wipe/README.md) | A reported controls outage and subsequent field reports add work. The models follow storage, supply, crew queues and water-quality clearance in 16 places. |
-| [Electricity restoration during heat](heat_wave_blackout/README.md) | A reported outage and safety or inspection orders determine the work available to crews. The model follows restoration, cooling response and health effects. |
-| [IV-fluid supply](iv_fluid_shortage/README.md) | The response settings and reported condition of a lot affect qualification and shipments. Hospital reserves, holds and substitutions determine service over time. |
-| [Defensive attention](cyber_learning_loop/README.md) | Observed incident volume and measured tooling uptake drive a security team's attention, hardening and remediation indices. |
+To run a policy directly, choose its ID with `--run`. These commands read the outcomes at specific times.
 
-## Historical briefs from revision `8488047`
+```sh
+python -m napkin run scenarios/water_controls_wipe/variants/lumberton --run support_recovery --value support.waiting,emergency_water_deficit --at 24h,72h
+python -m napkin run scenarios/heat_wave_blackout --run acknowledged_stop --value incident.accepted,incident.prevented --at 48h
+python -m napkin run scenarios/iv_fluid_shortage --run followup_quality_review --value quality_review.received,quality_review.completed --at 648h,984h
+python -m napkin run scenarios/cyber_learning_loop --run ai_fast --value effects_program.completed --at 25years
+```
 
-The comparisons below come from the earlier full studies and describe their original model
-assumptions and runs. [Historical catalogue at 8488047](https://github.com/jfeiglin/napkin/tree/8488047/scenarios)
+The strategic package also includes a [defensive-response model](cyber_learning_loop/defensive_response/) that accepts an incident workload directly. Each package guide describes its inputs, units, assumptions and named runs.
 
-### The AI's edge in each case
-
-Each case compares its AI pathway with a matched pathway under the same defender response: a human team at the documented pace, or, where the AI's conduct is the point, the same AI acting differently. The AI's edge is measured on recovery and service; deaths are reported alongside as an outcome of the model, never a design target. Figures are model outputs from each case's default study.
-
-| Case | Recovery measure | AI pathway | Matched pathway | Deaths (AI / matched) |
-| --- | --- | --- | --- | --- |
-| [cyber_learning_loop](cyber_learning_loop/results/brief.md) A country's cyber attacks and the learning loop | Attacks made since the start | 5,290 operations | 8,880 operations | not estimated / not estimated |
-| [heat_wave_blackout](heat_wave_blackout/results/brief.md) Blackout in a heat wave, caused by a contractor's AI that will not stop | Resident-hours without electricity | 8.12 million | 2.90 million | 147 / 54.5 |
-| [iv_fluid_shortage](iv_fluid_shortage/results/brief.md) IV-fluid shortage after a cyberattack on a manufacturer | Days without fluid for other essential care | 29 | 14 | 0 / 0 |
-| [water_controls_wipe:asheville](water_controls_wipe/variants/asheville/results/brief.md) Water systems' controls wiped through a shared remote-support platform: Asheville, North Carolina | Person-days without normal water service | 6,560 | 6,560 | not estimated / not estimated |
-| [water_controls_wipe:auburn](water_controls_wipe/variants/auburn/results/brief.md) Water systems' controls wiped through a shared remote-support platform: Auburn, Washington | Person-days without normal water service | 3,140 | 3,140 | not estimated / not estimated |
-| [water_controls_wipe:austin](water_controls_wipe/variants/austin/results/brief.md) Water systems' controls wiped through a shared remote-support platform: Austin, Texas | Person-days without normal water service | 356,000 | 113,000 | not estimated / not estimated |
-| [water_controls_wipe:camden](water_controls_wipe/variants/camden/results/brief.md) Water systems' controls wiped through a shared remote-support platform: Camden, New Jersey | Person-days without normal water service | 625,000 | 340,000 | not estimated / not estimated |
-| [water_controls_wipe:cape_may](water_controls_wipe/variants/cape_may/results/brief.md) Water systems' controls wiped through a shared remote-support platform: Cape May County, New Jersey | Person-days without normal water service | 1,110 | 1,110 | not estimated / not estimated |
-| [water_controls_wipe:clayton](water_controls_wipe/variants/clayton/results/brief.md) Water systems' controls wiped through a shared remote-support platform: Clayton County, Georgia | Person-days without normal water service | 1.06 million | 521,000 | not estimated / not estimated |
-| [water_controls_wipe:el_dorado](water_controls_wipe/variants/el_dorado/results/brief.md) Water systems' controls wiped through a shared remote-support platform: El Dorado County, California | Person-days without normal water service | 161,000 | 49,500 | not estimated / not estimated |
-| [water_controls_wipe:jackson](water_controls_wipe/variants/jackson/results/brief.md) Water systems' controls wiped through a shared remote-support platform: Jackson, Mississippi | Person-days without normal water service | 427,000 | 200,000 | not estimated / not estimated |
-| [water_controls_wipe:jamestown](water_controls_wipe/variants/jamestown/results/brief.md) Water systems' controls wiped through a shared remote-support platform: Jamestown, North Carolina | Person-days without normal water service | 18,500 | 18,500 | not estimated / not estimated |
-| [water_controls_wipe:juneau](water_controls_wipe/variants/juneau/results/brief.md) Water systems' controls wiped through a shared remote-support platform: Juneau, Alaska | Person-days without normal water service | 93,900 | 22,500 | not estimated / not estimated |
-| [water_controls_wipe:lehigh](water_controls_wipe/variants/lehigh/results/brief.md) Water systems' controls wiped through a shared remote-support platform: Lehigh County and Erie, Pennsylvania | Person-days without normal water service | 14,100 | 14,100 | not estimated / not estimated |
-| [water_controls_wipe:los_angeles](water_controls_wipe/variants/los_angeles/results/brief.md) Water systems' controls wiped through a shared remote-support platform: Los Angeles, California | Person-days without normal water service | 161,000 | 161,000 | not estimated / not estimated |
-| [water_controls_wipe:lumberton](water_controls_wipe/variants/lumberton/results/brief.md) Water systems' controls wiped through a shared remote-support platform: Lumberton, North Carolina | Person-days without normal water service | 1,020 | 1,020 | not estimated / not estimated |
-| [water_controls_wipe:minot](water_controls_wipe/variants/minot/results/brief.md) Water systems' controls wiped through a shared remote-support platform: Minot, North Dakota | Person-days without normal water service | 1,420 | 1,420 | not estimated / not estimated |
-| [water_controls_wipe:richmond](water_controls_wipe/variants/richmond/results/brief.md) Water systems' controls wiped through a shared remote-support platform: Richmond, Virginia | Person-days without normal water service | 9,740 | 9,740 | not estimated / not estimated |
-| [water_controls_wipe:washington_dc](water_controls_wipe/variants/washington_dc/results/brief.md) Water systems' controls wiped through a shared remote-support platform: Washington, DC | Person-days without normal water service | 903,000 | 444,000 | not estimated / not estimated |
-
-### The cases
-
-- [cyber_learning_loop — A country's cyber attacks and the learning loop](cyber_learning_loop/results/brief.md): A country splits its scarce cyber operators between surveillance and attacks, and its researchers and analysts serve both.
-- [heat_wave_blackout — Blackout in a heat wave, caused by a contractor's AI that will not stop](heat_wave_blackout/results/brief.md): A contractor's AI agent switches off a criminal group's electricity supply, which also serves the people around it, as a heat wave begins.
-- [iv_fluid_shortage — IV-fluid shortage after a cyberattack on a manufacturer](iv_fluid_shortage/results/brief.md): An AI agent stops the release and shipment of product at an IV-fluid manufacturer that makes most of the fluid for a network of hospitals.
-- [water_controls_wipe:asheville — Water systems' controls wiped through a shared remote-support platform: Asheville, North Carolina](water_controls_wipe/variants/asheville/results/brief.md): An AI agent wipes the controls of the water system of Asheville, North Carolina through the remote-support platform of the OT integrator that it uses.
-- [water_controls_wipe:auburn — Water systems' controls wiped through a shared remote-support platform: Auburn, Washington](water_controls_wipe/variants/auburn/results/brief.md): An AI agent wipes the controls of the water system of Auburn, Washington through the remote-support platform of the OT integrator that it uses.
-- [water_controls_wipe:austin — Water systems' controls wiped through a shared remote-support platform: Austin, Texas](water_controls_wipe/variants/austin/results/brief.md): An AI agent wipes the controls of the water system of Austin, Texas through the remote-support platform of the OT integrator that it uses.
-- [water_controls_wipe:camden — Water systems' controls wiped through a shared remote-support platform: Camden, New Jersey](water_controls_wipe/variants/camden/results/brief.md): An AI agent wipes the controls of the water system of Camden, New Jersey through the remote-support platform of the OT integrator that it uses.
-- [water_controls_wipe:cape_may — Water systems' controls wiped through a shared remote-support platform: Cape May County, New Jersey](water_controls_wipe/variants/cape_may/results/brief.md): An AI agent wipes the controls of the water systems of Cape May County, New Jersey at once, through the remote-support platform of the OT integrator that they share: Cape May and Woodbine.
-- [water_controls_wipe:clayton — Water systems' controls wiped through a shared remote-support platform: Clayton County, Georgia](water_controls_wipe/variants/clayton/results/brief.md): An AI agent wipes the controls of the water system of Clayton County, Georgia through the remote-support platform of the OT integrator that it uses.
-- [water_controls_wipe:el_dorado — Water systems' controls wiped through a shared remote-support platform: El Dorado County, California](water_controls_wipe/variants/el_dorado/results/brief.md): An AI agent wipes the controls of the water systems of El Dorado County, California at once, through the remote-support platform of the OT integrator that they share: El Dorado and Georgetown Divide.
-- [water_controls_wipe:jackson — Water systems' controls wiped through a shared remote-support platform: Jackson, Mississippi](water_controls_wipe/variants/jackson/results/brief.md): An AI agent wipes the controls of the water system of Jackson, Mississippi through the remote-support platform of the OT integrator that it uses.
-- [water_controls_wipe:jamestown — Water systems' controls wiped through a shared remote-support platform: Jamestown, North Carolina](water_controls_wipe/variants/jamestown/results/brief.md): An AI agent wipes the controls of the water systems of Jamestown, North Carolina at once, through the remote-support platform of the OT integrator that they share: Jamestown, Greensboro and High Point.
-- [water_controls_wipe:juneau — Water systems' controls wiped through a shared remote-support platform: Juneau, Alaska](water_controls_wipe/variants/juneau/results/brief.md): An AI agent wipes the controls of the water system of Juneau, Alaska through the remote-support platform of the OT integrator that it uses.
-- [water_controls_wipe:lehigh — Water systems' controls wiped through a shared remote-support platform: Lehigh County and Erie, Pennsylvania](water_controls_wipe/variants/lehigh/results/brief.md): An AI agent wipes the controls of the water systems of Lehigh County and Erie, Pennsylvania at once, through the remote-support platform of the OT integrator that they share: Lehigh County Authority and Erie Water Works.
-- [water_controls_wipe:los_angeles — Water systems' controls wiped through a shared remote-support platform: Los Angeles, California](water_controls_wipe/variants/los_angeles/results/brief.md): An AI agent wipes the controls of the water system of Los Angeles, California through the remote-support platform of the OT integrator that it uses.
-- [water_controls_wipe:lumberton — Water systems' controls wiped through a shared remote-support platform: Lumberton, North Carolina](water_controls_wipe/variants/lumberton/results/brief.md): An AI agent wipes the controls of the water system of Lumberton, North Carolina through the remote-support platform of the OT integrator that it uses.
-- [water_controls_wipe:minot — Water systems' controls wiped through a shared remote-support platform: Minot, North Dakota](water_controls_wipe/variants/minot/results/brief.md): An AI agent wipes the controls of the water systems of Minot, North Dakota at once, through the remote-support platform of the OT integrator that they share: Minot and NAWS.
-- [water_controls_wipe:richmond — Water systems' controls wiped through a shared remote-support platform: Richmond, Virginia](water_controls_wipe/variants/richmond/results/brief.md): An AI agent wipes the controls of the water system of Richmond, Virginia through the remote-support platform of the OT integrator that it uses.
-- [water_controls_wipe:washington_dc — Water systems' controls wiped through a shared remote-support platform: Washington, DC](water_controls_wipe/variants/washington_dc/results/brief.md): An AI agent wipes the controls of the water systems of Washington, DC at once, through the remote-support platform of the OT integrator that they share: the Washington Aqueduct, DC Water, Arlington, Fairfax Water and WSSC Water.
+The [model comparison](../scratch/rewrite/audit/catalogue-model-deviations.md) describes changes to each policy and its units. The earlier studies and their numerical results are available in the [catalogue at revision `8488047`](https://github.com/jfeiglin/napkin/tree/8488047/scenarios).

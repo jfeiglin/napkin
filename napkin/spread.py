@@ -17,6 +17,7 @@ script asks for it:
   before any run starts.
 - `paths` are the values that the study reads, and `times` the times in hours (by default the
   horizon of the run): the caller selects them (D10).
+- `with_scales=True` also returns the comparison scale of each sampled value at its reading time.
 - `samples` and `seed` are the sampling settings (`SamplingSettings`); `jobs` the processes that run
   the samples (1: this process), `progress(done, total)` is called as samples finish, and `cancel`
   (an event, such as a `threading.Event`) stops the study between samples with `study.Cancelled`.
@@ -41,6 +42,7 @@ def spread(
     edits=None,
     samples=200,
     seed=0,
+    with_scales=False,
     jobs=1,
     progress=None,
     cancel=None,
@@ -59,6 +61,7 @@ def spread(
         times,
         settings,
         model=model.table,
+        with_scales=with_scales,
         jobs=jobs,
         progress=progress,
         cancel=cancel,

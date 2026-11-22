@@ -1,0 +1,77 @@
+# Region-wide incident workload in the emergency water support office.
+support: @support_exercise
+    "The regional office that handles incident-related service requests during the water response."
+    input enabled = false @support_exercise
+    input linked = false @support_exercise
+    input first_delay = 0 h in [0 h,] @support_exercise
+    input interval = 24 h in [1 h,] @support_exercise
+    input window = 168 h in [0 h,] @support_exercise
+    input limit = 8 in [1, 100] @support_exercise
+    input severity = 16 work_h in [0 work_h,] @support_exercise
+    input capacity = 2 work_h/h in [0 work_h/h,] @support_exercise
+    input sampled = false @support_exercise
+    input interval_factor = uniform(0.8, 1.2) @support_exercise
+    input severity_factor = uniform(0.75, 1.25) @support_exercise
+    spacing: h = this.interval * this.interval_factor.draw() if this.sampled else this.interval in [1 h,] @support_exercise
+    batch: work_h = this.severity * this.severity_factor.draw() if this.sampled else this.severity in [0 work_h,] @support_exercise
+    accepted = 0 @support_exercise
+    filtered = 0 @support_exercise
+    waiting: work_h = 0 work_h in [0,] scale 100 work_h @support_exercise
+    completed: work_h = 0 work_h in [0,] scale 100 work_h @support_exercise
+    input water_per_work = 100 gal/work_h in [1 gal/work_h,] @support_exercise
+    delivered: Mgal = 0 Mgal in [0,] scale 1 Mgal @support_exercise
+        "Emergency water delivered on regional supplemental requests."
+    input dispatch_share = 0.25 fraction in [0, 1] @support_exercise
+        "Share of regional dispatch slots reserved for supplemental requests while any are pending."
+    reserved: formula(Mgal/h) = formula(relief.available * this.dispatch_share if this.waiting > 0 work_h else 0 Mgal/h) @support_exercise
+    dispatch_rate: formula(work_h/h) = formula(min(this.capacity, this.reserved / this.water_per_work)) @support_exercise
+    flow dispatch: @support_exercise
+        flow requests: this.waiting -> this.completed
+            request = formula(this.dispatch_rate)
+        flow water: relief.supply -> this.delivered
+            request = formula(this.dispatch_rate * this.water_per_work)
+    report_batch = event(): @support_exercise
+        when this.enabled and count(incident.reported.occurrences) > 0 and since(incident.reported) >= this.first_delay and this.first_delay <= this.window:
+            this.report_batch.start()
+            reset when false
+        after 0 h:
+            if responders.contained or count(responders.recognized.occurrences) > 0 and since(responders.recognized) >= responders.removal_time:
+                this.filtered += 1
+            else:
+                this.accepted += 1
+                this.waiting += this.batch
+            if this.accepted + this.filtered + 1 <= this.limit:
+                this.next_batch.start()
+    next_batch = event(): @support_exercise
+        until not this.linked or this.waiting <= 0 work_h
+        after this.spacing:
+            if since(incident.reported) <= this.window:
+                this.report_batch.start()
+
+options "Regional support workload":
+    "Single batch":
+        support.enabled = true @support_exercise
+        support.limit = 1 @support_exercise
+    "Daily batches":
+        support.enabled = true @support_exercise
+    "Eight-hour batches":
+        support.enabled = true @support_exercise
+        support.interval = 8 h @support_exercise
+    "After support recovery":
+        support.enabled = true @support_exercise
+        support.interval = 8 h @support_exercise
+        support.linked = true @support_exercise
+
+runs:
+    support_single = "Standard response" + "Single batch"
+    support_single_rapid = "Early response" + "Single batch"
+    support_daily = "Standard response" + "Daily batches"
+    support_daily_rapid = "Early response" + "Daily batches"
+    support_frequent = "Standard response" + "Eight-hour batches"
+    support_frequent_rapid = "Early response" + "Eight-hour batches"
+    support_recovery = "Standard response" + "After support recovery"
+    support_recovery_rapid = "Early response" + "After support recovery"
+
+record support_exercise: assumption "The exercise sends batches of regional casework to one emergency water
+    support office. While cases wait, a share of the region's delivery capacity is reserved for them. The
+    office completes requests with water from the shared supply. Containment filters subsequent notices."

@@ -1,0 +1,19 @@
+{
+  "staff_years": {
+    "kind": "quantity",
+    "dimensions": {
+      "people": 1,
+      "time": 1
+    },
+    "scale": 8760,
+    "description": "Baseline-equivalent work completed by one full-time expert in one 365-day year."
+  },
+  "operations": {
+    "kind": "count",
+    "dimensions": {
+      "operations": 1
+    },
+    "scale": 1,
+    "description": "Completed effects operations in the aggregate national count."
+  }
+}

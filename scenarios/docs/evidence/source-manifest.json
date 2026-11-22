@@ -5932,7 +5932,7 @@
     {
       "scenario": "water_controls_wipe",
       "manifest_version": "1.0",
-      "library_source_count": 268,
+      "library_source_count": 257,
       "normalization": "nfkc-lig-v2",
       "extractors": [
         "gs-10.07.1 txtwrite-pages",
@@ -5965,78 +5965,6 @@
           "import_command": "python -m tools.evidence.manifest --scenario water_controls_wipe --import cisa2023unitronics=/path/to/raw-document"
         },
         {
-          "id": "anthropic2026_ai_orchestration",
-          "title": "Detecting and countering misuse of AI: September 2026",
-          "publication_url": "https://www.anthropic.com/threat-intelligence-report-september-2026",
-          "retrieval": {
-            "requested_url": "https://www.anthropic.com/threat-intelligence-report-september-2026",
-            "final_url": "https://www.anthropic.com/threat-intelligence-report-september-2026",
-            "http_status": 200,
-            "retrieved_at": "2026-10-04T18:10:10Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 1180840,
-            "sha256": "af6e56b025156a16c1d51d008736842d2f7450afb19b66430d94b37a5168a853",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "2b8c6b457c3328bd66110679cf245daec510db6c6c1212c81e1f4d65ff473665"
-            }
-          },
-          "claims": [
-            "AI-ORCHESTRATION-2026"
-          ],
-          "acquisition_url": "https://www.anthropic.com/threat-intelligence-report-september-2026",
-          "import_command": "python -m tools.evidence.manifest --scenario water_controls_wipe --import anthropic2026_ai_orchestration=/path/to/raw-document"
-        },
-        {
-          "id": "aisi2026_agent_trust",
-          "title": "Incident Report: unsanctioned agent behaviour during cyber testing",
-          "publication_url": "https://www.aisi.gov.uk/blog/incident-report-unsanctioned-agent-behaviour-during-cyber-testing",
-          "retrieval": {
-            "requested_url": "https://www.aisi.gov.uk/blog/incident-report-unsanctioned-agent-behaviour-during-cyber-testing",
-            "final_url": "https://www.aisi.gov.uk/blog/incident-report-unsanctioned-agent-behaviour-during-cyber-testing",
-            "http_status": 200,
-            "retrieved_at": "2026-10-04T18:10:07Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 41426,
-            "sha256": "d877ecd7c74dcf9b667aadb79c49e784e11f4a87eda89f287089038b8584350c",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "05182a1ea872b8a51aefed0d307d1f6a5fe2ffcc739f7b1416e9ec816412f648"
-            }
-          },
-          "claims": [
-            "AI-AGENT-TRUST-2026"
-          ],
-          "acquisition_url": "https://www.aisi.gov.uk/blog/incident-report-unsanctioned-agent-behaviour-during-cyber-testing",
-          "import_command": "python -m tools.evidence.manifest --scenario water_controls_wipe --import aisi2026_agent_trust=/path/to/raw-document"
-        },
-        {
-          "id": "mandiant2023sandworm",
-          "title": "Sandworm Disrupts Power in Ukraine Using a Novel Attack Against Operational Technology",
-          "publication_url": "https://cloud.google.com/blog/topics/threat-intelligence/sandworm-disrupts-power-ukraine-operational-technology",
-          "retrieval": {
-            "requested_url": "https://cloud.google.com/blog/topics/threat-intelligence/sandworm-disrupts-power-ukraine-operational-technology",
-            "final_url": "https://cloud.google.com/blog/topics/threat-intelligence/sandworm-disrupts-power-ukraine-operational-technology",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:45:02Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 409329,
-            "sha256": "02b3c0196b238608be011aa93df051338261e15fa809b821a41b85c35ab54469",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "a769ced2f37ae30587f5886ba18a57b6d6527a2bb2ac0fa54ea8667b84f994c3"
-            }
-          },
-          "claims": [
-            "E-MANDIANT22"
-          ],
-          "acquisition_url": "https://cloud.google.com/blog/topics/threat-intelligence/sandworm-disrupts-power-ukraine-operational-technology",
-          "import_command": "python -m tools.evidence.manifest --scenario water_controls_wipe --import mandiant2023sandworm=/path/to/raw-document"
-        },
-        {
           "id": "inl2022cyote_ukraine2015",
           "title": "Precursor Analysis Report: Ukraine Energy Sector Cyber Attack 2015",
           "publication_url": "https://cyote.inl.gov/content/uploads/24/2025/12/CyOTE-Case-Study_Ukraine-2015.pdf",
@@ -6060,30 +5988,6 @@
           ],
           "acquisition_url": "https://web.archive.org/web/20251223124619id_/https://cyote.inl.gov/content/uploads/24/2025/12/CyOTE-Case-Study_Ukraine-2015.pdf",
           "import_command": "python -m tools.evidence.manifest --scenario water_controls_wipe --import inl2022cyote_ukraine2015=/path/to/raw-document"
-        },
-        {
-          "id": "mitre_t0832",
-          "title": "ATT&CK for ICS technique T0832: Manipulation of View",
-          "publication_url": "https://attack.mitre.org/techniques/T0832/",
-          "retrieval": {
-            "requested_url": "https://attack.mitre.org/techniques/T0832/",
-            "final_url": "https://attack.mitre.org/techniques/T0832/",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:33:49Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 45383,
-            "sha256": "a93d94288ed241b0350eea9aa4332e92d9ed9246962dfcb6e57b278f8de4129b",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "d3e4ca886e3ded68918ddac8114f53b8412d9be321a8c44331391601a3976481"
-            }
-          },
-          "claims": [
-            "E-T0832"
-          ],
-          "acquisition_url": "https://attack.mitre.org/techniques/T0832/",
-          "import_command": "python -m tools.evidence.manifest --scenario water_controls_wipe --import mitre_t0832=/path/to/raw-document"
         },
         {
           "id": "mitre_t0886",
@@ -6132,54 +6036,6 @@
           ],
           "acquisition_url": "https://attack.mitre.org/techniques/T0831/",
           "import_command": "python -m tools.evidence.manifest --scenario water_controls_wipe --import mitre_t0831=/path/to/raw-document"
-        },
-        {
-          "id": "mitre_t0859",
-          "title": "ATT&CK for ICS technique T0859: Valid Accounts",
-          "publication_url": "https://attack.mitre.org/techniques/T0859/",
-          "retrieval": {
-            "requested_url": "https://attack.mitre.org/techniques/T0859/",
-            "final_url": "https://attack.mitre.org/techniques/T0859/",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:33:32Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 67390,
-            "sha256": "b2a36e19c3023a405b2321c3ae2ea7790a8fd871cbb881d8b2b3ce7e2a32708c",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "797e0125a7c22f36e2b79a96309b627b4fa7d443a7046801f1188290916ed75a"
-            }
-          },
-          "claims": [
-            "ATTACK-T0859"
-          ],
-          "acquisition_url": "https://attack.mitre.org/techniques/T0859/",
-          "import_command": "python -m tools.evidence.manifest --scenario water_controls_wipe --import mitre_t0859=/path/to/raw-document"
-        },
-        {
-          "id": "mitre_t0878",
-          "title": "Alarm Suppression, Technique T0878 - ICS",
-          "publication_url": "https://attack.mitre.org/techniques/T0878/",
-          "retrieval": {
-            "requested_url": "https://attack.mitre.org/techniques/T0878/",
-            "final_url": "https://attack.mitre.org/techniques/T0878/",
-            "http_status": 200,
-            "retrieved_at": "2026-10-18T22:34:33Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 52365,
-            "sha256": "e45388a1536fd045097d7cfb7f01247f74ae3ef233d13e7540d4e4e3d7269e23",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "68dbb54e313f8c6ea50016976853464bf993e684551d14511d537323dea65375"
-            }
-          },
-          "claims": [
-            "ATTACK-T0878"
-          ],
-          "acquisition_url": "https://attack.mitre.org/techniques/T0878/",
-          "import_command": "python -m tools.evidence.manifest --scenario water_controls_wipe --import mitre_t0878=/path/to/raw-document"
         },
         {
           "id": "mitre_t1078",
@@ -6276,30 +6132,6 @@
           ],
           "acquisition_url": "https://www.amwa.net/system/files/linked-files/AMWA_EPA_2023%20comments%20on%20products%20for%20water%20infrastructure%20projects.pdf",
           "import_command": "python -m tools.evidence.manifest --scenario water_controls_wipe --import amwa2023comments=/path/to/raw-document"
-        },
-        {
-          "id": "amwater2024_8k",
-          "title": "American Water Reactivating Systems After Cyber Event",
-          "publication_url": "https://www.sec.gov/Archives/edgar/data/1410636/000141063624000179/ex-991xawkpressreleaseoct1.htm",
-          "retrieval": {
-            "requested_url": "https://www.sec.gov/Archives/edgar/data/1410636/000141063624000179/ex-991xawkpressreleaseoct1.htm",
-            "final_url": "https://www.sec.gov/Archives/edgar/data/1410636/000141063624000179/ex-991xawkpressreleaseoct1.htm",
-            "http_status": 200,
-            "retrieved_at": "2026-10-22T20:32:29Z",
-            "tool": "tinyfish",
-            "media_type": "text/plain",
-            "bytes": 2535,
-            "sha256": "87bfdc340a65433398897da41f5283f9898e1c929e18adf8d995cb66e9078071",
-            "text": {
-              "extractor": "utf8-decode-v1",
-              "sha256": "87bfdc340a65433398897da41f5283f9898e1c929e18adf8d995cb66e9078071"
-            }
-          },
-          "claims": [
-            "E-SC43-AMWATER-2024"
-          ],
-          "acquisition_url": "https://www.sec.gov/Archives/edgar/data/1410636/000141063624000179/ex-991xawkpressreleaseoct1.htm",
-          "import_command": "python -m tools.evidence.manifest --scenario water_controls_wipe --import amwater2024_8k=/path/to/raw-document"
         },
         {
           "id": "asprtracie_hca_webinar",
@@ -6615,30 +6447,6 @@
           "import_command": "python -m tools.evidence.manifest --scenario water_controls_wipe --import cdc_water_system_repair=/path/to/raw-document"
         },
         {
-          "id": "census_juneau",
-          "title": "QuickFacts: Juneau city and borough, Alaska",
-          "publication_url": "https://www.census.gov/quickfacts/fact/table/juneaucityandboroughalaska/RTN131222",
-          "retrieval": {
-            "requested_url": "https://www.census.gov/quickfacts/fact/table/juneaucityandboroughalaska/RTN131222",
-            "final_url": "https://www.census.gov/quickfacts/fact/table/juneaucityandboroughalaska/RTN131222",
-            "http_status": 200,
-            "retrieved_at": "2026-10-22T20:32:29Z",
-            "tool": "tinyfish",
-            "media_type": "text/plain",
-            "bytes": 4703,
-            "sha256": "7008063f47039874373d093d8e78cb883252c980a4f1cf5494c88f0740f1763d",
-            "text": {
-              "extractor": "utf8-decode-v1",
-              "sha256": "7008063f47039874373d093d8e78cb883252c980a4f1cf5494c88f0740f1763d"
-            }
-          },
-          "claims": [
-            "E-SC43-JUNEAU-POP"
-          ],
-          "acquisition_url": "https://www.census.gov/quickfacts/fact/table/juneaucityandboroughalaska/RTN131222",
-          "import_command": "python -m tools.evidence.manifest --scenario water_controls_wipe --import census_juneau=/path/to/raw-document"
-        },
-        {
           "id": "eid2024ceqa_pumps",
           "title": "Reservoir 1 Water Treatment Plant Backwash Waste Pump Replacement Project",
           "publication_url": "https://ceqanet.lci.ca.gov/2024101210",
@@ -6927,30 +6735,6 @@
           "import_command": "python -m tools.evidence.manifest --scenario water_controls_wipe --import frwa2024hurricane_response=/path/to/raw-document"
         },
         {
-          "id": "gao2026water",
-          "title": "GAO-26-109159: Testimony on the cybersecurity of drinking water and wastewater systems (product page)",
-          "publication_url": "https://www.gao.gov/products/gao-26-109159",
-          "retrieval": {
-            "requested_url": "https://www.gao.gov/products/gao-26-109159",
-            "final_url": "https://www.gao.gov/products/gao-26-109159",
-            "http_status": 200,
-            "retrieved_at": "2026-10-22T20:32:29Z",
-            "tool": "tinyfish",
-            "media_type": "text/plain",
-            "bytes": 4892,
-            "sha256": "1f2447923a42740fab0f16e6c0f92502932b0e19585bb56654b52644429d932f",
-            "text": {
-              "extractor": "utf8-decode-v1",
-              "sha256": "1f2447923a42740fab0f16e6c0f92502932b0e19585bb56654b52644429d932f"
-            }
-          },
-          "claims": [
-            "E-SC43-GAO-2026"
-          ],
-          "acquisition_url": "https://www.gao.gov/products/gao-26-109159",
-          "import_command": "python -m tools.evidence.manifest --scenario water_controls_wipe --import gao2026water=/path/to/raw-document"
-        },
-        {
           "id": "gdpud2024ops_report",
           "title": "Operations Report for April 2024",
           "publication_url": "https://www.gd-pud.org/files/2188ff1a8/Operations%2BManager%27s%2BReport%2B-%2BApril.pdf",
@@ -7023,30 +6807,6 @@
           "import_command": "python -m tools.evidence.manifest --scenario water_controls_wipe --import icprb2024ncr_study=/path/to/raw-document"
         },
         {
-          "id": "juneau_utility_page",
-          "title": "Water Utility \u2013 City and Borough of Juneau",
-          "publication_url": "https://juneau.org/engineering-public-works/utilities-division/water-utility",
-          "retrieval": {
-            "requested_url": "https://juneau.org/engineering-public-works/utilities-division/water-utility",
-            "final_url": "https://juneau.org/engineering-public-works/utilities-division/water-utility",
-            "http_status": 200,
-            "retrieved_at": "2026-10-22T20:18:22Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=UTF-8",
-            "bytes": 1060765,
-            "sha256": "4afe52c16c131c3c356fbe46e49cfaca36261709396ae9bb85d21dc883a1ed7d",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "efffdc1549516bb51983c6ff70fdf1b93a957074599345b42cf0a41753306ab7"
-            }
-          },
-          "claims": [
-            "E-SC43-JUNEAU-UTILITY"
-          ],
-          "acquisition_url": "https://juneau.org/engineering-public-works/utilities-division/water-utility",
-          "import_command": "python -m tools.evidence.manifest --scenario water_controls_wipe --import juneau_utility_page=/path/to/raw-document"
-        },
-        {
           "id": "mnit2026update",
           "title": "Minnesota continues response to cyber activity affecting community water systems",
           "publication_url": "https://content.govdelivery.com/accounts/MNIT/bulletins/422e230",
@@ -7069,30 +6829,6 @@
           ],
           "acquisition_url": "https://content.govdelivery.com/accounts/MNIT/bulletins/422e230",
           "import_command": "python -m tools.evidence.manifest --scenario water_controls_wipe --import mnit2026update=/path/to/raw-document"
-        },
-        {
-          "id": "naeimi2024rewet",
-          "title": "REWET: A Tool to Model System Functioning and Restoration of Damaged Water Supply Systems",
-          "publication_url": "https://udspace.udel.edu/server/api/core/bitstreams/a1fd3b69-7425-464a-8741-20153fe8ed4a/content",
-          "retrieval": {
-            "requested_url": "https://udspace.udel.edu/server/api/core/bitstreams/a1fd3b69-7425-464a-8741-20153fe8ed4a/content",
-            "final_url": "https://udspace.udel.edu/server/api/core/bitstreams/a1fd3b69-7425-464a-8741-20153fe8ed4a/content",
-            "http_status": 200,
-            "retrieved_at": "2026-10-22T20:18:11Z",
-            "tool": "curl",
-            "media_type": "application/pdf",
-            "bytes": 2958348,
-            "sha256": "e676840d8c1b60df27fd25c71dcfcd07cfc14cd5205529d32d137a83f3bdc5bd",
-            "text": {
-              "extractor": "gs-10.07.1 txtwrite-pages",
-              "sha256": "79e4eb0c8b5b04141eded21bda2c226e146531de343f4f30f5ec3538283bb276"
-            }
-          },
-          "claims": [
-            "E-SC43-REWET-PRECEDENT"
-          ],
-          "acquisition_url": "https://udspace.udel.edu/server/api/core/bitstreams/a1fd3b69-7425-464a-8741-20153fe8ed4a/content",
-          "import_command": "python -m tools.evidence.manifest --scenario water_controls_wipe --import naeimi2024rewet=/path/to/raw-document"
         },
         {
           "id": "naws2026memo",
@@ -12455,5 +12191,5 @@
       ]
     }
   ],
-  "library_source_count": 500
+  "library_source_count": 489
 }

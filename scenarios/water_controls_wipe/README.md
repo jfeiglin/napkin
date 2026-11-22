@@ -25,6 +25,37 @@ observed interruption. The model computes subsequent service and restoration fro
 The historical study also generated interruptions from an attacker policy. The recovery runs accept
 those interruptions as observations. The checked-in historical results use the original policy.
 
+## Regional emergency dispatch
+
+The `support_*` runs exercise one regional office. A batch represents supplemental emergency-water requests
+and creates a specified number of work-hours. Relief dispatch reserves a share of its capacity while the
+queue is open. The remaining capacity serves hospitals and households in their existing priority order.
+Each processed work-hour delivers a measured volume from the common water supply. When the backlog clears,
+regular deliveries regain all dispatch slots. The dashboard reports the amount still waiting, completed
+work, supplemental water delivered, the accepted and filtered notifications, and the ordinary household
+water deficit. The exercise clock reads the region's dispatch backlog.
+
+| Regional workload | Standard response | Early response |
+| --- | --- | --- |
+| Single batch | `support_single` | `support_single_rapid` |
+| Daily batches | `support_daily` | `support_daily_rapid` |
+| Batches eight hours apart | `support_frequent` | `support_frequent_rapid` |
+| Eight hours after the regional dispatch queue clears | `support_recovery` | `support_recovery_rapid` |
+
+`support.first_delay` and `support.window` count hours from the initial incident report. The window includes
+its endpoint. `support.limit` caps all batch notifications, including filtered ones. `support.interval`
+sets the spacing in hours and `support.severity` sets the work-hours per accepted batch. A notification at
+containment is filtered. The existing early and standard response choices supply their recognition and
+containment times and their relief resources. The exercise assumes a 25% dispatch reservation, 2 work-hours
+processed per hour and 100 US gallons per work-hour. These are illustrative capacity-planning assumptions.
+
+Lumberton’s `dispatch` spread compares the recovery-linked response policies under the same 12 draws of
+spacing and workload, using seed 17. The distribution inputs are `support.interval_factor` and
+`support.severity_factor`. Each sampled interval must be at least one hour and each sampled workload must
+be nonnegative. [Lumberton study](variants/lumberton/README.md#regional-dispatch-study)
+
+The original three response runs leave the regional exercise off.
+
 ## The places
 
 Each place is one where a part of the package's evidence comes from. The places are not a sample of the
@@ -53,6 +84,8 @@ country.
 
 [Research note](evidence/research.md) · [Sources](evidence/sources.json) · [Claims](evidence/claims.json) ·
 [Assumptions](evidence/assumptions.json) · [Local units](units.json)
+
+[Historical evidence](historical/evidence/) retains 11 sources, 11 claims and four assumptions specific to the archived study. [Historical run orders](historical/expected-orders.json) retains the comparisons that the 16 variants shared at `8488047`.
 
 The package's evidence gives what every place uses: the incidents that motivate the premise, the usable share
 of stored water, the pace of mutual aid, the lead times of parts, the clearance of an advisory, emergency

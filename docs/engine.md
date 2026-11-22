@@ -17,41 +17,16 @@ the file writes it, such as `when` or `after`.
 
 ```python
 import napkin
-from napkin.engine.report import evaluate_outputs
-from napkin.engine.runtime import simulate
-from napkin.model.ir import thaw
 
-model = napkin.load_scenario('scenarios/iv_fluid_shortage/model.scn')
-library = thaw(model.library)
-rs = model.resolve('subpar_persistent')               # the resolved structure of one run
-trajectory = simulate(rs, library)                    # every step and every segment, to the horizon
-rows = evaluate_outputs({'resolved': rs, 'trajectory': trajectory}, library, [24, 168])
+model = napkin.load_scenario('examples/piano_tuners')
+record = napkin.run(model.program, model.configuration)
+rows = napkin.read(record, model.program, ['tunings_done'], [24, 168])
 ```
 
-These functions are internal. `Model.resolve(run, values)` takes `values` for some inputs: a number
-in the input's unit, True or False, a name, or a distribution, which takes its central value. Every
-other input takes the run's value. It checks the values, normalizes them to execution units, applies
-the blocking checks of the inputs and proves the run's bounds and domains. A failure raises
-`ModelError`. The resolved structure is a `Resolved` record (`napkin/model/structure.py`). It is the
-structure of the run's start-state options with
-`values` (the input values in execution units), `parameter_values` (the values in the inputs' own
-units), `time`, `initiation`, the `run`, its `options` and `starts`, the `model_hash` and the results
-of the proofs. A sample of a Monte Carlo study has `luck`, the seed and number of its draws. A run
-can take the outcomes of its chance events from its caller
-([The outcomes of a run, given](#the-outcomes-of-a-run-given)). What a
-played run asks (who picks, and the picks; [Play](#play)) is no part of the resolved structure: it is
-an argument of the run, `simulate(rs, library, settings, play={'control': …, 'picks': …})`.
-
-The public functions do this for each run of a study ([python-api.md](python-api.md)):
-`napkin.evaluate_study` and `napkin.sample_result` give the report of
-`napkin/schema/report.schema.json` ([The study](#the-study)). `napkin.evaluate_uncertainty` also runs
-samples of each run whose values hold distributions ([Monte Carlo studies](#monte-carlo-studies)).
-
-The study takes its table of inputs and options from `model.run_table`. It does not read the
-file's values or resolve units again. Edit admission remains one transaction: the shared table
-checks names, values, precedence and collisions, then the model checks the resolved structure's
-bounds and domains. `Runs.from_scenario(scenario, library)` reads the same table from a semantic
-model, for analysis before compilation.
+`run` takes a program and its configuration. The configuration chooses the inputs, mode,
+seed and recording request. `read` selects paths and times from the resulting record.
+A study configures the named runs of a model. A [Monte Carlo study](#monte-carlo-studies)
+takes multiple samples of one configuration.
 
 ## What the engine reads
 
@@ -315,18 +290,10 @@ trigger and for a firing of an event that fires at once.
 
 ## Between moments: the solver
 
-`NumericalSettings` (`napkin.engine.runtime`) holds the settings of a run. A caller can give
-other values to `simulate` or `evaluate_study`; an unknown or invalid setting rejects the study
-(`numerical_settings`).
-
-| Setting | Default | Meaning |
-| --- | --- | --- |
-| `rtol` | 1e-9 | The solver's relative tolerance. |
-| `atol_factor` | 1e-10 | Each quantity's absolute tolerance is this factor times its size in execution units (below). |
-| `max_step` | 1 h | The step cap of a scenario without a `resolution`: the interval at which the engine reads a numerical segment (below, "Steps"). It scales a scenario's resolution: the cap is the resolution times `max_step` / 1 h. |
-| `max_evaluations` | 2,000,000 | The most evaluations of the rates in one run. For the rows of a table it is a limit for each row ([Tables and tiers](#tables-and-tiers)). |
-| `max_events` | 10,000 | The most trace entries in one run. With a table, the limit is this number times the rows of the largest table. |
-| `max_steps` | 1,000 | The most steps at one moment. With a table, the limit is this number times the rows of the largest table: each row can take its steps at the same moment. |
+A configuration holds `Numerics` from `napkin.program.config`. It specifies relative
+integration tolerance (`rtol`), the factor for each store’s absolute tolerance
+(`atol_factor`), the longest step in hours (`max_step`), the evaluation budget
+(`max_evaluations`) and the tolerance in time of a crossing (`crossing`).
 
 - **Sizes.** Each quantity's size is the `size:` that the file gives it, or else the largest of one of
   its unit, its start value, its finite bounds, the largest start value of the quantities that flows
@@ -649,94 +616,22 @@ diagnostics and its peaks. A `Session` runs the same checks, in the same order, 
 
 ## Monte Carlo studies
 
-```python
-import napkin
-from napkin.engine import SamplingSettings
+`monte_carlo(program, configuration, paths, times, settings)` first runs the program in median
+mode, then runs one sampled configuration per sample. `SamplingSettings(samples, seed)` sets
+the number of runs and the study seed. The study derives an independent seed for each sample
+index. Increasing the sample count leaves the earlier seeds unchanged.
 
-model = napkin.load_scenario('examples/piano_tuners/model.scn')
-result = napkin.evaluate_uncertainty(model, None, SamplingSettings(samples=200, seed=0, method='random'))
-report = napkin.uncertainty_report(result, [4380])  # the report of the study, with `uncertainty`
-```
-
-A Monte Carlo study runs the same deterministic engine many times. A run's values can hold
-distributions ([language.md](language.md#24-fields)):
-
-1. **The central study.** `evaluate_study` runs each run with each distribution at its central
-   value, with every check of a study. One failure rejects the study.
-2. **The draws.** Each sample of each run with uncertain values draws every uncertain value once,
-   before the run; a run whose events go by chance (an event with two outcomes or more, or one that
-   draws a distribution when it fires) is sampled too, at its central values, so that its chances and
-   draws vary by sample. A value is drawn as the quantile of a uniform number in (0, 1) (`engine/sampling.py`). Each value
-   has a stream of numbers of its own, named by the input and seeded by the study's seed: sample k
-   does not depend on the number of samples, adding or removing an uncertain value never changes the
-   draws of the others, and every run of the study reads the same numbers, so two runs compare
-   sample by sample. `latin` sampling puts one sample in each of N equal strata of each value.
-   `sobol` sampling takes the numbers from scrambled Sobol' points, in independent blocks
-   ([Sobol' points](#sobol-points)). A distribution that reads other values reads their draws in
-   the same sample.
-3. **The resolution.** Every sample resolves through `Model.resolve`, with the checks of any run,
-   before any sample runs. A sample that fails rejects the study; its diagnostics name the run, the
-   sample, the seed and the drawn values (`sample`, `seed`, `drawn`).
-4. **The runs.** The engine runs each sample. A sample whose run fails rejects the study too. No
-   sample is left out, because leaving one out biases the results, and a rejected study keeps no
-   sample.
-5. **The summaries.** For each outcome at each report point, `uncertainty_report` gives the central
-   run's value, the mean, the standard deviation and its standard error, the minimum and maximum, and
-   the 5th, 25th, 50th, 75th and 95th percentiles (Hyndman and Fan type 7). The standard error is
-   that of independent samples; with `sobol` sampling it is that of the means of the blocks. A
-   summary is estimated
-   only when the outcome is estimated in the central run and in every sample; otherwise it has no
-   value, never zero, and gives the statuses that it met. Each summary gives the rank correlation
-   (Spearman) of each uncertain input with the outcome: the drivers. Each outcome names the uncertain
-   inputs that it can depend on; one that depends on none has the central value in every sample.
-   With reporting times, `uncertainty_report(result, times)` also gives each outcome's `series`: its
-   percentiles at each of those times, for the bands of a chart.
-
-**The samples in other processes.** `evaluate_uncertainty(model, edits, settings, runs=…,
-times=…, check_samples=…, run_samples=…)` gives the samples to the caller after the central study
-and the draws. `check_samples(tasks)` gets `[(run, k, values)]` and gives back the diagnostics of each
-sample's resolution in order, as `check_sample(model, run, values)` gives them; when none fails,
-`run_samples(tasks)` gets `[(run, k, values, times, luck)]` and gives back the result of each in
-order, as `run_sample(model, run, values, None, times, luck)` gives it: its rows, its failures and
-`events`, the outcome that each firing of an event with several outcomes took. `luck` is `{seed,
-sample}`, the streams of the sample's outcomes. The caller can do this work in other processes, and
-stop the study with `StudyCancelled`. `times` can be a function
-of the admitted central study, such as the times of its charts; each sample then gives its outcome
-rows at those times only, which cross a process boundary as JSON, and the summaries are the ones of
-the same study in one process, bit for bit. `napkin/spread.py` runs the samples in this way,
-in a pool of processes ([The spread](#the-spread)).
-
-N admitted samples are not a proof for every draw: a value that no sample draws can still fail, as
-the points that `analyze_bounds` checks are not a proof for the whole range. The spread of a result
-is the spread of the inputs that the scenario assumes, carried through the model; it is not a
-measured interval. The sampling settings are part of the report, not of the model's identity.
+Each sample records executed draws and the selected values at the requested times. If the median
+run or a sample stops early, the study records a refusal. Otherwise it summarizes the samples at
+each time and reports correlations between the selected values and their draws.
+[The Python API](python-api.md#uncertainty) shows how to read a summary.
 
 ## Estimators
 
-A Monte Carlo study gives the mean of an outcome with the error of independent samples. The
-functions of this section are other estimators. A caller asks for each by name, and no study uses
-one unless it is asked. Each estimator is a claim of its own: it says what it assumes, and it gives
-the interval that belongs to it. `napkin/engine/estimators.py` has the mathematics, on plain
-numbers; `napkin/engine/expectations.py` runs the model ([python-api.md](python-api.md#estimators)).
-
-### Sobol' points
-
-`SamplingSettings(samples, seed, 'sobol', replicates=8)` draws the uncertain values from scrambled
-Sobol' points (`scipy.stats.qmc.Sobol`). The points of one block fill the space of the inputs more
-evenly than random numbers do, so the mean of a result that is smooth in its inputs has a smaller
-error.
-
-- A study has `replicates` blocks (8 by default), each of a power of two of points, so the samples
-  are 8, 16, 32, … for 8 blocks. Each block has a scramble of its own, from the seed and the number
-  of the block.
-- The points of one block are not independent. The blocks are. So the standard error of a mean is
-  that of the means of the blocks (`estimators.replicate_interval`), and `uncertainty_report` gives
-  that number as the standard error of each summary. The percentiles are those of all samples.
-- Each input has one dimension of the points for good: its place among the inputs of the model. To
-  make another input uncertain changes no number of this one. Sample k depends on the size of a
-  block.
-- The points are for the draws at the start of a run. The outcomes of the events and the values
-  that an event draws keep their own streams, as with `latin`.
+A Monte Carlo study estimates the mean from independent samples and reports its Student interval.
+The engine computes percentiles with linear interpolation. The plain estimators in
+`napkin.engine.estimators` and `napkin.engine.expectations` also operate directly on sequences
+of samples.
 
 ### The interval of a quantile, and a rule to stop
 

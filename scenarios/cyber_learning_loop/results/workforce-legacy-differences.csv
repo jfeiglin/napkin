@@ -1,0 +1,3 @@
+run,year,quantity,legacy,current,reason
+analysts_one_share,0,analysts.people,2915.252001565472,2915.2520015654736,within floating-point tolerance
+analysts_one_share,0,analysts.capacity,3239.168890628302,3239.168890628304,within floating-point tolerance

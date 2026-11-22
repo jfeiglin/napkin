@@ -43,5 +43,5 @@ def test_every_reported_reading_credits_evidence_and_matches_the_original_order(
         for i, at in enumerate(times):
             for row, v in zip(rows[i * len(values) : (i + 1) * len(values)], values, strict=True):
                 path, t, number, unit, evidence = row
-                assert (path[2:], t, number, unit) == (v.path, str(at), display(v.values[i]), v.unit)
+                assert (path[2:], t, number, unit) == (v.path, str(at), display(v.values[i]), v.unit or '1')
                 assert evidence.removesuffix(' |').strip()

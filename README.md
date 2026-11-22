@@ -5,8 +5,8 @@ it causes, from a set of basic facts about the event. Language models research t
 and `napkin` puts them into one framework that you can attest. Each number has a unit and its source,
 the compiler checks that the numbers fit together, and each result traces back to the facts behind it.
 
-Napkin began with studies of adverse cyber events. The current applications follow defensive
-attention and service recovery from reported conditions. The engine also runs models in other domains.
+The catalogue studies hypothetical AI uplift in strategic cyber operations and how incident timing
+and response policies affect water, electricity and IV-fluid service. The engine also runs models in other domains.
 
 ```mermaid
 flowchart LR
@@ -21,7 +21,7 @@ flowchart LR
         engine["engine: run, sample, play"]
     end
     command["napkin command and Python API"]
-    briefs["tools/publish: current readings and source dossiers"]
+    briefs["tools/publish: comparisons, readings and source dossiers"]
     research -->|"tools/evidence: fetch, check, integrate"| evidence
     evidence --> model --> compiler --> engine
     engine --> command
@@ -51,7 +51,7 @@ which results move.
 - **The engine**, in `napkin/`: the language, the compiler, the engine and the command. The wheel
   `napkin-sim` ships this package only.
 - **The applications**, in `scenarios/`: four packages for water service, electricity restoration
-  during heat, IV-fluid supply and defensive attention. Each holds its model, evidence and tests.
+  during heat, IV-fluid supply and strategic cyber AI uptake. Each holds its model, evidence and tests.
   A package can also include a dashboard or notebook.
 - **The examples**, in `examples/`, and the maintainer tools, in `tools/`, which include the evidence
   tools.
@@ -74,7 +74,7 @@ which results move.
 
 ![The Lumberton recovery dashboard shows water service, storage and advisories at the selected hour](scenarios/water_controls_wipe/ui/media/recovery-dashboard.png)
 
-The water case follows service and recovery in 16 places after a reported controls outage. Pick a place and a response, then follow the stored water, remaining repair work and service hour by hour. The dashboard requires Node.js 20 or later:
+The water case follows service and recovery in 16 places after a controls outage. Pick a place and a response, then follow the stored water, remaining repair work and service hour by hour. The dashboard requires Node.js 20 or later:
 
 ```sh
 python -B -m scenarios.water_controls_wipe.ui setup
@@ -107,7 +107,8 @@ python3 -m venv .venv
 | [docs/extending.md](docs/extending.md) | What to change for a new feature |
 | [docs/draw.md](docs/draw.md) | The static picture of a model, `napkin draw` |
 | [docs/known-issues.md](docs/known-issues.md) | The known issues, and the features that could come next |
-| [Scenario migration results](scratch/rewrite/audit/scenario-recovery-ports.md) | Current recovery models, inputs and historical comparisons |
+| [Changes to the four studies](scratch/rewrite/audit/catalogue-model-deviations.md) | How the current policies, units and outputs compare with the earlier catalogue |
+| [Scenario migration results](scratch/rewrite/audit/scenario-recovery-ports.md) | Recovery-port baselines, inputs and historical comparisons |
 | [scenarios/README.md](scenarios/README.md) | Current package guides and the historical catalogue briefs |
 | [scenarios/docs/catalogue.md](scenarios/docs/catalogue.md) | How the cases are written |
 | [scenarios/docs/evidence/README.md](scenarios/docs/evidence/README.md) | How the evidence is recorded |

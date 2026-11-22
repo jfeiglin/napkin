@@ -1,7 +1,5 @@
 """Starting a package of the catalogue (`tools/new.py`), against the catalogue itself: the new folder
-has each file that every package of the catalogue has, and the publisher's brief settings read. It
-reads the catalogue and the publisher, so it waits for their migration (stage M) in
-`tests/dormant.txt`; `tests/test_tools_new.py` holds the rest."""
+has each file that every package of the catalogue has, and the publisher's brief settings read."""
 
 import json
 import shutil

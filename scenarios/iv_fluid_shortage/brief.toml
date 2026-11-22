@@ -1,10 +1,33 @@
 show = ["high_risk_patients.deaths", "high_risk_patients.casualties", "loss_bn",
     "other_care_reserve.shortage_days", "release_work_done", "resuscitation_reserve.deficit",
     "other_care_reserve.deficit", "fluid_sent_elsewhere", "procedure_loss", "people_needing_courses",
-    "resuscitation_patients.unserved", "timely_courses", "manufacturer.hours_out"]
+    "resuscitation_patients.unserved", "timely_courses", "manufacturer.hours_out",
+    "quality_review.completed", "quality_review.cleared_at"]
 # The inputs that the brief lists.
 drivers = ["hospitals.days_on_hand", "release_team.pace", "manufacturer.containment_time",
     "manufacturer.reset_delay", "release_team.records_work", "manufacturer.time_to_find",
-    "release_team.product_work", "hospitals.rescue_capacity", "records.released_lot"]
+    "release_team.product_work", "hospitals.rescue_capacity", "records.released_lot",
+    "quality_review.notice_limit", "quality_review.first_delay", "quality_review.interval", "quality_review.gap_factor", "quality_review.effort_range",
+    "quality_review.followup_effort", "quality_review.capacity", "quality_review.intake_window"]
 featured = ["subpar_persistent", "subpar_persistent_human"]
 choice_group = "Response"
+
+[[comparison]]
+run = "subpar_persistent_human"
+against = "subpar_persistent"
+
+[[comparison]]
+run = "followup_quality_review"
+against = "fixed_quality_review"
+
+[[comparison]]
+run = "expedited_quality_review"
+against = "fixed_quality_review"
+
+[[spread]]
+id = "quality_reviews"
+description = "Variation in the work per quality notice and the interval between notices"
+runs = ["fixed_quality_review", "expedited_quality_review", "followup_quality_review"]
+samples = 6
+seed = 23
+outputs = ["quality_review.cleared_at", "other_care_reserve.shortage_days"]

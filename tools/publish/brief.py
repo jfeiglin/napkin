@@ -12,13 +12,14 @@ edit documents of its spreads are in the folder `spreads/` beside it.
 | `featured = [r]` or `[r, c]` | The runs that the pages show first | The first run |
 | `attack = "…"` | The name of the attack on the pages | No name: the pages describe the first move |
 | `choice_group = "…"` | The group of options that holds the responses of the defenders; the pages name it | No group of responses |
+| `[[comparison]]` | A named run and the named run it is compared against | No authored pairs |
 | `[[sweep]]` | A row of the run table: one run with other values of some inputs (`Sweep`) | No run table |
 | `[[spread]]` | A spread that the brief shows: runs sampled under the edit document `spreads/<id>.json` (`Spread`) | No spread |
 
 The pages read only `brief.toml`, and the map of the system reads only `style.toml`
-(`draw/style.py`). The model and its runs read neither: a sweep is an edit document that the run
-tables (`publish/runs.py`) give to a study of the model, and a spread's edit document gives the
-distributions of its inputs to the samples that the briefs calculate (`publish/briefs.py`).
+(`draw/style.py`). The model and its runs read neither: a sweep is an edit document that the
+publisher can give to a study of the model, and a spread's edit document gives the
+distributions of its inputs to `--sample-spreads`.
 """
 
 from __future__ import annotations
@@ -54,6 +55,14 @@ IDENTIFIER = r'[a-z][a-z0-9_]*'
 
 
 # ---- the brief settings: brief.toml --------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Comparison:
+    """A named run compared against another named run in the same study."""
+
+    run: str
+    against: str
 
 
 @dataclass(frozen=True)
@@ -109,15 +118,16 @@ class Brief:
     sweeps: tuple = ()
     spreads: tuple = ()
     origin: str | None = None
+    comparisons: tuple[Comparison, ...] = ()
 
 
 def read_brief(text, origin=BRIEF_FILE):
     """The brief settings of `text` (`Brief`): `show`, `drivers` and `featured`, each a list of
     names, `featured` of one run or two; `attack` and `choice_group`, each a nonempty text; each
-    `[[sweep]]` (`read_sweeps`) and each `[[spread]]` (`read_spreads`). Another key, a value of
+    `[[comparison]]`, each `[[sweep]]` (`read_sweeps`) and each `[[spread]]` (`read_spreads`). Another key, a value of
     another shape and a name written twice raise `StyleError`."""
     found, problems, settings = table(text, origin), [], {}
-    unknown(found, (*BRIEF_KEYS, *TEXT_KEYS, SWEEP, SPREAD), origin, problems)
+    unknown(found, (*BRIEF_KEYS, *TEXT_KEYS, 'comparison', SWEEP, SPREAD), origin, problems)
     for key in BRIEF_KEYS:
         listed = names_of(found[key], key, origin, problems) if key in found else None
         if key == 'featured' and listed is not None and not 1 <= len(listed) <= 2:
@@ -129,6 +139,20 @@ def read_brief(text, origin=BRIEF_FILE):
             problems.append(problem(origin, key, f'holds a nonempty text, such as {key} = "…"'))
             value = None
         settings[key] = value
+    comparisons = []
+    for where, entry in _entries(found.get('comparison'), 'comparison', ('run', 'against'), origin, problems):
+        run = _text(entry, 'run', where, origin, problems)
+        against = _text(entry, 'against', where, origin, problems)
+        if run is None or against is None:
+            continue
+        pair = Comparison(run, against)
+        if run == against:
+            problems.append(problem(origin, where, 'a comparison requires two different runs'))
+        elif pair in comparisons:
+            problems.append(problem(origin, where, 'this comparison appears more than once'))
+        else:
+            comparisons.append(pair)
+    settings['comparisons'] = tuple(comparisons)
     settings['sweeps'] = read_sweeps(found.get(SWEEP), origin, problems)
     settings['spreads'] = read_spreads(found.get(SPREAD), origin, problems)
     if problems:
@@ -271,6 +295,17 @@ def brief_file(path):
     return lookup(path, BRIEF_FILE)
 
 
+def comparisons_of(brief, model):
+    """Authored pairs in order, including the comparison notes used by earlier packages."""
+    if brief.comparisons:
+        return brief.comparisons
+    return tuple(
+        Comparison(run.name, against)
+        for run in model.declared.runs
+        if (against := note_value(model, 'comparisons', run.name)) is not None
+    )
+
+
 def check_brief(brief, model):
     """The problems of brief settings against their model: `show` names outputs, `drivers` names
     inputs, `featured` names runs, the second the comparison of the first when it names two,
@@ -294,10 +329,15 @@ def check_brief(brief, model):
     for name in featured:
         if name not in runs:
             out.append(problem(brief.origin, 'featured', f'{name} is not a run'))
+    pairs = comparisons_of(brief, model)
+    for index, pair in enumerate(pairs):
+        for key, name in (('run', pair.run), ('against', pair.against)):
+            if name not in runs:
+                out.append(problem(brief.origin, f'comparison[{index}].{key}', f'{name} is not a run'))
     if len(featured) == 2 and all(name in runs for name in featured):
-        run, other = featured
-        if note_value(model, 'comparisons', other) != run:
-            message = f'[{run}, {other}] names a run and its comparison, so {other} says versus {run}'
+        against, run = featured
+        if Comparison(run, against) not in pairs:
+            message = f'[{against}, {run}] must name a declared comparison of {run} against {against}'
             out.append(problem(brief.origin, 'featured', message))
     for position, sweep in enumerate(brief.sweeps):
         where = f'{SWEEP}[{position}]'
@@ -452,12 +492,14 @@ __all__ = [
     'SWEEP_KEYS',
     'TEXT_KEYS',
     'Brief',
+    'Comparison',
     'Spread',
     'StyleError',
     'Sweep',
     'brief_file',
     'brief_of',
     'check_brief',
+    'comparisons_of',
     'controls',
     'drivers',
     'featured',

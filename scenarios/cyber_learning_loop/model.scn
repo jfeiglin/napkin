@@ -1,1 +1,261 @@
-defensive_response/model.scn
+scenario "AI uptake and a national cyber workforce"
+    summary "How do AI uptake, staffing and retained institutional knowledge change the capacity of
+        surveillance and effects programs competing for a common workforce?"
+    horizon 25 years
+    scope "One hypothetical national workforce from 2026 for 25 years. Capacity is expressed in
+        baseline-equivalent staff, and spending in constant 2025 dollars."
+    library "../library"
+    resolution 7 days
+use defensive_response.response
+
+ai_tools:
+    input pace = 1 fraction in [0, 1] @adoption_path
+    input progress_time = 5 years in [2 years, 20 years] @adoption_path
+    input review_time = 10 years in [2 years, 30 years] @adoption_path
+    input reversal_start = 12 years in [1 year, 24 years] @adoption_path
+    input reversal_depth = 0 fraction in [0, 1] @adoption_path
+    input reversal_time = 3 years in [0.5 years, 10 years] @adoption_path
+    reversal = formula(this.reversal_depth * (1 - exp(-max(t - this.reversal_start, 0 years) / this.reversal_time))) @adoption_path
+    progress = formula(clip(this.pace * (1 - exp(-t / this.progress_time) - this.reversal), 0, 1)) @adoption_path
+    review_progress = formula(clip(this.pace * (1 - exp(-t / this.review_time) - this.reversal), 0, 1)) @adoption_path
+
+change observations:
+    adoption = formula(max(this.uptake, ai_tools.progress)) @defensive_uptake
+
+leadership:
+    input experts = 40535 people in [5000 people, 100000 people] @national_staff
+    input share_now = 0.087 fraction in [0.07, 0.16] @national_staff
+    input expert_cost = 0.42 USD2025_m/person/year in [0.25 USD2025_m/person/year, 0.6 USD2025_m/person/year] @surge_budget
+    input surge_funding = 0 USD2025_bn/year in [0 USD2025_bn/year, 2 USD2025_bn/year] @surge_budget
+    input surge_start = 0 years in [0 years, 20 years] @surge_budget
+    input surge_years = 4 years in [1 year, 10 years] @surge_budget
+    effects_share: fraction = this.share_now in [0, 1] scale 1 @review_allocation
+    desired_gap = formula(this.share_now - effects_program.work_rate / max(1 person, effects_program.work_rate + surveillance_program.work_rate)) @review_allocation
+    review = event(): @review_allocation
+        when t >= 0 h:
+            this.review.start()
+            reset after analysts.review_interval
+        after 0 h:
+            if t > 0 h:
+                this.effects_share = clip(this.share_now + 0.25 * this.desired_gap, 0.03, 0.9)
+                learning.retained = learning.next_level
+                governance.track_record = governance.next_score
+            this.open_period.start()
+    open_period = event(): @output_accounts
+        after 0 h:
+            if t == 0 h:
+                governance.opening_rate = effects_program.available_work
+            effects_program.work_rate = effects_program.available_work
+            surveillance_program.work_rate = surveillance_program.available_work
+    surge_experts: formula(people) = formula(this.surge_funding / this.expert_cost if t >= this.surge_start and t < this.surge_start + this.surge_years else 0 people) @surge_budget
+    payroll: formula(USD2025_bn/year) = formula((this.experts + this.surge_experts) * this.expert_cost) @surge_budget
+
+researchers:
+    input share = 0.03 fraction in [0.01, 0.1] @national_staff
+    people = formula(leadership.experts * this.share) @national_staff
+    capacity = formula(this.people * (1 + 0.5 * ai_tools.review_progress)) @role_productivity
+
+operators:
+    base_group = formula(4190.533498434527 people if analysts.one_share else 4213.629823936893 people) @pool_accounts
+    people = formula((leadership.experts - researchers.people) * this.base_group / (39318.95 people)) @pool_accounts
+    capacity = formula(this.people * (1 + 0.2 * ai_tools.progress)) @role_productivity
+
+collection_specialists:
+    people = formula((leadership.experts - researchers.people) * (32213.1645 / 39318.95)) @pool_accounts
+    capacity = formula(this.people * (1 + 0.3 * ai_tools.progress)) @role_productivity
+
+analysts:
+    people = formula(leadership.experts - researchers.people - operators.people - collection_specialists.people) @pool_accounts
+    input load_now = 0.9 fraction in [0.5, 1] @pool_accounts
+    capacity = formula(this.people / this.load_now) @pool_accounts
+    input one_share = false @review_work
+    input slower_surveillance = false @review_work
+    input review_interval = 1 year in [0.25 years, 2 years] @review_work
+    input meeting_cost = 0.02 years in [0 years, 0.1 years] @review_work
+    input dispersion = 0.3 fraction in [0.1, 0.46] @dispersion_basis
+    review_reserve = formula(this.meeting_cost / this.review_interval + this.dispersion * uncertainty.reserve_weight) @review_work
+    defensive_share = formula(min(0.25, 0.1 * observations.pressure / ((1 + defenders.hardening) * defenders.closing))) @defensive_capacity
+        "Share of the analyst pool needed for defensive monitoring and remediation."
+    available = formula(this.capacity * (1 - this.defensive_share) * (1 - this.review_reserve) * (1 - learning.training_share)) @shared_capacity
+
+learning:
+    input training_share = 0.02 fraction in [0, 0.2] @learning_basis
+    input forget_rate = 0.3 ratio/year in [0.1 ratio/year, 0.7 ratio/year] @learning_basis
+    retention_rate = uncertainty.rate_draw.draw() if uncertainty.sample_retention else this.forget_rate @spread_basis
+    retained: ratio = 0 in [0,] scale 1 ratio @learning_basis
+    practice = formula(this.training_share / 0.1 * (surveillance_program.work_rate + effects_program.work_rate) / leadership.experts) @learning_basis
+    weight = formula(1 - exp(-analysts.review_interval * this.retention_rate)) @learning_basis
+    next_level = formula(this.retained + this.weight * (this.practice - this.retained)) @learning_basis
+    multiplier = formula(1 + 0.1 * this.retained) @learning_basis
+
+surveillance_program:
+    staff = formula(leadership.experts * (1 - leadership.effects_share)) @mission_accounts
+    review_fraction = formula(1 - effects_program.review_fraction) @shared_capacity
+    automation = formula(0.2 * ai_tools.review_progress if analysts.slower_surveillance or analysts.one_share else 0.35 * ai_tools.progress) @review_work
+    capacity = formula(analysts.available * this.review_fraction * learning.multiplier / (1 - this.automation)) @shared_capacity
+        "Baseline-equivalent analysts available for surveillance review."
+    available_work = formula(this.capacity + (1 - leadership.effects_share) * (researchers.capacity + operators.capacity + collection_specialists.capacity)) @output_accounts
+    work_rate: people = 0 people in [0 people,] scale 40000 people @output_accounts
+    completed: staff_years = 0 staff_years in [0 staff_years,] scale 1000000 staff_years @output_accounts
+    flow deliver: SOURCE -> this.completed @output_accounts
+        request = formula(this.work_rate)
+
+effects_program:
+    staff = formula(leadership.experts * leadership.effects_share + leadership.surge_experts) @mission_accounts
+    review_fraction = formula(this.staff / (this.staff + surveillance_program.staff)) @shared_capacity
+    automation = formula(0.3 * ai_tools.review_progress if analysts.one_share else 0.45 * ai_tools.progress) @review_work
+    capacity = formula(analysts.available * this.review_fraction * learning.multiplier / (1 - this.automation)) @shared_capacity
+        "Baseline-equivalent analysts available for effects review."
+    available_work = formula(this.capacity + leadership.effects_share * (researchers.capacity + operators.capacity + collection_specialists.capacity) + leadership.surge_experts) @output_accounts
+    work_rate: people = 0 people in [0 people,] scale 40000 people @output_accounts
+    completed: staff_years = 0 staff_years in [0 staff_years,] scale 1000000 staff_years @output_accounts
+    flow deliver: SOURCE -> this.completed @output_accounts
+        request = formula(this.work_rate)
+
+national_volume:
+    input annual_demand = 320 operations/year in [0 operations/year, 2000 operations/year] @volume_account
+    input work_per_case = 12 staff_years/operations in [1 staff_years/operations, 100 staff_years/operations] @volume_account
+    input availability = 0.9 fraction in [0, 1] @volume_account
+    filled: formula(operations/year) = formula(this.availability * min(this.annual_demand, effects_program.work_rate / this.work_per_case)) @volume_account
+    completed: operations = 0 operations in [0 operations,] scale 10000 operations @volume_account
+    flow count: SOURCE -> this.completed @volume_account
+        request = formula(this.filled)
+
+attacks_per_year: formula(operations/year) = formula(national_volume.filled) @volume_account
+    "Expected completed national effects operations per year, given aggregate demand, staffing and
+        availability."
+total_attacks: formula(operations) = formula(national_volume.completed) @volume_account
+    "Expected completed national effects operations since the start."
+
+governance:
+    input threshold = 1.2 ratio in [1, 2] @institutional_reliance
+    input memory = 3 years in [0.5 years, 10 years] @institutional_reliance
+    opening_rate: people = 0 people in [0 people,] scale 4000 people @institutional_reliance
+    track_record: fraction = 0 in [0, 1] scale 1 @institutional_reliance
+    service_threshold = uncertainty.threshold_draw.draw() if uncertainty.sample_retention else this.threshold @institutional_reliance
+    qualifying = formula(1 if effects_program.work_rate >= this.opening_rate * this.service_threshold else 0) @institutional_reliance
+    next_score = formula(this.track_record + (1 - exp(-analysts.review_interval / this.memory)) * (this.qualifying - this.track_record)) @institutional_reliance
+    reliance = formula(1 if this.track_record >= 0.7 else 0) @institutional_reliance
+        "Whether the institution has sustained its service standard over recent reviews."
+
+uncertainty:
+    input enabled = false @spread_basis
+    input sample_retention = false @spread_basis
+    input threshold_draw = uniform(1.1, 1.5) @institutional_reliance
+    input rate_draw = uniform(0.1 ratio/year, 0.7 ratio/year) @spread_basis
+    input reserve_draw = uniform(0.05, 0.15) @spread_basis
+    reserve_weight = this.reserve_draw.draw() if this.enabled else 0.1 @spread_basis
+
+options "AI progress":
+    "Fast AI progress":
+        ai_tools.progress_time = 4 years @adoption_path
+    "Slow AI progress":
+        ai_tools.progress_time = 12 years @adoption_path
+    "No AI progress":
+        ai_tools.pace = 0 @adoption_path
+    "AI reversal":
+        ai_tools.progress_time = 4 years @adoption_path
+        ai_tools.reversal_depth = 0.8 @adoption_path
+
+options "Institutional learning":
+    "Fund lessons":
+        learning.training_share = 0.1 @learning_basis
+    "Usual training":
+        learning.training_share = 0.02 @learning_basis
+
+options "Surge":
+    "Temporary funding":
+        leadership.surge_funding = 0.25 USD2025_bn/year @surge_budget
+    "Base funding":
+        leadership.surge_funding = 0 USD2025_bn/year @surge_budget
+
+options "Reporting dependence":
+    "Dispersed workload":
+        analysts.dispersion = 0.13 @dispersion_basis
+    "Common workload":
+        analysts.dispersion = 0.3 @dispersion_basis
+
+options "Defensive uplift":
+    "Defenders' AI":
+        defenders.ai_hardening = 0.5 @defensive_uptake
+    "Reference hardening":
+        defenders.ai_hardening = 0 @defensive_uptake
+
+options "Tempo":
+    "Quarterly wartime review":
+        analysts.review_interval = 0.25 years @review_work
+    "Annual review":
+        analysts.review_interval = 1 year @review_work
+
+options "Analyst support":
+    "One AI share":
+        analysts.one_share = true @review_work
+    "Slow surveillance review":
+        analysts.slower_surveillance = true @review_work
+    "Separate review shares":
+        analysts.one_share = false @review_work
+
+runs:
+    ai_fast = "Fast AI progress"
+    no_ai = "No AI progress"
+    ai_slow = "Slow AI progress"
+    ai_fast_lessons = "Fast AI progress" + "Fund lessons"
+    surge_today = "No AI progress" + "Temporary funding"
+    ai_reversal = "AI reversal"
+    dispersed = "Fast AI progress" + "Dispersed workload"
+    dispersed_no_ai = "No AI progress" + "Dispersed workload"
+    defenders_ai = "Fast AI progress" + "Defenders' AI"
+    wartime = "No AI progress" + "Quarterly wartime review"
+    analysts_one_share = "Fast AI progress" + "One AI share"
+    slow_spy_planning = "Fast AI progress" + "Slow surveillance review"
+
+record adoption_path: assumption "Historical revision 8488047 uses separate saturating curves for general AI
+    progress and slower reviewed work. The reversal term starts in year twelve."
+record national_staff: assumption "The historical budget covers 40,535 experts, with a 3% research share and
+    8.7% of reference staffing attributed to effects."
+record pool_accounts: assumption "The four 2026 payroll groups reproduce the aggregate headcounts at
+    historical revision 8488047. Nonresearch groups retain their reference proportions when the total or
+    research share changes. At baseline the analysts work at 90% load."
+record surge_budget: assumption "The historical surge funds 0.25 billion 2025 US dollars per year for four
+    years, at 0.42 million dollars per expert-year. Payroll and posts refer to equivalent full-time staff."
+record mission_accounts: identity "Reference posts are divided between surveillance and effects at each budget
+    review. Additional funded posts belong to effects while the surge is in force."
+record shared_capacity: assumption "The two missions draw on one analyst pool in proportion to their budgeted
+    staffing. Review and training time reduce available hours. Capacity expresses a quantity of
+    baseline-equivalent analyst work."
+record learning_basis: assumption "Retention is updated each budget period from realized work per reference
+    employee times protected training share, with exponential decay at the historical forgetting rate. The
+    aggregate training shares and ten percent productivity gain per unit of learned practice are illustrative."
+record review_work: assumption "Illustrative office-work time savings are 35% and 45% for the two missions at
+    full adoption. The single-share option uses slower review adoption at 20% and 30%. Scheduled reviews each
+    take 0.02 analyst-years per analyst. Wartime review is quarterly, as at 8488047."
+record dispersion_basis: assumption "The historical common factor moves from 0.30 to 0.13 under dispersal.
+    This aggregate calculation uses that sensitivity to reserve staff hours for correlated workload
+    fluctuations."
+record spread_basis: assumption "To explore uncertainty about staff reserves, sample their common-factor
+    weight uniformly from 0.05 to 0.15. The central case uses 0.10. A second experiment samples the
+    retained-practice adjustment rate over the historical 0.1 to 0.7 per year range."
+record defensive_uptake: assumption "Adoption raises the pace of discovery and patching in the historical
+    defensive equations. The Defenders' AI option also adds up to one half to the hardening index. External
+    uptake provides a floor."
+record defensive_capacity: assumption "Monitoring and remediation require an illustrative tenth of analyst
+    time at reference workload. More incoming work raises that claim, capped at one quarter. Defensive tooling
+    and lasting improvements reduce its staffing requirement."
+record output_accounts: identity "A budget review sets the two missions’ baseline-equivalent work rates for
+    the next period. Each accumulates that work continuously, in staff-years. Researchers, operators,
+    collection specialists and the common analyst pool contribute their own capacities."
+record role_productivity: assumption "The aggregate sensitivity illustration assigns up to 50% more
+    baseline-equivalent research work on the slower adoption curve, 20% more operator support work and 30%
+    more collection processing on the general curve. The percentages are illustrative."
+record review_allocation: assumption "The next period’s funded split adjusts one quarter of the gap between
+    the reference effects share and its last realized share of total output. This administrative assumption
+    balances the mix of work delivered."
+record institutional_reliance: assumption "At each review the institution records whether the preceding period
+    delivered at least 120% of its opening effects-program staff-year rate. Each observation decays over a
+    three-year time constant. A track record of 0.7 or more signals reliance. The sensitivity study varies the
+    standard from 110% to 150%. These are illustrative service-quality thresholds."
+record volume_account: assumption "National annual volume is the available fraction of the smaller of demand
+    and work capacity divided by average labor burden. The central study assumes 320 cases per year and 90%
+    availability. Twelve baseline staff-years per case lies inside the historical 8.1 to 15.3 observed
+    calibration range. These aggregate inputs remain fixed across adoption cases and do not infer historical
+    case mix or success."

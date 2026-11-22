@@ -1,0 +1,573 @@
+{
+  "scenario": "cyber_learning_loop",
+  "model_hash": "ea1c53d1cfaad7a008e26781a25f2348029181d5c6301d090cc69521434bbc47",
+  "spreads": [
+    {
+      "id": "workload_reserve",
+      "method": "random",
+      "seed": 7,
+      "samples_per_run": 16,
+      "edit_sha256": "121991caa116f571e193456d7547bf45d802b0d92b99e12cf666907455246246",
+      "comparisons": [
+        {
+          "run": "ai_fast",
+          "against": "no_ai",
+          "paired_draws": 16,
+          "readings": [
+            {
+              "path": "surveillance_program.completed",
+              "time_hours": 219000.0,
+              "unit": "staff_years",
+              "against": {
+                "mean": 921728.0,
+                "p05": 920728.0,
+                "p95": 922478.0
+              },
+              "run": {
+                "mean": 1159850.0,
+                "p05": 1158320.0,
+                "p95": 1161000.0
+              },
+              "difference": {
+                "mean": 238124.0,
+                "p05": 237594.0,
+                "p95": 238521.0
+              },
+              "percent_change": {
+                "mean": 25.8345,
+                "p05": 25.805,
+                "p95": 25.8565
+              }
+            },
+            {
+              "path": "effects_program.completed",
+              "time_hours": 219000.0,
+              "unit": "staff_years",
+              "against": {
+                "mean": 87831.7,
+                "p05": 87736.4,
+                "p95": 87903.1
+              },
+              "run": {
+                "mean": 111592.0,
+                "p05": 111430.0,
+                "p95": 111715.0
+              },
+              "difference": {
+                "mean": 23760.8,
+                "p05": 23693.2,
+                "p95": 23811.4
+              },
+              "percent_change": {
+                "mean": 27.0526,
+                "p05": 27.005,
+                "p95": 27.0882
+              }
+            },
+            {
+              "path": "attacks_per_year",
+              "time_hours": 219000.0,
+              "unit": "operations/year",
+              "against": {
+                "mean": 263.549,
+                "p05": 263.262,
+                "p95": 263.764
+              },
+              "run": {
+                "mean": 288.0,
+                "p05": 288.0,
+                "p95": 288.0
+              },
+              "difference": {
+                "mean": 24.451,
+                "p05": 24.236,
+                "p95": 24.7378
+              },
+              "percent_change": {
+                "mean": 9.27763,
+                "p05": 9.18853,
+                "p95": 9.39664
+              }
+            },
+            {
+              "path": "total_attacks",
+              "time_hours": 219000.0,
+              "unit": "operations",
+              "against": {
+                "mean": 6587.38,
+                "p05": 6580.23,
+                "p95": 6592.73
+              },
+              "run": {
+                "mean": 7168.65,
+                "p05": 7168.05,
+                "p95": 7169.11
+              },
+              "difference": {
+                "mean": 581.275,
+                "p05": 576.372,
+                "p95": 587.817
+              },
+              "percent_change": {
+                "mean": 8.82412,
+                "p05": 8.74253,
+                "p95": 8.93308
+              }
+            }
+          ]
+        },
+        {
+          "run": "dispersed",
+          "against": "dispersed_no_ai",
+          "paired_draws": 16,
+          "readings": [
+            {
+              "path": "surveillance_program.completed",
+              "time_hours": 219000.0,
+              "unit": "staff_years",
+              "against": {
+                "mean": 922827.0,
+                "p05": 922394.0,
+                "p95": 923152.0
+              },
+              "run": {
+                "mean": 1161530.0,
+                "p05": 1160870.0,
+                "p95": 1162030.0
+              },
+              "difference": {
+                "mean": 238706.0,
+                "p05": 238476.0,
+                "p95": 238878.0
+              },
+              "percent_change": {
+                "mean": 25.8668,
+                "p05": 25.8541,
+                "p95": 25.8764
+              }
+            },
+            {
+              "path": "effects_program.completed",
+              "time_hours": 219000.0,
+              "unit": "staff_years",
+              "against": {
+                "mean": 87936.4,
+                "p05": 87895.1,
+                "p95": 87967.4
+              },
+              "run": {
+                "mean": 111771.0,
+                "p05": 111701.0,
+                "p95": 111824.0
+              },
+              "difference": {
+                "mean": 23835.0,
+                "p05": 23805.8,
+                "p95": 23857.0
+              },
+              "percent_change": {
+                "mean": 27.1049,
+                "p05": 27.0843,
+                "p95": 27.1203
+              }
+            },
+            {
+              "path": "attacks_per_year",
+              "time_hours": 219000.0,
+              "unit": "operations/year",
+              "against": {
+                "mean": 263.864,
+                "p05": 263.74,
+                "p95": 263.957
+              },
+              "run": {
+                "mean": 288.0,
+                "p05": 288.0,
+                "p95": 288.0
+              },
+              "difference": {
+                "mean": 24.1358,
+                "p05": 24.0426,
+                "p95": 24.26
+              },
+              "percent_change": {
+                "mean": 9.14704,
+                "p05": 9.10852,
+                "p95": 9.19847
+              }
+            },
+            {
+              "path": "total_attacks",
+              "time_hours": 219000.0,
+              "unit": "operations",
+              "against": {
+                "mean": 6595.23,
+                "p05": 6592.14,
+                "p95": 6597.55
+              },
+              "run": {
+                "mean": 7169.32,
+                "p05": 7169.06,
+                "p95": 7169.51
+              },
+              "difference": {
+                "mean": 574.085,
+                "p05": 571.96,
+                "p95": 576.92
+              },
+              "percent_change": {
+                "mean": 8.70455,
+                "p05": 8.66927,
+                "p95": 8.75164
+              }
+            }
+          ]
+        },
+        {
+          "run": "defenders_ai",
+          "against": "ai_fast",
+          "paired_draws": 16,
+          "readings": [
+            {
+              "path": "surveillance_program.completed",
+              "time_hours": 219000.0,
+              "unit": "staff_years",
+              "against": {
+                "mean": 1159850.0,
+                "p05": 1158320.0,
+                "p95": 1161000.0
+              },
+              "run": {
+                "mean": 1160900.0,
+                "p05": 1159360.0,
+                "p95": 1162060.0
+              },
+              "difference": {
+                "mean": 1050.81,
+                "p05": 1033.96,
+                "p95": 1063.43
+              },
+              "percent_change": {
+                "mean": 0.0905977,
+                "p05": 0.0892634,
+                "p95": 0.0915964
+              }
+            },
+            {
+              "path": "effects_program.completed",
+              "time_hours": 219000.0,
+              "unit": "staff_years",
+              "against": {
+                "mean": 111592.0,
+                "p05": 111430.0,
+                "p95": 111715.0
+              },
+              "run": {
+                "mean": 111705.0,
+                "p05": 111540.0,
+                "p95": 111828.0
+              },
+              "difference": {
+                "mean": 112.355,
+                "p05": 110.555,
+                "p95": 113.705
+              },
+              "percent_change": {
+                "mean": 0.100683,
+                "p05": 0.0992147,
+                "p95": 0.101782
+              }
+            },
+            {
+              "path": "attacks_per_year",
+              "time_hours": 219000.0,
+              "unit": "operations/year",
+              "against": {
+                "mean": 288.0,
+                "p05": 288.0,
+                "p95": 288.0
+              },
+              "run": {
+                "mean": 288.0,
+                "p05": 288.0,
+                "p95": 288.0
+              },
+              "difference": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "percent_change": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              }
+            },
+            {
+              "path": "total_attacks",
+              "time_hours": 219000.0,
+              "unit": "operations",
+              "against": {
+                "mean": 7168.65,
+                "p05": 7168.05,
+                "p95": 7169.11
+              },
+              "run": {
+                "mean": 7168.8,
+                "p05": 7168.2,
+                "p95": 7169.26
+              },
+              "difference": {
+                "mean": 0.150536,
+                "p05": 0.14813,
+                "p95": 0.152339
+              },
+              "percent_change": {
+                "mean": 0.00209992,
+                "p05": 0.00206653,
+                "p95": 0.00212494
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "retained_practice",
+      "method": "random",
+      "seed": 11,
+      "samples_per_run": 16,
+      "edit_sha256": "1813f48eb5f258deb94e32f4240849e0533c0b7ccc3e4a2d29f4f29ff34efadb",
+      "comparisons": [
+        {
+          "run": "ai_fast",
+          "against": "no_ai",
+          "paired_draws": 16,
+          "readings": [
+            {
+              "path": "learning.retained",
+              "time_hours": 219000.0,
+              "unit": "ratio",
+              "against": {
+                "mean": 0.197981,
+                "p05": 0.19288,
+                "p95": 0.19928
+              },
+              "run": {
+                "mean": 0.260638,
+                "p05": 0.251979,
+                "p95": 0.262911
+              },
+              "difference": {
+                "mean": 0.0626568,
+                "p05": 0.059099,
+                "p95": 0.0636314
+              },
+              "percent_change": {
+                "mean": 31.6374,
+                "p05": 30.6253,
+                "p95": 31.9306
+              }
+            },
+            {
+              "path": "governance.track_record",
+              "time_hours": 219000.0,
+              "unit": "fraction",
+              "against": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "run": {
+                "mean": 0.623331,
+                "p05": 0.0,
+                "p95": 0.999532
+              },
+              "difference": {
+                "mean": 0.623331,
+                "p05": 0.0,
+                "p95": 0.999532
+              },
+              "percent_change": null,
+              "percent_unavailable": "A positive, ratio-scale baseline is required for every paired draw."
+            },
+            {
+              "path": "governance.reliance",
+              "time_hours": 219000.0,
+              "unit": "1",
+              "against": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "run": {
+                "mean": 0.625,
+                "p05": 0.0,
+                "p95": 1.0
+              },
+              "difference": {
+                "mean": 0.625,
+                "p05": 0.0,
+                "p95": 1.0
+              },
+              "percent_change": null,
+              "percent_unavailable": "A positive, ratio-scale baseline is required for every paired draw."
+            }
+          ]
+        },
+        {
+          "run": "ai_reversal",
+          "against": "ai_fast",
+          "paired_draws": 16,
+          "readings": [
+            {
+              "path": "learning.retained",
+              "time_hours": 219000.0,
+              "unit": "ratio",
+              "against": {
+                "mean": 0.260638,
+                "p05": 0.251979,
+                "p95": 0.262911
+              },
+              "run": {
+                "mean": 0.213677,
+                "p05": 0.211245,
+                "p95": 0.217124
+              },
+              "difference": {
+                "mean": -0.0469603,
+                "p05": -0.0500463,
+                "p95": -0.03744
+              },
+              "percent_change": {
+                "mean": -17.9827,
+                "p05": -19.0354,
+                "p95": -14.8243
+              }
+            },
+            {
+              "path": "governance.track_record",
+              "time_hours": 219000.0,
+              "unit": "fraction",
+              "against": {
+                "mean": 0.623331,
+                "p05": 0.0,
+                "p95": 0.999532
+              },
+              "run": {
+                "mean": 0.0219958,
+                "p05": 0.0,
+                "p95": 0.0758874
+              },
+              "difference": {
+                "mean": -0.601335,
+                "p05": -0.981684,
+                "p95": 0.0
+              },
+              "percent_change": null,
+              "percent_unavailable": "A positive, ratio-scale baseline is required for every paired draw."
+            },
+            {
+              "path": "governance.reliance",
+              "time_hours": 219000.0,
+              "unit": "1",
+              "against": {
+                "mean": 0.625,
+                "p05": 0.0,
+                "p95": 1.0
+              },
+              "run": {
+                "mean": 0.0,
+                "p05": 0.0,
+                "p95": 0.0
+              },
+              "difference": {
+                "mean": -0.625,
+                "p05": -1.0,
+                "p95": 0.0
+              },
+              "percent_change": null,
+              "percent_unavailable": "A positive, ratio-scale baseline is required for every paired draw."
+            }
+          ]
+        },
+        {
+          "run": "ai_fast_lessons",
+          "against": "ai_fast",
+          "paired_draws": 16,
+          "readings": [
+            {
+              "path": "learning.retained",
+              "time_hours": 219000.0,
+              "unit": "ratio",
+              "against": {
+                "mean": 0.260638,
+                "p05": 0.251979,
+                "p95": 0.262911
+              },
+              "run": {
+                "mean": 1.30434,
+                "p05": 1.25996,
+                "p95": 1.31598
+              },
+              "difference": {
+                "mean": 1.0437,
+                "p05": 1.00798,
+                "p95": 1.05307
+              },
+              "percent_change": {
+                "mean": 400.435,
+                "p05": 400.016,
+                "p95": 400.543
+              }
+            },
+            {
+              "path": "governance.track_record",
+              "time_hours": 219000.0,
+              "unit": "fraction",
+              "against": {
+                "mean": 0.623331,
+                "p05": 0.0,
+                "p95": 0.999532
+              },
+              "run": {
+                "mean": 0.730773,
+                "p05": 0.0,
+                "p95": 0.999532
+              },
+              "difference": {
+                "mean": 0.107442,
+                "p05": 0.0,
+                "p95": 0.8341
+              },
+              "percent_change": null,
+              "percent_unavailable": "A positive, ratio-scale baseline is required for every paired draw."
+            },
+            {
+              "path": "governance.reliance",
+              "time_hours": 219000.0,
+              "unit": "1",
+              "against": {
+                "mean": 0.625,
+                "p05": 0.0,
+                "p95": 1.0
+              },
+              "run": {
+                "mean": 0.75,
+                "p05": 0.0,
+                "p95": 1.0
+              },
+              "difference": {
+                "mean": 0.125,
+                "p05": 0.0,
+                "p95": 1.0
+              },
+              "percent_change": null,
+              "percent_unavailable": "A positive, ratio-scale baseline is required for every paired draw."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

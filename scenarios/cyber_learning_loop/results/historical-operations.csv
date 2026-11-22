@@ -1,0 +1,13 @@
+run,legacy_published_operations,current_operations,difference_operations,legacy_mean_operations_per_year,current_mean_operations_per_year,current_endpoint_operations_per_year,reason
+ai_fast,5290,7168.630748831778,1878.630748831778,211.6,286.7452299532711,288.0,"Current count uses fixed average labor per case, availability and annual demand. See the case mapping in README.md."
+no_ai,8880,6587.119930302653,-2292.8800696973467,355.2,263.4847972121061,263.53867744034875,"Current count uses fixed average labor per case, availability and annual demand. See the case mapping in README.md."
+ai_slow,6860,7139.321163007817,279.3211630078167,274.4,285.5728465203127,288.0,"Current count uses fixed average labor per case, availability and annual demand. See the case mapping in README.md."
+ai_fast_lessons,5380,7165.920689995372,1785.9206899953724,215.2,286.6368275998149,288.0,"Current count uses fixed average labor per case, availability and annual demand. See the case mapping in README.md."
+surge_today,9180,6679.073520289725,-2500.926479710275,367.2,267.162940811589,263.5386841301128,"Current count uses fixed average labor per case, availability and annual demand. See the case mapping in README.md."
+ai_reversal,6280,7137.762562952211,857.7625629522108,251.2,285.51050251808846,280.79696117353404,"Current count uses fixed average labor per case, availability and annual demand. See the case mapping in README.md."
+dispersed,5290,7169.308182932606,1879.3081829326056,211.6,286.77232731730425,288.0,"Current count uses fixed average labor per case, availability and annual demand. See the case mapping in README.md."
+dispersed_no_ai,8880,6595.121419810249,-2284.878580189751,355.2,263.80485679240996,263.85976927959655,"Current count uses fixed average labor per case, availability and annual demand. See the case mapping in README.md."
+defenders_ai,5230,7168.781198063072,1938.7811980630722,209.2,286.7512479225229,288.0,"Current count uses fixed average labor per case, availability and annual demand. See the case mapping in README.md."
+wartime,19200,6559.012156626054,-12640.987843373947,768.0,262.36048626504214,262.4055344462278,"Current count uses fixed average labor per case, availability and annual demand. See the case mapping in README.md."
+analysts_one_share,3980,7167.131066860382,3187.131066860382,159.2,286.6852426744153,288.0,"Current count uses fixed average labor per case, availability and annual demand. See the case mapping in README.md."
+slow_spy_planning,5110,7168.630748831778,2058.630748831778,204.4,286.7452299532711,288.0,"Current count uses fixed average labor per case, availability and annual demand. See the case mapping in README.md."

@@ -2,63 +2,32 @@
 
 import ast
 import json
-from collections import Counter
-from functools import cache
-from hashlib import sha256
 
-from tests.helpers import ROOT
-from tests.owned import block_at
+import pytest
+
+from napkin.model.evidence import dependencies
+from napkin.model.language.evidence import document
+from napkin.model.library import library_folders, load_library
+from tests.helpers import ROOT, SCENARIO_IDS, catalogue_model
 from tools import catalogue
-from tools.publish import Context
-from tools.publish.assumptions import artifacts
 
 
-@cache
-def rendered_inventory():
-    return {path: json.loads(content) for path, content in artifacts(Context(ROOT)).items()}
-
-
-def test_inventory_keeps_owned_records_separate_and_retains_review_and_origin():
-    outputs = rendered_inventory()
-    # One inventory for each scenario, in its results folder; none for the catalogue as a whole.
-    assert set(outputs) == {
-        catalogue.result(sid, 'assumption-review.json') for sid in catalogue.entries(ROOT)
-    }
-    for sid in catalogue.entries(ROOT):
-        inventory = outputs[catalogue.result(sid, 'assumption-review.json')]
-        retained = {(item['scenario'], item['id']): item for item in inventory['assumptions']}
-        expected = {
-            (sid, item['id']): item
-            for item in json.loads((catalogue.locate(sid, ROOT).evidence / 'assumptions.json').read_text())
-        }
-        assert retained.keys() == expected.keys()
-        for key, item in expected.items():
-            row = retained[key]
-            assert row['authoritative_review'] == item['review']
-            assert row['review_status'] == item['review']['status']
-            assert row['origin'] == item.get('origin')
-            assert row['origin_declared'] == ('origin' in item)
-            assert row['selection_status'] == item.get('status')
-            assert row['decided'] == item.get('decided')
-        assert inventory['counts']['authoritative_review_status'] == dict(
-            Counter(item['review']['status'] for item in expected.values())
-        )
-
-
-def test_local_inventories_identify_their_own_files_and_reference_locations():
-    outputs = rendered_inventory()
-    for sid, model_path in catalogue.entries(ROOT).items():
-        inventory = outputs[catalogue.result(sid, 'assumption-review.json')]
-        basis = inventory['authoritative_basis']
-        owned = catalogue.locate(sid, ROOT).evidence / 'assumptions.json'
-        assert basis['path'] == owned.relative_to(ROOT).as_posix()
-        assert basis['sha256'] == sha256((ROOT / basis['path']).read_bytes()).hexdigest()
-        authored = model_path.read_text(encoding='utf-8')
-        for record in inventory['assumptions']:
-            assert record['scenario'] == sid
-            # Each place is a line of the file whose line, or a line under it, names the assumption.
-            for place in record['places']:
-                assert record['id'] in block_at(authored, place), place
+@pytest.mark.scenario_contract
+@pytest.mark.parametrize('sid', SCENARIO_IDS)
+def test_library_retains_the_owning_files_assumptions_and_reviews(sid):
+    entry = catalogue.scenario_path(ROOT, sid)
+    model = catalogue_model(sid)
+    library = load_library(entry)
+    effective = {item['id']: item for item in library['assumptions']}
+    reached = set(dependencies(document(model.declared.tree), library)['assumptions'])
+    for folder in library_folders(entry):
+        path = folder / 'evidence' / 'assumptions.json'
+        if path.exists():
+            for item in json.loads(path.read_text(encoding='utf-8')):
+                assert item['review']['status']
+                assert effective[item['id']] == item, path
+                if folder == entry.parent:
+                    assert item['id'] in reached, path
 
 
 def test_consequence_reference_mathematics_uses_independently_authored_functions():
