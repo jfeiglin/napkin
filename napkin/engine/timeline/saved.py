@@ -447,6 +447,9 @@ def _instance(instance):
         )
     elif kind in ('sparse', 'component', 'moving'):
         amounts = instance.amounts
+        segment = instance.component.state if kind == 'component' else instance
+        if segment.held_comparisons:
+            fields += (('held_comparisons', tuple(sorted(segment.held_comparisons))),)
         fields += (
             ('amount_origin', amounts.start),
             (
@@ -890,6 +893,10 @@ def _made(run, kind, keys, data):
             if name in rows:
                 instance.amounts.restore(rows[name], t, amount)
     if 'accepted_amounts' in data:
+        segment = instance.component.state if kind == 'component' else instance
+        segment.held_comparisons = (
+            set(map(tuple, data['held_comparisons'])) if data.get('held_comparisons') else None
+        )
         amounts = instance.amounts
         amounts.clocks = {}
         for row, mode, start, closed, origin, polynomial, *ends in data['clock_amounts']:

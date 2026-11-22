@@ -292,6 +292,13 @@ class Run:
         )
         return abs(level - bound) <= band
 
+    def stock_band_edge(self, cell, target, direction):
+        """The amount at the edge of the stock’s comparison band on the specified side."""
+        factor = max(self.config.rtol, self.config.atol_factor)
+        scale = max(self.own_scales[cell], abs(target))
+        edge = target + direction * factor * scale
+        return target / (1 - factor) if abs(edge) > scale and factor < 1 else edge
+
     def _in_range(self, cell, v, *, admission=False):
         if not isinstance(v, Fraction):
             return
@@ -838,12 +845,8 @@ class Run:
                 continue
             # On this monotone piece the first admissible stock value is a rational
             # threshold even if the time when a quadratic reaches it is irrational.
-            tolerance = max(self.config.rtol, self.config.atol_factor)
-            scale = max(self.own_scales[cell], abs(target))
             sign = 1 if level(lo) > target else -1
-            boundary = target + sign * tolerance * scale
-            if abs(boundary) > scale and tolerance < 1:
-                boundary = target / (1 - tolerance)
+            boundary = self.stock_band_edge(cell, target, sign)
             if level(hi) == boundary:
                 return hi, hi
             time = (level(Poly([lo, 1])) - boundary).first_root()

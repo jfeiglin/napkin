@@ -1,13 +1,15 @@
 """A physical net on a held face cannot select the outgoing branch of a moving field."""
 
+from dataclasses import replace
 from fractions import Fraction
 
 import pytest
 
 from napkin.engine.timeline import Plan, Run, read
+from napkin.model.compile import compile_text
 from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
 from napkin.program.record import Key
-from tests.engine.test_threshold_transfer_placement import use_method
+from tests.engine.test_threshold_transfer_placement import UNITS, use_method
 from tests.reference.from_program import run_of, value_at
 
 
@@ -125,3 +127,83 @@ yard.inspect.start()
     assert amount.values == pytest.approx([rate * t for t in times], abs=1e-12)
     key = Key('yard', ('measured',))
     assert [value_at(oracle, model.program, key, Fraction(t)) for t in times] == [rate * t for t in times]
+
+
+@pytest.mark.parametrize('method', ['component', 'sparse', 'moving_declared'])
+@pytest.mark.parametrize('cut', [False, True], ids=['direct', 'restored'])
+def test_a_retained_net_eventually_exits_the_comparison_band(method, cut, monkeypatch):
+    # The two physical leg amounts differ by 1e-12 L/h on a 1 L comparison
+    # scale. At 1,000 h the retained stock reaches the 1e-9 L band edge.
+    text = """scenario "A counter following an accumulating balance"
+    horizon 2000 h
+yard:
+    stock: L = 0 in [0, 1 L]
+    count: L = 0
+    flow feed: SOURCE -> this.stock
+        request = 1 L/h
+        capacity = 1 L/h
+    flow drain: this.stock -> SINK
+        request = 0.999999999999 L/h
+        capacity = 0.999999999999 L/h
+    flow meter: SOURCE -> this.count
+        request = formula(2 L/h if this.stock > 0 L else 1 L/h)
+        capacity = 3 L/h
+"""
+    if method == 'moving_declared':
+        text += """    hard = solver:
+        inputs:
+            a = yard.feed
+            b = yard.drain
+        solve_for:
+            a.actual_rate
+            b.actual_rate
+        constraints:
+            a.actual_rate == 1 L/h
+            b.actual_rate == 0.999999999999 L/h
+"""
+    if cut:
+        text += """    inspect = event():
+        after 377.25 h
+yard.inspect.start()
+"""
+    if method == 'moving_declared':
+        connect = Plan.connect
+
+        def force(plan, *args, **kwargs):
+            return [
+                replace(g, moves=True) if g.way == 'declared' else g for g in connect(plan, *args, **kwargs)
+            ]
+
+        monkeypatch.setattr(Plan, 'connect', force)
+        model = compile_text(text, UNITS)
+    else:
+        model = use_method(text, method, monkeypatch, 'feed')
+    oracle, error = run_of(model.program, model.configuration)
+    assert error is None
+    times = (999, 1000, 1001, 2000)
+    expected = [999, 1000, 1002, 3000]
+    assert [value_at(oracle, model.program, Key('yard', ('count',)), t) for t in times] == expected
+    plan = Plan.of(model.program, model.configuration)
+    if cut:
+        stop = Run(plan, (Breakpoint('yard.inspect.step[0]'),)).run()
+        assert isinstance(stop, Checkpoint) and stop.stop.t == 377.25
+        machine = Run.restored(Plan.of(model.program, model.configuration), loads(dumps(stop)))
+        record = machine.resume()
+    else:
+        machine = Run(plan)
+        record = machine.run()
+    assert record.failure is None and record.end == 2000
+    level, counted, rates = read(
+        record, model.program, ['yard.stock', 'yard.count', 'yard.meter.actual_rate'], times
+    )
+    assert (rates.values[0], *rates.values[2:]) == pytest.approx((1, 2, 2))
+    # The clock float can be on either side of the numerically located edge;
+    # a fit across both sides must not invent a third allocated rate.
+    assert rates.values[1] in (1, 2)
+    assert counted.values == pytest.approx(expected, rel=2e-9)
+    giver = machine.ways.instance_of('yard.feed')
+    incoming, outgoing = (giver.transferred('yard.' + name, 2000) for name in ('feed', 'drain'))
+    assert incoming - outgoing == machine.stock_balance('yard.stock', 2000)
+    assert level.values[-1] == float(incoming - outgoing)
+    assert float(incoming) == pytest.approx(2000, rel=0, abs=1e-10)
+    assert float(outgoing) == pytest.approx(2000 - 2e-9, rel=0, abs=1e-10)

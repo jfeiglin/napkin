@@ -1025,7 +1025,12 @@ def _carried(run, follow=None):
         for c in held:
             speed = -net[c] if net[c].sign_after() < 0 else net[c]
             if not _departs(speed, traffic[c]):
-                view.held_drifts.add(c)
+                direction = net[c].sign_after()
+                for bound in view.bounds[c]:
+                    if run.on_stock_target(c, view.cells[c], bound):
+                        edge = run.stock_band_edge(c, bound, direction)
+                        if ((levels[c] - edge) * direction).sign_after() < 0:
+                            view.held_drifts.add(c)
     return levels, rates, moving, follow
 
 
@@ -1066,6 +1071,14 @@ def motion(run):
             if bound is None:
                 continue
             gap = p - bound
+            if cell in view.held_drifts and run.on_stock_target(cell, view.cells[cell], bound):
+                # An accumulated physical net can end this allocation regime even
+                # though no single instantaneous rate was large enough to release it.
+                for direction in (-1, 1):
+                    edge = run.stock_band_edge(cell, bound, direction)
+                    reached = (p - edge).first_root()
+                    if reached is not None:
+                        stops.append(reached)
             if gap.c[0] == 0 and gap.sign_after() == outward:
                 raise NotCovered(
                     f'{label(cell)} would leave its range: a rate that moves while its store is on a bound'

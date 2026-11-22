@@ -430,7 +430,16 @@ class Limit:
 
 
 def radau(
-    fun, interval, initial, roots=None, check=None, moment=Numerics.crossing, leg_rates=None, **options
+    fun,
+    interval,
+    initial,
+    roots=None,
+    check=None,
+    moment=Numerics.crossing,
+    leg_rates=None,
+    held_comparisons=None,
+    comparison_factor=None,
+    **options,
 ):
     """`solve_ivp(fun, interval, initial, method='Radau', dense_output=True, events=...)` for roots
     that each end the integration.
@@ -489,6 +498,11 @@ def radau(
         sol = solver.dense_output()
         if capture is not None:
             capture.finish(sol)
+        if held_comparisons:
+            exits = exits_of_held_comparisons(held_comparisons, comparison_factor, sol, t_old, t)
+            change = min((at for at, _ in exits), default=None)
+            if change is not None:
+                t, y, status = change, sol(change), 0
         ended = None  # (the time, the root) of the first root inside the step
         if check is not None and not t - t_old > check:
             # A step of the check interval at most is read at its end, as each step was before.
@@ -1013,7 +1027,7 @@ def starting_sides(system, run, field):
     def reversal(name):
         raise SimulationError(f'chattering at {run.time:g} h: rates switch back and forth at {name}')
 
-    run.switches, run.clock, _ = far_sides(
+    run.switches, run.clock, _, run.held_comparisons = far_sides(
         switching_surfaces(s),
         s.analysis['switch_layers'],
         run.time,
@@ -1025,6 +1039,7 @@ def starting_sides(system, run, field):
         lambda t, y: field.rates(t, y, allocation=True),
         field.choose,
         s.units.comparisons,
+        physical=field.rates,
         held=lambda i: (i, 'min') in run.active_bounds or (i, 'max') in run.active_bounds,
         reversal=reversal,
         contacted=run.contacted,
@@ -1081,6 +1096,7 @@ def far_sides(
     *,
     held,
     reversal,
+    physical,
     contacted=(),
     consumed=(),
     clocks=None,
@@ -1090,7 +1106,7 @@ def far_sides(
     install the same branches; only their evaluation of rates and operands differs."""
     if not surfaces:
         choose({})
-        return (), None, {}
+        return (), None, {}, None
     side = side_at(t, y)
     if clocks is None:
         clocks = clock_sides(surfaces, t, side, moving, consumed)
@@ -1098,6 +1114,7 @@ def far_sides(
     clock, _, clock_branches = clocks
     at = t if clock is None else clock[2]  # every store crosses under the rates after the clock switches
     switches, derivative = [], None
+    watched = band_edges = None
     choose(clock_branches)
     for a, b in surfaces:
         for here_node, other in ((a, b), (b, a)):
@@ -1109,13 +1126,30 @@ def far_sides(
                 limit = side(other)
             except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
                 continue
-            here = float(y[place[here_node.name]])
-            if not math.isfinite(limit) or (here != limit and (a, b) not in contacted):
+            if not math.isfinite(limit):
+                continue
+            i = place[here_node.name]
+            here = float(y[i])
+            if limit in (lower[i], upper[i]) and held(i):
+                # While the stock stays in its band a booked residual cannot choose a
+                # departure. Exactly on the band's edge the physical direction decides
+                # whether the next open interval is still inside it.
+                gap, band = comparisons.gap_band(here_node, other, here, limit, side)
+                if abs(gap) <= band:
+                    # These time-steppers fit a dense accepted segment. Its incoming
+                    # piece must end before an otherwise stationary comparison switches.
+                    if watched is None:
+                        watched = set()
+                    watched.add((i, limit, comparisons.band_floor(here_node, other, side)))
+                if gap and abs(gap) == band:
+                    if band_edges is None:
+                        band_edges = {}
+                    band_edges[a, b] = i, gap, 1 if here_node == a else -1
+            if here != limit and (a, b) not in contacted:
                 continue
             gap, band = comparisons.gap_band(here_node, other, here, limit, side)
             if not against('eq', gap, band):
                 continue  # an edit replaced the stock or its threshold before the re-share
-            i = place[here_node.name]
             if held(i):
                 continue  # sharing keeps the store on its bound throughout the segment
             velocity = 0.0
@@ -1159,9 +1193,39 @@ def far_sides(
     signs = dict(clock_branches)
     for layer in layers:
         found = departing_branches(layer, at, departure, side_at, rates, place, moving, reached, comparisons)
+        if band_edges:
+            edges = [pair for pair in band_edges if found.get(pair) == 0]
+            if edges:
+                physical_motion = physical(at, y)
+                for pair in edges:
+                    i, gap, order = band_edges[pair]
+                    if physical_motion[i] * gap > 0:
+                        found[pair] = order if gap > 0 else -order
         signs = {**signs, **found}
         choose(signs)
-    return tuple(switches), clock, signs
+    return tuple(switches), clock, signs, watched
+
+
+def exits_of_held_comparisons(edges, factor, solution, start, end):
+    """First representable time on the far side of a held stock's comparison band.
+    This ends the numerical piece without placing the stock on its authored threshold."""
+    if not edges:
+        return
+    initial, final = solution(start), solution(end)
+    for row, target, floor in edges:
+
+        def inside(value, target=target, floor=floor):
+            return abs(value - target) <= max(floor, factor * max(abs(value), abs(target)))
+
+        if initial[row] == final[row] or not inside(initial[row]) or inside(final[row]):
+            continue
+        low, high = start, end
+        while (middle := low + 0.5 * (high - low)) not in (low, high):
+            if inside(solution(middle)[row]):
+                low = middle
+            else:
+                high = middle
+        yield high, row
 
 
 def departing_ledgers(system, run, field, at_switch, env):
@@ -1354,12 +1418,15 @@ def numerical_segment(system, run, field, context, roots, descriptors, end, repa
             else root
             for root in switches
         ]
+
         return radau(
             lambda at, state: field.rates(at, state, trial=True),
             (time, end),
             y,
             roots=Roots(s, field.branch_environment, armed, field.values_program) if armed else None,
             leg_rates=field.leg_rates,
+            held_comparisons=run.held_comparisons,
+            comparison_factor=s.faces.factor,
             check=s.max_step,
             moment=s.cfg.crossing,
             rtol=s.cfg.rtol,

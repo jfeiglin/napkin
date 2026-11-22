@@ -753,6 +753,7 @@ class Sparse(MovingTransfers, Way):
             self.reads.append(sorted(mine))
         self.evaluations = 0
         self.through_stores = (self.net.counts[0] > 0) & (self.net.counts[1] > 0)
+        self.held_comparisons = None
         self.held_levels = self.y
         self.lower_flags = np.zeros(len(stores), dtype=bool)
         self.upper_flags = np.zeros(len(stores), dtype=bool)
@@ -1071,7 +1072,7 @@ class Sparse(MovingTransfers, Way):
         def reversal(name):
             raise SimulationError(self._failed(self.t, f'opposing rates on the two sides of {name}'))
 
-        self.sides, self.clock, self.signs = integrate.far_sides(
+        self.sides, self.clock, self.signs, self.held_comparisons = integrate.far_sides(
             self.surfaces,
             self.switch_layers,
             self.t,
@@ -1083,6 +1084,7 @@ class Sparse(MovingTransfers, Way):
             self._branch_rates,
             self.choose,
             self.plan.units.comparisons,
+            physical=self.field,
             held=lambda i: self.lower_flags[i] or self.upper_flags[i],
             reversal=reversal,
             contacted=self.contacted,
@@ -1420,6 +1422,11 @@ class Sparse(MovingTransfers, Way):
             at = self._switch(solution, start, end, name, select)
             if at is not None:
                 events.append((at, name, 'key'))
+        if self.held_comparisons:
+            for at, row in integrate.exits_of_held_comparisons(
+                self.held_comparisons, self.faces.factor, solution, start, end
+            ):
+                events.append((at, row, 'release'))
         events.extend(self._turns(solution, start, end))
         self.contacts = events
         ended = bool(events) or solver.status != 'running'

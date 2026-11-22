@@ -1466,6 +1466,7 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
                 'step, and stops here: read values that hold between moments, or split the set'
             )
         self.time = self.t0
+        self.held_comparisons = None
         self.low, self.high = self.faces.flags(self.y)
         self.pending = self.prefix = None
         self.snapped = False  # wait at the moment until the other ways have arrived
@@ -1553,6 +1554,7 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
     def _select(self, t, contacted):
         """Install the shared outgoing branches using the solver's physical velocity."""
         region = self.region
+        self.held_comparisons = None
         if not region.surfaces:
             return
         self.former.region = region
@@ -1568,7 +1570,7 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
         def reversal(name):
             raise SimulationError(f'chattering at {t:g} h: rates switch back and forth at {name}')
 
-        integrate.far_sides(
+        _, _, _, self.held_comparisons = integrate.far_sides(
             region.surfaces,
             self.switch_layers,
             t,
@@ -1580,6 +1582,7 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
             self._branch_rates,
             choose,
             self.plan.units.comparisons,
+            physical=self._derivative,
             held=lambda i: self.low[i] or self.high[i],
             reversal=reversal,
             contacted=contacted,
@@ -1853,6 +1856,11 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
                     continue  # a free store resting exactly on its bound
             at = start if gap(start) >= 0 else integrate.crossing_time(gap, start, end)
             found.append((at, name, kind))
+        if self.held_comparisons:
+            for at, row in integrate.exits_of_held_comparisons(
+                self.held_comparisons, self.faces.factor, solution, start, end
+            ):
+                found.append((at, self.stores[row], 'release'))
         found.extend(self._crossings(solution, start, end))
         return sorted(found, key=lambda event: event[0])
 
