@@ -75,3 +75,29 @@ def test_invalid_member_reads_are_refused_before_selection(spelling, lookup):
         text()
     with pytest.raises(ProgramError):
         builder()
+
+
+def test_fixed_read_initializes_a_member_link():
+    text = (
+        BASE
+        + """Reader:
+    neighbor: Entry
+reader: Reader
+    neighbor = Entry.instances.at(1)
+observed = formula(reader.neighbor.amount)
+"""
+    )
+    source = compile_text(text, UNITS).program
+    builder = b.Builder(UNITS)
+    entry = builder.template('Entry', b.input_('rank', '', 2), b.value('amount', 'L', 1))
+    for name in ('first', 'middle', 'last'):
+        builder.member(entry, name)
+    reader = builder.template('Reader', b.link('neighbor', 'Entry'))
+    builder.member(reader, 'reader', neighbor=entry.instances.at(1))
+    builder.root(
+        b.value('cursor', '', 1), b.value('observed', 'L', b.formula(b.named('reader').neighbor.amount))
+    )
+    built = builder.finish()
+    for program in (source, built):
+        assert program.template('Reader').members[0].links == (('neighbor', 1),)
+    assert program_bytes(source) == program_bytes(built)
