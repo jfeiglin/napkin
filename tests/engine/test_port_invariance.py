@@ -19,6 +19,8 @@ from tests.engine.comparison_band_cases import check_comparison_band
 from tests.engine.port_cases import HORIZON, Case, Spelling, builder_program, text_program
 from tests.engine.stage_broadcast_cases import check_broadcast_stage
 from tests.engine.stage_read_cases import check_scalar_stage
+from tests.engine.stock_balance_cases import check_stock_balance
+from tests.engine.stock_edit_cases import check_stock_edit
 from tests.engine.switch_selection_cases import check_switch_selection
 from tests.engine.switch_side_cases import check_switch_side
 from tests.reference.evaluate import label
@@ -49,6 +51,9 @@ TRANSFORMS = (
     'switch_sparse',
     'switch_declared',
     'switch_selection',
+    'stock_inventory',
+    'stock_capacity',
+    'stock_edit',
 )
 GUARD = 'plant.observe.step[0]'
 
@@ -310,6 +315,12 @@ def plant_baseline(seed):
 
 
 def check_transform(seed, name, record_property):
+    if name == 'stock_edit':
+        check_stock_edit(seed)
+        return
+    if name.startswith('stock_'):
+        check_stock_balance(seed, name.removeprefix('stock_'))
+        return
     if name == 'switch_selection':
         check_switch_selection(seed)
         return
