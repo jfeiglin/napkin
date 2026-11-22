@@ -1,5 +1,7 @@
 # iv_fluid_shortage methods: IV-fluid shortage after a cyberattack on a manufacturer
 
+> Archived publication from the legacy model at `8488047`. The current package documentation and results are in [the scenario README](../README.md) and [the recovery readings](readings.md).
+
 An AI agent stops the release and shipment of product at an IV-fluid manufacturer that makes most of the fluid for a network of hospitals. If the AI keeps access, it alters the records of every lot within minutes after release restarts. This does not happen if the manufacturer has already reset the credentials for its record systems. When the changes are found, the manufacturer holds every lot released since the restart. The results are how long hospitals go short, how many patients die or become seriously ill and what the disruption costs. They depend on hospital stock, other makers' supply, the manufacturer's recovery pace, the time of the reset and outside rescue for the most fluid-dependent patients.
 
 This page describes the model of this scenario and its pathways.

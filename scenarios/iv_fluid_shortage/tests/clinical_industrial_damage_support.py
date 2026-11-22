@@ -1,26 +1,23 @@
-"""Independent clinical, toxic-load and resource accounting for restored clinical and industrial damage.
+"""Public observations for the IV-fluid recovery tests."""
 
-Expected values use fixed reference mathematics and math.erf, independently of
-production expressions, source adapters, trajectories and presentation builders.
-"""
+import napkin
+from tests.helpers import catalogue_model, catalogue_study
 
-from napkin.engine import edits_for, evaluate_study
-from scenarios.tests.sources import response_of
-from tests.helpers import catalogue_model
+SCENARIO = 'iv_fluid_shortage'
 
 
-def model(sid):
-    return catalogue_model(sid)
+def model():
+    return catalogue_model(SCENARIO)
 
 
-def run(sid, name='subpar', **edits):
-    """The study under an edit body (`set`, `options`, ...) and the trajectory of one run."""
-    compiled = model(sid)
-    result = evaluate_study(compiled, edits_for(compiled, edits))
-    assert result.admissible, [d for d in result.diagnostics if d.get('severity') == 'error']
-    return result, result.runs[name]['trajectory']
+def record(run='subpar', **values):
+    edits = {'runs': {run: values}} if values else None
+    return catalogue_study(SCENARIO, edits, runs=[run])[run]
 
 
-def subpar_response(sid):
-    """The defender response of the run `subpar`."""
-    return response_of(model(sid), 'subpar')
+def readings(record, keys, hours):
+    return {row.path: row.values for row in napkin.read(record, model().program, keys, hours)}
+
+
+def starts(record):
+    return {entry.owner.split('#')[0]: entry.t for entry in record.entries('start')}

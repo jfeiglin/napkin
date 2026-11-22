@@ -1,0 +1,16 @@
+[entities]
+"deliveries" = "operator"
+"high_risk_patients" = "community"
+"hospitals" = "responder"
+"manufacturer" = "operator"
+"other_care_reserve" = "environment"
+"other_makers" = "environment"
+"records" = "operator"
+"release_systems" = "operator"
+"release_team" = "operator"
+"resuscitation_patients" = "community"
+"resuscitation_reserve" = "environment"
+
+[events]
+"manufacturer.stops_shipping" = "environment"
+"manufacturer.study_ends" = "environment"

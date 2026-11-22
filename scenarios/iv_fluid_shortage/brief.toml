@@ -1,15 +1,10 @@
-# The brief compares the two default runs on the first two totals here that are not harms: the days without
-# fluid for other care, and the release work that the attacker's changes add.
 show = ["high_risk_patients.deaths", "high_risk_patients.casualties", "loss_bn",
     "other_care_reserve.shortage_days", "release_work_done", "resuscitation_reserve.deficit",
     "other_care_reserve.deficit", "fluid_sent_elsewhere", "procedure_loss", "people_needing_courses",
     "resuscitation_patients.unserved", "timely_courses", "manufacturer.hours_out"]
 # The inputs that the brief lists.
-drivers = ["hospitals.days_on_hand", "release_team.pace", "manufacturer.foothold_removal_time",
+drivers = ["hospitals.days_on_hand", "release_team.pace", "manufacturer.containment_time",
     "manufacturer.reset_delay", "release_team.records_work", "manufacturer.time_to_find",
-    "release_team.product_work", "hospitals.rescue_capacity", "attacker.reaction_time"]
+    "release_team.product_work", "hospitals.rescue_capacity", "records.released_lot"]
 featured = ["subpar_persistent", "subpar_persistent_human"]
-# The name of the attack on the pages, and the group of options that holds the responses of the
-# defenders.
-attack = "IT ransomware that stops product release and shipment at a fluid manufacturer"
 choice_group = "Response"
