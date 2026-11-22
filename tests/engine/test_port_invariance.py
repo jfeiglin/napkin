@@ -35,6 +35,7 @@ from tests.engine.stage_broadcast_cases import check_broadcast_stage
 from tests.engine.stage_read_cases import check_scalar_stage
 from tests.engine.stock_balance_cases import check_stock_balance
 from tests.engine.stock_edit_cases import check_stock_edit
+from tests.engine.study_request_cases import check_study_request
 from tests.engine.switch_selection_cases import check_switch_selection
 from tests.engine.switch_side_cases import check_switch_side
 from tests.reference.evaluate import label
@@ -44,6 +45,7 @@ CONFIG = Configuration(Request(HORIZON))
 # `roundoff` moves every ledger read that a decision makes two places each way
 # (`stocks.LEDGER_PROBE`): a decision that changes under it depends on the platform.
 OWNER_CHECKS = {
+    'study_request': check_study_request,
     'collection_scope': check_collection_scope,
     'authoring_parity': check_authoring_parity,
     'collection_kind': check_collection_kind,

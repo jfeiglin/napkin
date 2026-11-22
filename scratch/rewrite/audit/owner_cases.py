@@ -30,11 +30,13 @@ from tests.engine import (
     stage_read_cases,
     stock_balance_cases,
     stock_edit_cases,
+    study_request_cases,
     switch_selection_cases,
     switch_side_cases,
 )
 
 FAMILIES = {
+    'p5/request': study_request_cases.check_study_request,
     's1/scalar': stage_read_cases.check_scalar_stage,
     's1/selection': lambda seed: stage_broadcast_cases.check_broadcast_stage(seed, 'selection'),
     's1/ordering': lambda seed: stage_broadcast_cases.check_broadcast_stage(seed, 'ordering'),
@@ -95,6 +97,7 @@ def run_cases(ids, destination):
         for module in (stage_broadcast_cases, stage_read_cases, comparison_band_cases, authored_number_cases)
     }
     dedicated = {
+        'p5/request': study_request_cases,
         's3/component': switch_side_cases,
         's3/sparse': switch_side_cases,
         's3/declared': switch_side_cases,
