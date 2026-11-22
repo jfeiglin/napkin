@@ -600,9 +600,11 @@ relief: @min_of_capacities
         "Emergency deliveries"
     supply: Mgal = this.approved_supply * (100 days) in [0,] scale 100 Mgal @counts_stocks_flows
         "Approved emergency water not yet delivered"
-        outflow.capacity = formula(this.throughput) @priority_basis
+        outflow.capacity = formula(this.available) @priority_basis
             "Hospitals get emergency water first, then the households, each in proportion to their need."
-    readonly throughput: formula(Mgal/h) = formula(min(this.approved_supply, this.transport, this.receiving, this.staffing) if this.state == ACTIVE else 0 Mgal/h) @min_of_capacities
+    readonly available: formula(Mgal/h) = formula(min(this.approved_supply, this.transport, this.receiving, this.staffing) if this.state == ACTIVE else 0 Mgal/h) @min_of_capacities
+        "Total emergency water dispatch capacity of the region."
+    readonly throughput: formula(Mgal/h) = formula(this.available - support.reserved) @support_exercise
         "Emergency water that can be delivered an hour"
     status ok when this.state == ACTIVE
         "Emergency water deliveries under way"
@@ -721,8 +723,9 @@ Hospitals: @reserve_basis
         "Reserve water is in the tanks or used."
         @counts_stocks_flows
 
-assert relief.supply + sum(Hospitals.instances.trucked) + sum(Households.instances.received) in [relief.approved_supply * (100 days) - 0.001 Mgal, relief.approved_supply * (100 days) + 0.001 Mgal] @counts_stocks_flows
-    "Emergency water is still to deliver, trucked to hospitals or collected by households."
+assert relief.supply + support.delivered + sum(Hospitals.instances.trucked) + sum(Households.instances.received) in [relief.approved_supply * (100 days) - 0.001 Mgal, relief.approved_supply * (100 days) + 0.001 Mgal] @counts_stocks_flows
+    "Emergency water is still to deliver, trucked to hospitals, collected by households or delivered on
+        supplemental requests."
 
 assert sum(Utility.instances.reach_count) >= 1 @reach_modes
     "The attack reaches at least one system of the place."
@@ -879,8 +882,6 @@ notes:
         people_beyond_week:
             label: "People without service for more than a week without a break"
             reason: "The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero." @not_estimated_cohorts
-    comparisons:
-        delayed_none: early
 
 record service_incident: assumption "The initial reported outage starts the response clock. A subsequent field
     report specifies the observed additional repair work in work hours."

@@ -32,7 +32,7 @@ hospital = ["Hospitals"]
 [role]
 operator = ["incident", "Utility", "Tie"]
 
-responder = ["responders", "CrewPool", "relief"]
+responder = ["responders", "CrewPool", "relief", "support"]
 environment = ["parts"]
 community = ["Households"]
 clinician = ["Hospitals"]

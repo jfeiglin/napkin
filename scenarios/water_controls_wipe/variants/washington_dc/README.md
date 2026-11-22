@@ -1,9 +1,9 @@
 # water_controls_wipe:washington_dc
 
-[Recovery readings](results/readings.md) · [Historical scenario brief](results/brief.md) · [Model](model.scn) · [Historical methods](results/methods.md) ·
+[Recovery readings](results/readings.md) · [Scenario brief](results/brief.md) · [Model](model.scn) · [Historical methods](results/methods.md) ·
 [The `water_controls_wipe` package](../../README.md)
 
-This variant follows water service and recovery in Washington, DC. The initial controls outage is an incident input. The model computes storage, deliveries, crew queues and advisory clearance over time. The recovery readings come from this model. The historical brief and methods describe revision `8488047`.
+This variant follows water service and recovery in Washington, DC. The initial controls outage is an incident input. The model computes storage, deliveries, crew queues and advisory clearance over time. The readings and comparison brief come from the current model. The methods page describes revision `8488047`.
 
 ## The place
 
@@ -35,6 +35,8 @@ its staffing levels relative to Delayed. Their respective PERT ranges are 20–8
 hours per hour under Delayed. The manual share and repair workload use the same draws across
 response options. The historical spread compared two Delayed runs.
 
+The following smoke check uses two draws from seed 0.
+
 ```sh
 napkin sample scenarios/water_controls_wipe/variants/washington_dc \
   --run delayed_none --edits scenarios/water_controls_wipe/variants/washington_dc/spreads/uncertainty.json \
@@ -45,3 +47,11 @@ Repeat with `--run early` to compare responses on matched draws. The JSON edit s
 distribution-valued inputs. The model draws them when `uncertainty.enabled` is true. Ordinary
 numeric edits can still set `controls_crew.capacity`, `field_crew.capacity`,
 `wssc_water.manual_share` and `wssc_water.controls_load`.
+
+
+The authored `uncertainty` study uses 50 draws per run at seed 0 and compares `delayed_none` against
+`early` at matched sample seeds. The receipt records the mean and empirical 5th and 95th percentiles of their differences. [Study definition](brief.toml) · [Sampling inputs](spreads/uncertainty.json) · [Paired results](results/paired-spreads.json)
+
+```sh
+python -m tools.publish --check --only dossier --sample-spreads --scenario water_controls_wipe:washington_dc --jobs 2
+```

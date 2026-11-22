@@ -19,6 +19,14 @@ const areaMetrics = [
   ['unserved_volume', 'Water not supplied'],
   ['hospital_hours_constrained', 'Hospital service constraints'],
   ['economic_loss', 'Economic loss'],
+  ['support.accepted', 'Regional support batches received'],
+  ['support.filtered', 'Batch notices filtered'],
+  ['relief.throughput', 'Dispatch capacity for households and hospitals'],
+  ['support.reserved', 'Dispatch capacity reserved for regional casework'],
+  ['emergency_water_deficit', 'Unmet household emergency water'],
+  ['support.waiting', 'Outstanding regional dispatch work'],
+  ['support.completed', 'Completed regional dispatch work'],
+  ['support.delivered', 'Supplemental emergency water dispatched'],
 ];
 
 function LocationMap({

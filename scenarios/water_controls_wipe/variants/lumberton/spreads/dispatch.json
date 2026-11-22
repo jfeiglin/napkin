@@ -1,0 +1,9 @@
+{
+  "schema_version": "0.0.1",
+  "model_hash": "607b9383e6480d1bff977ddbc6b274b70fffeaa8e30dd2a18c523d44adc81ba3",
+  "set": {
+    "support.sampled": true,
+    "support.interval_factor": "uniform(0.8, 1.2)",
+    "support.severity_factor": "uniform(0.75, 1.25)"
+  }
+}

@@ -1,39 +1,5 @@
 [
-  [
-    [
-      "early_kept",
-      "standard_kept",
-      "delayed_kept"
-    ],
-    [
-      "person_days_lost",
-      "unserved_volume",
-      "rework_caused",
-      "economic_loss"
-    ]
-  ],
-  [
-    [
-      "delayed_kept_human",
-      "delayed_kept"
-    ],
-    [
-      "person_days_lost",
-      "unserved_volume",
-      "rework_caused",
-      "economic_loss"
-    ]
-  ],
-  [
-    [
-      "delayed_none",
-      "delayed_kept"
-    ],
-    [
-      "person_days_lost",
-      "unserved_volume",
-      "rework_caused",
-      "economic_loss"
-    ]
-  ]
+  [["early", "standard", "delayed_none"], ["person_days_lost", "unserved_volume", "rework_caused", "economic_loss"]],
+  [["support_single", "support_daily", "support_frequent"], ["support.accepted"]],
+  [["support_frequent_rapid", "support_frequent"], ["support.accepted"]]
 ]

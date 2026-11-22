@@ -21,12 +21,24 @@ def test_each_authored_service_area_system_and_response_is_available(sid):
     assert {s['id'] for s in description['systems']} == set(family.systems(sid))
     assert len(description['systems']) == len(family.systems(sid))
     assert all(s['name'] for s in description['systems'])
-    assert [r['name'] for r in description['runs']] == [
+    assert [r['name'] for r in description['runs'][:3]] == [
         'Early response',
         'Standard response',
         'Delayed response',
     ]
-    assert [r['id'] for r in description['runs']] == ['early', 'standard', 'delayed_none']
+    assert [r['id'] for r in description['runs']] == [
+        'early',
+        'standard',
+        'delayed_none',
+        'support_single',
+        'support_single_rapid',
+        'support_daily',
+        'support_daily_rapid',
+        'support_frequent',
+        'support_frequent_rapid',
+        'support_recovery',
+        'support_recovery_rapid',
+    ]
     assert description['featured'] in [r.name for r in model.declared.runs]
 
 

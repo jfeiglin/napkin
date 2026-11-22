@@ -18,6 +18,14 @@ AREA = (
     'unserved_volume',
     'hospital_hours_constrained',
     'economic_loss',
+    'support.accepted',
+    'support.filtered',
+    'relief.throughput',
+    'support.reserved',
+    'emergency_water_deficit',
+    'support.waiting',
+    'support.completed',
+    'support.delivered',
 )
 UTILITY = ('service', 'delivered')
 INTERVAL = 6  # the overview samples; a request for a particular hour reads the Record at that exact time
@@ -40,7 +48,10 @@ def describe(model, name):
     runs = [
         {'id': run.name, 'name': run.text or ' · '.join(run.options) or run.name}
         for run in model.declared.runs
-        if all(model.declared.option(opt).group == brief.choice_group for opt in run.options)
+        if all(
+            model.declared.option(opt).group in (brief.choice_group, 'Regional support workload')
+            for opt in run.options
+        )
     ]
     run_names = [r['id'] for r in runs]
     featured = next((name for name in brief.featured or () if name in run_names), run_names[0])
