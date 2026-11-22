@@ -94,18 +94,24 @@ class Poly:
             root = -c[0] / c[1]
             return root if root > 0 else None
         if len(c) == 3:
-            disc = c[1] * c[1] - 4 * c[2] * c[0]
-            if disc < 0:
-                return None
-            root = _sqrt(disc)
-            if root is None:  # kept as a float: only an error if it turns out to be the next moment
-                d = float(disc) ** 0.5
-                both = ((-float(c[1]) - d) / (2 * float(c[2])), (-float(c[1]) + d) / (2 * float(c[2])))
-                later = [r for r in both if r > 0]
-                return Irrational(min(later)) if later else None
-            later = [r for r in ((-c[1] - root) / (2 * c[2]), (-c[1] + root) / (2 * c[2])) if r > 0]
-            return min(later) if later else None
+            return next((r for r in _quadratic_roots(*c) if r > 0), None)
         raise NotCovered('a level that is a polynomial of degree three or more in time')
+
+    def positive_times(self):
+        """Open intervals of positive values on the whole time axis, with None for infinity."""
+        c = self.c
+        if self.constant:
+            return [(None, None)] if c[0] > 0 else []
+        if len(c) == 2:
+            edge = -c[0] / c[1]
+            return [(edge, None)] if c[1] > 0 else [(None, edge)]
+        if len(c) > 3:
+            raise NotCovered('a switch margin that is a polynomial of degree three or more in time')
+        roots = _quadratic_roots(*c)
+        if not roots:
+            return [(None, None)] if c[2] > 0 else []
+        low, high = roots
+        return [(None, low), (high, None)] if c[2] > 0 else [(low, high)]
 
 
 def poly(x):
@@ -118,10 +124,39 @@ def plain(x):
     return x.c[0] if isinstance(x, Poly) and x.constant else x
 
 
+def first_positive_together(margins):
+    """The start of the first open interval after zero on which every margin is positive."""
+    intervals = [(Fraction(0), None)]
+    for margin in margins:
+        kept = []
+        for low, high in margin.positive_times():
+            for begin, end in intervals:
+                left = begin if low is None else max(begin, low)
+                right = high if end is None else end if high is None else min(end, high)
+                if right is None or left < right:
+                    kept.append((left, right))
+        if not kept:
+            return None
+        intervals = kept
+    return min(begin for begin, _ in intervals)
+
+
 def _sqrt(q):
     """The exact square root of a nonnegative fraction, or None when it is not rational."""
     n, d = isqrt(q.numerator), isqrt(q.denominator)
     return Fraction(n, d) if n * n == q.numerator and d * d == q.denominator else None
+
+
+def _quadratic_roots(constant, linear, square):
+    disc = linear**2 - 4 * square * constant
+    if disc < 0:
+        return ()
+    root = _sqrt(disc)
+    if root is None:
+        # An irrational root is an error only if the run needs to advance to it.
+        approx = float(disc) ** 0.5
+        return sorted(Irrational((-float(linear) + sign * approx) / float(2 * square)) for sign in (-1, 1))
+    return sorted((-linear + sign * root) / (2 * square) for sign in (-1, 1))
 
 
 class Irrational:

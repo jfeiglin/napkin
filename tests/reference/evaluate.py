@@ -23,7 +23,7 @@ from types import SimpleNamespace
 from .errors import Diagnostic, NotCovered, RunFailed
 from .model import E, Unknown, scale_of, show
 from .order import Lin, Rel, relation
-from .poly import Poly, plain, poly
+from .poly import Poly, first_positive_together, plain, poly
 
 # --- what an expression can name while a model runs -------------------------------------------------
 
@@ -808,6 +808,52 @@ class Ev:
         )
         return max(self.run.config.rtol, self.run.config.atol_factor) * max(floor, abs(x), abs(y))
 
+    def order(self, x, y, operands):
+        """The relative order of two keys or comparison operands, including a moving tie."""
+        a, b = poly(x), poly(y)
+        difference = plain(a - b)
+        outgoing = self.outgoing(difference, operands)
+        if outgoing is not None:
+            return self.sign(difference, operands)
+        initial = a.c[0] - b.c[0]
+        width = self.band(*operands, a.c[0], b.c[0])
+        if abs(initial) > width:
+            return self.sign(difference, operands)
+        if a.c == b.c or (a.constant and b.constant):
+            return 0
+        factor = max(self.run.config.rtol, self.run.config.atol_factor)
+        if not initial:
+            # At physical equality consider the first order at which the motions differ.
+            # Resolve a real departure immediately, independently of the requested horizon.
+            # Nearly identical moving operands can remain tied up to a later band exit.
+            for k, delta in enumerate((a - b).c[1:], 1):
+                if delta:
+                    da = a.c[k] if k < len(a.c) else 0
+                    db = b.c[k] if k < len(b.c) else 0
+                    if abs(delta) > factor * max(abs(da), abs(db)):
+                        return self.sign(difference, operands)
+                    break
+
+        # An exit is an open interval on which signed gap exceeds every part of
+        # factor * max(floor, abs(a), abs(b)). A zero inside that band is no event.
+        floor_width = self.band(*operands, 0, 0)
+        exits = []
+        for side in (-1, 1):
+            gap = (a - b) * side
+            bounds = (floor_width, a * factor, -a * factor, b * factor, -b * factor)
+            edge = first_positive_together(gap - bound for bound in bounds)
+            if edge is not None:
+                exits.append(edge)
+        if not exits:
+            return 0
+        at = min(exits)
+        if not at:
+            # The trajectory is already leaving its edge. Locate its next physical
+            # crossing so a later scheduled moment can group that contact.
+            return self.sign(difference, operands)
+        self.shared.stops.append(at)
+        return 0
+
     def compare(self, sym, x, y, texts):
         """A comparison: a relation of a solve, a yes or no, or the sign just after a moment."""
         if isinstance(x, Lin) or isinstance(y, Lin):
@@ -828,22 +874,15 @@ class Ev:
                     f'a strict threshold on a value that changes continuously: {show(texts[0])} {sym} '
                     f'{show(texts[1])} has no first instant; use an inclusive threshold'
                 )
-        if isinstance(d, Poly):
-            s = self.sign(d, texts)  # locate the physical root and use its outgoing sign
-            if self.shared.rearming and d.c[0]:
-                # At an independent moment strictly inside the band, the comparison
-                # stays equal immediately afterwards. Its nonzero physical gap
-                # alone cannot rearm a trigger before the actual crossing.
-                a = x.c[0] if isinstance(x, Poly) else x
-                b = y.c[0] if isinstance(y, Poly) else y
-                if abs(d.c[0]) < self.band(*texts, a, b):
-                    s = 0
-        else:
-            a = x(0) if isinstance(x, Poly) else x
-            b = y(0) if isinstance(y, Poly) else y
-            s = self.outgoing(d, texts)
-            if s is None:
-                s = 0 if abs(d) <= self.band(*texts, a, b) else self.sign(d)
+        s = self.order(x, y, texts)
+        if isinstance(d, Poly) and self.shared.rearming and d.c[0]:
+            # At an independent moment strictly inside the band, the comparison
+            # stays equal immediately afterwards. Its nonzero physical gap
+            # alone cannot rearm a trigger before the actual crossing.
+            a = x.c[0] if isinstance(x, Poly) else x
+            b = y.c[0] if isinstance(y, Poly) else y
+            if abs(d.c[0]) < self.band(*texts, a, b):
+                s = 0
         return {'==': s == 0, '!=': s != 0, '<=': s <= 0, '>=': s >= 0, '<': s < 0, '>': s > 0}[sym]
 
     def logic(self, sym, a, b):
@@ -991,15 +1030,14 @@ class Ev:
             x = self.num(args[0])
             found = None
             for item in c.items:  # the greatest key at or below x; of equal keys the later-created member
-                gap = poly(x) - item[0] if isinstance(x, Poly) else x - item[0]
                 key = self.attr(item[1], c.key_field) if c.key_field else item[0]
-                if self.sign(gap, (args[0], key)) < 0:
+                if self.order(x, item[0], (args[0], key)) < 0:
                     continue
                 if found is None:
                     found = item
                     continue
                 previous = self.attr(found[1], c.key_field) if c.key_field else found[0]
-                order = self.sign(item[0] - found[0], (key, previous))
+                order = self.order(item[0], found[0], (key, previous))
                 if order > 0 or (order == 0 and item[1].number > found[1].number):
                     found = item
             if found is None:
