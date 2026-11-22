@@ -19,20 +19,21 @@ w:
     input meter: L/h = 4 L/h @meter
     input limit: L/h = 5 L/h @limit
     stock: L = 20 L
-    flow tap: this.stock -> SINK
+    flow tap: this.stock -> SINK @calibration
         request = this.meter
         capacity = this.limit
     reading = formula(this.tap.request)
+record calibration: source "Flow calibration."
 record meter: source "Request meter."
 record limit: source "Maximum."
 """,
         {'h': {'time': 1}, 'L': {'volume': 1}},
     )
     expected = {
-        'w.tap.request': {'meter'},
-        'w.reading': {'meter'},
-        'w.tap.capacity': {'limit'},
-        'w.tap.actual_rate': {'meter', 'limit'},
+        'w.tap.request': {'meter', 'calibration'},
+        'w.reading': {'meter', 'calibration'},
+        'w.tap.capacity': {'limit', 'calibration'},
+        'w.tap.actual_rate': {'meter', 'limit', 'calibration'},
     }
     program, cfg = model.program, model.configuration
     if not full:
