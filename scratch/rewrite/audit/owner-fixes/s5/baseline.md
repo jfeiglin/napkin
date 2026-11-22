@@ -10,3 +10,5 @@ At engine and reference revision `7f308d15d2813ef4d68c2fd5615d6b34aab58987`, 1,1
 | Changing filters | 273 | A threshold change affected a trigger, a waiting event, keyed selection and a flow request. All 27 no-change controls passed. The first case counted [2, 2, 2] going forward and [1, 1, 1] reading backward. The expected forward count is [2, 1, 1]. The second case delivered 6 L instead of 5 L. [Trigger and wait](trigger-and-wait.scn), [flow and lookup](flow-and-key.scn). |
 
 The reference resolved a filter’s sink and a new key’s request on the originating pump after projecting to its flow. The dedicated builder reproduction failed twice and passed the control that sets the key before projecting. [Pytest failures](reference-projected-red.log.gz).
+
+Tracing other readers of the same filter cache exposed an additional case. A flow whose filter reads a continuously filling stock tries to read the stock before its integration method is installed. Both Component and Sparse raised AttributeError on a clean export of the pinned baseline. [Two failing methods](moving-filter-red.log.gz).
