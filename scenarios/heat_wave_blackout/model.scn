@@ -1032,8 +1032,12 @@ DeviceUsers: @counts_quantity_value
         request = formula(this.h_admit * this.dark_s)
         capacity = formula(this.h_admit * this.dark_s)
     take_to_power = event(): @contact
+        unreached_share = formula(1 - outreach.reach) scale 0
         after 0 h:
-            move outreach.reach * this.dark_h from this.dark_h to this.supported
+            if unreached_share == 0:
+                move this.dark_h from this.dark_h to this.supported
+            else:
+                move outreach.reach * this.dark_h from this.dark_h to this.supported
     assert this.own_power_h + this.own_power_s + this.dark_h + this.dark_s + this.supported + this.admitted_h + this.admitted_s + this.dead in [this.population - 0.01 people, this.population + 0.01 people] @counts_quantity_value
         "Every device user is counted once, alive or dead."
 
