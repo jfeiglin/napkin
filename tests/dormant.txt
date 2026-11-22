@@ -12,7 +12,6 @@ tests/evidence/test_catalogue.py
 tests/evidence/test_scientific_spec.py
 tests/release/
 tests/engine/test_distributions_deep.py
-tests/test_examples.py
 tests/test_scenario_ownership.py
 tests/test_scenario_scope.py
 tests/test_tools_new_catalogue.py
