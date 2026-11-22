@@ -290,7 +290,9 @@ def test_an_opening_checkpoint_keeps_the_incoming_rates_that_justify_its_balance
     stopped = machine.run()
     assert isinstance(stopped, Checkpoint) and stopped.stop.t == 2
     crumb = machine.stock_balance('s1.water', 2)
-    assert 0 < crumb < Fraction(1, 10**15)
+    # The crumb is roundoff: positive, zero or negative in its last places by platform and
+    # kernel, and a level within its comparison band of zero is at zero.
+    assert abs(crumb) <= machine.comparison_band('s1.water', float(crumb), 0)
     edited = machine.edit(*edit)
     restored = Run.restored(Plan.of(program, config), loads(dumps(edited)))
     assert restored.stock_balance('s1.water', 2) == crumb
