@@ -1,242 +1,286 @@
-# cyber_learning_loop — A country's cyber attacks and the learning loop
+# AI uptake and a national cyber workforce
 
-A country splits its scarce cyber operators between surveillance and attacks, and its researchers and analysts serve both. Surveillance pays each day that it runs, but an attack pays only when the country uses it, and the use burns its flaws and tools. Attacks teach the country only when it makes many of them, and the lessons fade. The model follows the split, the flaws, the lessons and the results for 25 years while AI makes attacks cheaper. It shows when military plans start to count on cyber attacks.
+How do AI uptake, staffing and retained institutional knowledge change the capacity of surveillance and effects programs competing for a common workforce?
 
-## What happens: Slow patching · Fast AI progress
+One hypothetical national workforce from 2026 for 25 years. Capacity is expressed in baseline-equivalent staff, and spending in constant 2025 dollars.
 
-| Time since the attack | What happens |
-| --- | --- |
-| Start | The period starts in 2026, with today's split of the country's cyber experts. |
-| 365 days | The leaders assess the value of the year's attacks and set the next split. |
-| 365 days | The planners find that every plan of cyber attacks misses too often. |
-| 730 days | The leaders assess the value of the year's attacks and set the next split. |
-| 730 days | The planners find that every plan of cyber attacks misses too often. |
-| 1095 days | The leaders assess the value of the year's attacks and set the next split. |
-| 1095 days | The planners find that every plan of cyber attacks misses too often. |
-| 1460 days | The leaders assess the value of the year's attacks and set the next split. |
-| 1460 days | The planners find that every plan of cyber attacks misses too often. |
-| 1825 days | The leaders assess the value of the year's attacks and set the next split. |
-| 1825 days | The planners find that every plan of cyber attacks misses too often. |
-| 2190 days | The leaders assess the value of the year's attacks and set the next split. |
-| 2190 days | The planners find that every plan of cyber attacks misses too often. |
-| 2555 days | The leaders assess the value of the year's attacks and set the next split. |
-| 2555 days | The planners find that every plan of cyber attacks misses too often. |
-| 2920 days | The leaders assess the value of the year's attacks and set the next split. |
-| 2920 days | The planners find that every plan of cyber attacks misses too often. |
-| 3285 days | The leaders assess the value of the year's attacks and set the next split. |
-| 3285 days | The planners find that every plan of cyber attacks misses too often. |
-| 3650 days | The leaders assess the value of the year's attacks and set the next split. |
-| 3650 days | The planners find that every plan of cyber attacks misses too often. |
-| 4015 days | The leaders assess the value of the year's attacks and set the next split. |
-| 4015 days | The planners find that every plan of cyber attacks misses too often. |
-| 4380 days | The leaders assess the value of the year's attacks and set the next split. |
-| 4380 days | The planners find that every plan of cyber attacks misses too often. |
-| 4745 days | The leaders assess the value of the year's attacks and set the next split. |
-| 4745 days | The planners find that every plan of cyber attacks misses too often. |
-| 5110 days | The leaders assess the value of the year's attacks and set the next split. |
-| 5110 days | The planners find that every plan of cyber attacks misses too often. |
-| 5475 days | The leaders assess the value of the year's attacks and set the next split. |
-| 5475 days | The planners find that every plan of cyber attacks misses too often. |
-| 5840 days | The leaders assess the value of the year's attacks and set the next split. |
-| 5840 days | The planners find that a plan of cyber attacks meets its plan often enough. |
-| 6205 days | The leaders assess the value of the year's attacks and set the next split. |
-| 6205 days | The planners find that a plan of cyber attacks meets its plan often enough. |
-| 6570 days | The leaders assess the value of the year's attacks and set the next split. |
-| 6570 days | The planners find that a plan of cyber attacks meets its plan often enough. |
-| 6570 days | Military plans start to count on cyber attacks. |
-| 6935 days | The leaders assess the value of the year's attacks and set the next split. |
-| 6935 days | The planners find that a plan of cyber attacks meets its plan often enough. |
-| 7300 days | The leaders assess the value of the year's attacks and set the next split. |
-| 7300 days | The planners find that a plan of cyber attacks meets its plan often enough. |
-| 7665 days | The leaders assess the value of the year's attacks and set the next split. |
-| 7665 days | The planners find that a plan of cyber attacks meets its plan often enough. |
-| 8030 days | The leaders assess the value of the year's attacks and set the next split. |
-| 8030 days | The planners find that a plan of cyber attacks meets its plan often enough. |
-| 8395 days | The leaders assess the value of the year's attacks and set the next split. |
-| 8395 days | The planners find that a plan of cyber attacks meets its plan often enough. |
-| 8760 days | The leaders assess the value of the year's attacks and set the next split. |
-| 8760 days | The planners find that a plan of cyber attacks meets its plan often enough. |
-| 9125 days | The leaders assess the value of the year's attacks and set the next split. |
-| 9125 days | The planners find that a plan of cyber attacks meets its plan often enough. |
+Readings at 219000 h. [Run readings and evidence](readings.md).
 
-## The same operation: No AI progress
+## ai_fast against no_ai
 
-| Outcome | Slow patching · Fast AI progress | Slow patching · No AI progress |
-| --- | --- | --- |
-| Attacks made since the start | 5,290 operations | 8,880 operations |
-| Deaths | not estimated | not estimated |
-| Serious casualties, including deaths | not estimated | not estimated |
-| Economic loss | not estimated | not estimated |
+| Reading | Unit | no_ai | ai_fast | Change (run − baseline) | Change (%) |
+|---|---|---:|---:|---:|---:|
+| total_attacks | operations | 6587.12 | 7168.63 | 581.511 | 8.828 |
+| attacks_per_year | operations/year | 263.539 | 288 | 24.4613 | 9.28187 |
+| effects_program.completed | staff_years | 87828.3 | 111587 | 23758.3 | 27.0509 |
+| surveillance_program.completed | staff_years | 921692 | 1.1598e+06 | 238105 | 25.8334 |
+| effects_program.work_rate | people | 3513.85 | 4691.24 | 1177.39 | 33.5071 |
+| surveillance_program.work_rate | people | 36875.2 | 48628.9 | 11753.7 | 31.8741 |
+| leadership.effects_share | fraction | 0.087 | 0.0867546 | -0.000245381 | -0.282047 |
+| governance.track_record | fraction | 0 | 0.999088 | 0.999088 | — |
+| governance.reliance | 1 | 0 | 1 | 1 | — |
+| ai_tools.progress | fraction*fraction | 0 | 0.99807 | 0.99807 | — |
+| ai_tools.review_progress | fraction*fraction | 0 | 0.917915 | 0.917915 | — |
+| leadership.surge_experts | people | 0 | 0 | 0 | — |
+| leadership.payroll | USD2025_bn/year | 17.0247 | 17.0247 | 0 | 0 |
+| researchers.people | people*fraction | 1216.05 | 1216.05 | 0 | 0 |
+| operators.people | people | 4213.63 | 4213.63 | 0 | 0 |
+| collection_specialists.people | people | 32213.2 | 32213.2 | 0 | 0 |
+| analysts.people | people | 2892.16 | 2892.16 | 0 | 0 |
+| analysts.available | people*years/ratio/year | 2692.6 | 2891.92 | 199.323 | 7.40263 |
+| analysts.defensive_share | 1/ratio | 0.1 | 0.0333763 | -0.0666237 | -66.6237 |
+| surveillance_program.staff | people*fraction | 37008.5 | 37018.4 | 9.94653 | 0.0268764 |
+| effects_program.staff | people*fraction | 3526.54 | 3516.6 | -9.94653 | -0.282047 |
+| surveillance_program.capacity | people*years/year/fraction/fraction | 2507.3 | 4165.38 | 1658.07 | 66.1297 |
+| effects_program.capacity | people*years/year/fraction/fraction | 238.922 | 467.386 | 228.465 | 95.6233 |
+| learning.retained | ratio | 0.199169 | 0.262308 | 0.0631396 | 31.7016 |
+| defenders.hardening | ratio | 0 | 0 | 0 | — |
+| defenders.closing | ratio | 1 | 2.99614 | 1.99614 | 199.614 |
 
-### Timeline: Slow patching · No AI progress
+## ai_slow against no_ai
 
-| Time since the attack | What happens |
-| --- | --- |
-| Start | The period starts in 2026, with today's split of the country's cyber experts. |
-| 365 days | The leaders assess the value of the year's attacks and set the next split. |
-| 365 days | The planners find that every plan of cyber attacks misses too often. |
-| 730 days | The leaders assess the value of the year's attacks and set the next split. |
-| 730 days | The planners find that every plan of cyber attacks misses too often. |
-| 1095 days | The leaders assess the value of the year's attacks and set the next split. |
-| 1095 days | The planners find that every plan of cyber attacks misses too often. |
-| 1460 days | The leaders assess the value of the year's attacks and set the next split. |
-| 1460 days | The planners find that every plan of cyber attacks misses too often. |
-| 1825 days | The leaders assess the value of the year's attacks and set the next split. |
-| 1825 days | The planners find that every plan of cyber attacks misses too often. |
-| 2190 days | The leaders assess the value of the year's attacks and set the next split. |
-| 2190 days | The planners find that every plan of cyber attacks misses too often. |
-| 2555 days | The leaders assess the value of the year's attacks and set the next split. |
-| 2555 days | The planners find that every plan of cyber attacks misses too often. |
-| 2920 days | The leaders assess the value of the year's attacks and set the next split. |
-| 2920 days | The planners find that every plan of cyber attacks misses too often. |
-| 3285 days | The leaders assess the value of the year's attacks and set the next split. |
-| 3285 days | The planners find that every plan of cyber attacks misses too often. |
-| 3650 days | The leaders assess the value of the year's attacks and set the next split. |
-| 3650 days | The planners find that every plan of cyber attacks misses too often. |
-| 4015 days | The leaders assess the value of the year's attacks and set the next split. |
-| 4015 days | The planners find that every plan of cyber attacks misses too often. |
-| 4380 days | The leaders assess the value of the year's attacks and set the next split. |
-| 4380 days | The planners find that every plan of cyber attacks misses too often. |
-| 4745 days | The leaders assess the value of the year's attacks and set the next split. |
-| 4745 days | The planners find that every plan of cyber attacks misses too often. |
-| 5110 days | The leaders assess the value of the year's attacks and set the next split. |
-| 5110 days | The planners find that every plan of cyber attacks misses too often. |
-| 5475 days | The leaders assess the value of the year's attacks and set the next split. |
-| 5475 days | The planners find that every plan of cyber attacks misses too often. |
-| 5840 days | The leaders assess the value of the year's attacks and set the next split. |
-| 5840 days | The planners find that every plan of cyber attacks misses too often. |
-| 6205 days | The leaders assess the value of the year's attacks and set the next split. |
-| 6205 days | The planners find that every plan of cyber attacks misses too often. |
-| 6570 days | The leaders assess the value of the year's attacks and set the next split. |
-| 6570 days | The planners find that every plan of cyber attacks misses too often. |
-| 6935 days | The leaders assess the value of the year's attacks and set the next split. |
-| 6935 days | The planners find that every plan of cyber attacks misses too often. |
-| 7300 days | The leaders assess the value of the year's attacks and set the next split. |
-| 7300 days | The planners find that every plan of cyber attacks misses too often. |
-| 7665 days | The leaders assess the value of the year's attacks and set the next split. |
-| 7665 days | The planners find that every plan of cyber attacks misses too often. |
-| 8030 days | The leaders assess the value of the year's attacks and set the next split. |
-| 8030 days | The planners find that every plan of cyber attacks misses too often. |
-| 8395 days | The leaders assess the value of the year's attacks and set the next split. |
-| 8395 days | The planners find that every plan of cyber attacks misses too often. |
-| 8760 days | The leaders assess the value of the year's attacks and set the next split. |
-| 8760 days | The planners find that every plan of cyber attacks misses too often. |
-| 9125 days | The leaders assess the value of the year's attacks and set the next split. |
-| 9125 days | The planners find that every plan of cyber attacks misses too often. |
+| Reading | Unit | no_ai | ai_slow | Change (run − baseline) | Change (%) |
+|---|---|---:|---:|---:|---:|
+| total_attacks | operations | 6587.12 | 7139.32 | 552.201 | 8.38305 |
+| attacks_per_year | operations/year | 263.539 | 288 | 24.4613 | 9.28187 |
+| effects_program.completed | staff_years | 87828.3 | 104051 | 16222.2 | 18.4704 |
+| surveillance_program.completed | staff_years | 921692 | 1.08604e+06 | 164353 | 17.8316 |
+| effects_program.work_rate | people | 3513.85 | 4538.34 | 1024.5 | 29.1559 |
+| surveillance_program.work_rate | people | 36875.2 | 47175.7 | 10300.5 | 27.9334 |
+| leadership.effects_share | fraction | 0.087 | 0.0868147 | -0.000185287 | -0.212974 |
+| governance.track_record | fraction | 0 | 0.986876 | 0.986876 | — |
+| governance.reliance | 1 | 0 | 1 | 1 | — |
+| ai_tools.progress | fraction*fraction | 0 | 0.875486 | 0.875486 | — |
+| ai_tools.review_progress | fraction*fraction | 0 | 0.917915 | 0.917915 | — |
+| leadership.surge_experts | people | 0 | 0 | 0 | — |
+| leadership.payroll | USD2025_bn/year | 17.0247 | 17.0247 | 0 | 0 |
+| researchers.people | people*fraction | 1216.05 | 1216.05 | 0 | 0 |
+| operators.people | people | 4213.63 | 4213.63 | 0 | 0 |
+| collection_specialists.people | people | 32213.2 | 32213.2 | 0 | 0 |
+| analysts.people | people | 2892.16 | 2892.16 | 0 | 0 |
+| analysts.available | people*years/ratio/year | 2692.6 | 2883.02 | 190.424 | 7.07213 |
+| analysts.defensive_share | 1/ratio | 0.1 | 0.0363508 | -0.0636492 | -63.6492 |
+| surveillance_program.staff | people*fraction | 37008.5 | 37016 | 7.51061 | 0.0202943 |
+| effects_program.staff | people*fraction | 3526.54 | 3519.03 | -7.51061 | -0.212974 |
+| surveillance_program.capacity | people*years/year/fraction/fraction | 2507.3 | 3891.29 | 1383.99 | 55.1983 |
+| effects_program.capacity | people*years/year/fraction/fraction | 238.922 | 423.379 | 184.458 | 77.2043 |
+| learning.retained | ratio | 0.199169 | 0.251413 | 0.0522446 | 26.2314 |
+| defenders.hardening | ratio | 0 | 0 | 0 | — |
+| defenders.closing | ratio | 1 | 2.75097 | 1.75097 | 175.097 |
 
-## The spread of the outcomes
+## ai_fast against ai_slow
 
-### doctrine_probability
+| Reading | Unit | ai_slow | ai_fast | Change (run − baseline) | Change (%) |
+|---|---|---:|---:|---:|---:|
+| total_attacks | operations | 7139.32 | 7168.63 | 29.3096 | 0.410537 |
+| attacks_per_year | operations/year | 288 | 288 | 0 | 0 |
+| effects_program.completed | staff_years | 104051 | 111587 | 7536.09 | 7.24272 |
+| surveillance_program.completed | staff_years | 1.08604e+06 | 1.1598e+06 | 73752 | 6.79088 |
+| effects_program.work_rate | people | 4538.34 | 4691.24 | 152.894 | 3.36894 |
+| surveillance_program.work_rate | people | 47175.7 | 48628.9 | 1453.15 | 3.08029 |
+| leadership.effects_share | fraction | 0.0868147 | 0.0867546 | -6.00942e-05 | -0.0692212 |
+| governance.track_record | fraction | 0.986876 | 0.999088 | 0.0122118 | 1.23742 |
+| governance.reliance | 1 | 1 | 1 | 0 | 0 |
+| ai_tools.progress | fraction*fraction | 0.875486 | 0.99807 | 0.122584 | 14.0018 |
+| ai_tools.review_progress | fraction*fraction | 0.917915 | 0.917915 | 0 | 0 |
+| leadership.surge_experts | people | 0 | 0 | 0 | — |
+| leadership.payroll | USD2025_bn/year | 17.0247 | 17.0247 | 0 | 0 |
+| researchers.people | people*fraction | 1216.05 | 1216.05 | 0 | 0 |
+| operators.people | people | 4213.63 | 4213.63 | 0 | 0 |
+| collection_specialists.people | people | 32213.2 | 32213.2 | 0 | 0 |
+| analysts.people | people | 2892.16 | 2892.16 | 0 | 0 |
+| analysts.available | people*years/ratio/year | 2883.02 | 2891.92 | 8.89907 | 0.308672 |
+| analysts.defensive_share | 1/ratio | 0.0363508 | 0.0333763 | -0.00297451 | -8.1828 |
+| surveillance_program.staff | people*fraction | 37016 | 37018.4 | 2.43592 | 0.00658073 |
+| effects_program.staff | people*fraction | 3519.03 | 3516.6 | -2.43592 | -0.0692212 |
+| surveillance_program.capacity | people*years/year/fraction/fraction | 3891.29 | 4165.38 | 274.084 | 7.04353 |
+| effects_program.capacity | people*years/year/fraction/fraction | 423.379 | 467.386 | 44.0068 | 10.3942 |
+| learning.retained | ratio | 0.251413 | 0.262308 | 0.010895 | 4.3335 |
+| defenders.hardening | ratio | 0 | 0 | 0 | — |
+| defenders.closing | ratio | 2.75097 | 2.99614 | 0.245168 | 8.91205 |
 
-The chance that military plans count on cyber attacks in each pathway with one objective. Four values of the planners and the defenders vary over their ranges.
+## ai_reversal against ai_fast
 
-160 calculations draw each input that has a distribution: Spread of the log-odds of a plan's success from the defenders that all of its attacks face; Shortfall from the planned share of targets hit that the planners accept; Chance of meeting the plan that the planners need; Error of the planners' forecast of the share of targets hit that lessons do not remove. Each calculation also draws the outcome of each event that goes by chance. Each figure gives the mean of the calculations at the end of the pathway, then the middle 90% of them in brackets. The mean of an outcome that is 1 or 0 is the share of the calculations in which it is 1. The distributions are the ones that the study assumes: a figure is not a measured interval.
+| Reading | Unit | ai_fast | ai_reversal | Change (run − baseline) | Change (%) |
+|---|---|---:|---:|---:|---:|
+| total_attacks | operations | 7168.63 | 7137.76 | -30.8682 | -0.430601 |
+| attacks_per_year | operations/year | 288 | 280.797 | -7.20304 | -2.50106 |
+| effects_program.completed | staff_years | 111587 | 102374 | -9212.95 | -8.25632 |
+| surveillance_program.completed | staff_years | 1.1598e+06 | 1.06891e+06 | -90890.9 | -7.83679 |
+| effects_program.work_rate | people | 4691.24 | 3743.96 | -947.279 | -20.1925 |
+| surveillance_program.work_rate | people | 48628.9 | 39238.7 | -9390.13 | -19.3098 |
+| leadership.effects_share | fraction | 0.0867546 | 0.0869736 | 0.000218935 | 0.252361 |
+| governance.track_record | fraction | 0.999088 | 0.0246497 | -0.974438 | -97.5328 |
+| governance.reliance | 1 | 1 | 0 | -1 | -100 |
+| ai_tools.progress | fraction*fraction | 0.99807 | 0.208569 | -0.789501 | -79.1028 |
+| ai_tools.review_progress | fraction*fraction | 0.917915 | 0.128414 | -0.789501 | -86.0103 |
+| leadership.surge_experts | people | 0 | 0 | 0 | — |
+| leadership.payroll | USD2025_bn/year | 17.0247 | 17.0247 | 0 | 0 |
+| researchers.people | people*fraction | 1216.05 | 1216.05 | 0 | 0 |
+| operators.people | people | 4213.63 | 4213.63 | 0 | 0 |
+| collection_specialists.people | people | 32213.2 | 32213.2 | 0 | 0 |
+| analysts.people | people | 2892.16 | 2892.16 | 0 | 0 |
+| analysts.available | people*years/ratio/year | 2891.92 | 2780.66 | -111.26 | -3.84726 |
+| analysts.defensive_share | 1/ratio | 0.0333763 | 0.0705648 | 0.0371885 | 111.422 |
+| surveillance_program.staff | people*fraction | 37018.4 | 37009.5 | -8.87454 | -0.0239733 |
+| effects_program.staff | people*fraction | 3516.6 | 3525.47 | 8.87454 | 0.252361 |
+| surveillance_program.capacity | people*years/year/fraction/fraction | 4165.38 | 2797.77 | -1367.6 | -32.8326 |
+| effects_program.capacity | people*years/year/fraction/fraction | 467.386 | 272.646 | -194.74 | -41.6658 |
+| learning.retained | ratio | 0.262308 | 0.215546 | -0.0467621 | -17.8272 |
+| defenders.hardening | ratio | 0 | 0 | 0 | — |
+| defenders.closing | ratio | 2.99614 | 1.41714 | -1.579 | -52.7012 |
 
-| Pathway | Whether military plans count on cyber attacks: 1 when doctrine has formed and holds, else 0 | Chance that the best plan of cyber attacks meets its plan | Chance that the best plan of cyber attacks meets its plan, less the chance that the planners need |
-| --- | --- | --- | --- |
-| Slow patching · Fast AI progress | 0.506 (0 to 1) | 0.844 (0.721 to 0.959) | 0.00122 times (-0.166 to 0.156) |
-| Slow patching · No AI progress | 0.331 (0 to 1) | 0.796 (0.685 to 0.91) | -0.0474 times (-0.205 to 0.108) |
-| Slow patching · Slow AI progress | 0.419 (0 to 1) | 0.829 (0.708 to 0.946) | -0.014 times (-0.179 to 0.143) |
-| Slow patching · Fast AI progress · Funding counts the lessons | 0.519 (0 to 1) | 0.845 (0.721 to 0.959) | 0.00177 times (-0.166 to 0.157) |
-| Slow patching · Fast AI progress · Defenders' AI | 0.388 (0 to 1) | 0.82 (0.7 to 0.939) | -0.0229 times (-0.189 to 0.135) |
+## ai_fast_lessons against ai_fast
 
-### tipping_corner
+| Reading | Unit | ai_fast | ai_fast_lessons | Change (run − baseline) | Change (%) |
+|---|---|---:|---:|---:|---:|
+| total_attacks | operations | 7168.63 | 7165.92 | -2.71006 | -0.0378044 |
+| attacks_per_year | operations/year | 288 | 288 | 0 | 0 |
+| effects_program.completed | staff_years | 111587 | 111564 | -22.8095 | -0.020441 |
+| surveillance_program.completed | staff_years | 1.1598e+06 | 1.15951e+06 | -287.389 | -0.0247793 |
+| effects_program.work_rate | people | 4691.24 | 4696.88 | 5.637 | 0.12016 |
+| surveillance_program.work_rate | people | 48628.9 | 48680.6 | 51.7099 | 0.106336 |
+| leadership.effects_share | fraction | 0.0867546 | 0.0867519 | -2.7483e-06 | -0.0031679 |
+| governance.track_record | fraction | 0.999088 | 0.999088 | 0 | 0 |
+| governance.reliance | 1 | 1 | 1 | 0 | 0 |
+| ai_tools.progress | fraction*fraction | 0.99807 | 0.99807 | 0 | 0 |
+| ai_tools.review_progress | fraction*fraction | 0.917915 | 0.917915 | 0 | 0 |
+| leadership.surge_experts | people | 0 | 0 | 0 | — |
+| leadership.payroll | USD2025_bn/year | 17.0247 | 17.0247 | 0 | 0 |
+| researchers.people | people*fraction | 1216.05 | 1216.05 | 0 | 0 |
+| operators.people | people | 4213.63 | 4213.63 | 0 | 0 |
+| collection_specialists.people | people | 32213.2 | 32213.2 | 0 | 0 |
+| analysts.people | people | 2892.16 | 2892.16 | 0 | 0 |
+| analysts.available | people*years/ratio/year | 2891.92 | 2655.84 | -236.075 | -8.16327 |
+| analysts.defensive_share | 1/ratio | 0.0333763 | 0.0333763 | 0 | 0 |
+| surveillance_program.staff | people*fraction | 37018.4 | 37018.5 | 0.111402 | 0.000300937 |
+| effects_program.staff | people*fraction | 3516.6 | 3516.49 | -0.111402 | -0.0031679 |
+| surveillance_program.capacity | people*years/year/fraction/fraction | 4165.38 | 4216.95 | 51.5761 | 1.23821 |
+| effects_program.capacity | people*years/year/fraction/fraction | 467.386 | 473.157 | 5.7708 | 1.2347 |
+| learning.retained | ratio | 0.262308 | 1.31284 | 1.05053 | 400.496 |
+| defenders.hardening | ratio | 0 | 0 | 0 | — |
+| defenders.closing | ratio | 2.99614 | 2.99614 | 0 | 0 |
 
-Without AI progress, lessons have half of their weight after 300 assessed outcomes, and the learning curve has the shape 3. Only the error of each yearly assessment changes between the calculations.
+## dispersed against dispersed_no_ai
 
-100 calculations draw the outcome of each event that goes by chance. No input has a distribution. Each figure gives the mean of the calculations at the end of the pathway, then the middle 90% of them in brackets. The mean of an outcome that is 1 or 0 is the share of the calculations in which it is 1. The distributions are the ones that the study assumes: a figure is not a measured interval.
+| Reading | Unit | dispersed_no_ai | dispersed | Change (run − baseline) | Change (%) |
+|---|---|---:|---:|---:|---:|
+| total_attacks | operations | 6595.12 | 7169.31 | 574.187 | 8.70623 |
+| attacks_per_year | operations/year | 263.86 | 288 | 24.1402 | 9.14889 |
+| effects_program.completed | staff_years | 87935 | 111769 | 23834 | 27.1041 |
+| surveillance_program.completed | staff_years | 922812 | 1.16151e+06 | 238698 | 25.8664 |
+| effects_program.work_rate | people | 3518.13 | 4699.4 | 1181.27 | 33.5768 |
+| surveillance_program.work_rate | people | 36920.1 | 48703.8 | 11783.6 | 31.9166 |
+| leadership.effects_share | fraction | 0.087 | 0.0867506 | -0.000249383 | -0.286647 |
+| governance.track_record | fraction | 0 | 0.999088 | 0.999088 | — |
+| governance.reliance | 1 | 0 | 1 | 1 | — |
+| ai_tools.progress | fraction*fraction | 0 | 0.99807 | 0.99807 | — |
+| ai_tools.review_progress | fraction*fraction | 0 | 0.917915 | 0.917915 | — |
+| leadership.surge_experts | people | 0 | 0 | 0 | — |
+| leadership.payroll | USD2025_bn/year | 17.0247 | 17.0247 | 0 | 0 |
+| researchers.people | people*fraction | 1216.05 | 1216.05 | 0 | 0 |
+| operators.people | people | 4213.63 | 4213.63 | 0 | 0 |
+| collection_specialists.people | people | 32213.2 | 32213.2 | 0 | 0 |
+| analysts.people | people | 2892.16 | 2892.16 | 0 | 0 |
+| analysts.available | people*years/ratio/year | 2740.78 | 2943.67 | 202.89 | 7.40263 |
+| analysts.defensive_share | 1/ratio | 0.1 | 0.0333763 | -0.0666237 | -66.6237 |
+| surveillance_program.staff | people*fraction | 37008.5 | 37018.6 | 10.1088 | 0.0273147 |
+| effects_program.staff | people*fraction | 3526.54 | 3516.44 | -10.1088 | -0.286647 |
+| surveillance_program.capacity | people*years/year/fraction/fraction | 2552.23 | 4240.1 | 1687.87 | 66.1331 |
+| effects_program.capacity | people*years/year/fraction/fraction | 243.203 | 475.747 | 232.544 | 95.6173 |
+| learning.retained | ratio | 0.199411 | 0.262716 | 0.0633049 | 31.7459 |
+| defenders.hardening | ratio | 0 | 0 | 0 | — |
+| defenders.closing | ratio | 1 | 2.99614 | 1.99614 | 199.614 |
 
-| Pathway | Attacks that the force makes in a year | Share of the operators on attacks | Whether military plans count on cyber attacks: 1 when doctrine has formed and holds, else 0 | Whether the leaders put more of the operators on attacks than today: 1 if they do, else 0 |
-| --- | --- | --- | --- | --- |
-| Slow patching · No AI progress | 291 operations/year (8.06 to 503) | 0.497 (0.191 to 0.774) | 0.28 (0 to 1) | 0.5 (0 to 1) |
+## defenders_ai against ai_fast
 
-## The decisive defender choice
+| Reading | Unit | ai_fast | defenders_ai | Change (run − baseline) | Change (%) |
+|---|---|---:|---:|---:|---:|
+| total_attacks | operations | 7168.63 | 7168.78 | 0.150449 | 0.00209872 |
+| attacks_per_year | operations/year | 288 | 288 | 0 | 0 |
+| effects_program.completed | staff_years | 111587 | 111699 | 112.29 | 0.100631 |
+| surveillance_program.completed | staff_years | 1.1598e+06 | 1.16085e+06 | 1050.2 | 0.0905502 |
+| effects_program.work_rate | people | 4691.24 | 4696.48 | 5.24531 | 0.111811 |
+| surveillance_program.work_rate | people | 48628.9 | 48677 | 48.1246 | 0.0989631 |
+| leadership.effects_share | fraction | 0.0867546 | 0.086752 | -2.57213e-06 | -0.00296484 |
+| governance.track_record | fraction | 0.999088 | 0.999088 | 0 | 0 |
+| governance.reliance | 1 | 1 | 1 | 0 | 0 |
+| ai_tools.progress | fraction*fraction | 0.99807 | 0.99807 | 0 | 0 |
+| ai_tools.review_progress | fraction*fraction | 0.917915 | 0.917915 | 0 | 0 |
+| leadership.surge_experts | people | 0 | 0 | 0 | — |
+| leadership.payroll | USD2025_bn/year | 17.0247 | 17.0247 | 0 | 0 |
+| researchers.people | people*fraction | 1216.05 | 1216.05 | 0 | 0 |
+| operators.people | people | 4213.63 | 4213.63 | 0 | 0 |
+| collection_specialists.people | people | 32213.2 | 32213.2 | 0 | 0 |
+| analysts.people | people | 2892.16 | 2892.16 | 0 | 0 |
+| analysts.available | people*years/ratio/year | 2891.92 | 2925.16 | 33.2419 | 1.14948 |
+| analysts.defensive_share | 1/ratio | 0.0333763 | 0.0222652 | -0.0111111 | -33.2904 |
+| surveillance_program.staff | people*fraction | 37018.4 | 37018.5 | 0.104261 | 0.000281647 |
+| effects_program.staff | people*fraction | 3516.6 | 3516.49 | -0.104261 | -0.00296484 |
+| surveillance_program.capacity | people*years/year/fraction/fraction | 4165.38 | 4213.38 | 47.9994 | 1.15234 |
+| effects_program.capacity | people*years/year/fraction/fraction | 467.386 | 472.757 | 5.37054 | 1.14906 |
+| learning.retained | ratio | 0.262308 | 0.26257 | 0.000261962 | 0.099868 |
+| defenders.hardening | ratio | 0 | 0.499035 | 0.499035 | — |
+| defenders.closing | ratio | 2.99614 | 2.99614 | 0 | 0 |
 
-Whether the lessons of attacks outlast their loss to patches, turnover and secrecy at the volume that cheaper attacks allow.
+## analysts_one_share against ai_fast
 
-## Who is harmed
+| Reading | Unit | ai_fast | analysts_one_share | Change (run − baseline) | Change (%) |
+|---|---|---:|---:|---:|---:|
+| total_attacks | operations | 7168.63 | 7167.13 | -1.49968 | -0.0209201 |
+| attacks_per_year | operations/year | 288 | 288 | 0 | 0 |
+| effects_program.completed | staff_years | 111587 | 109207 | -2379.46 | -2.13239 |
+| surveillance_program.completed | staff_years | 1.1598e+06 | 1.14094e+06 | -18855.7 | -1.62578 |
+| effects_program.work_rate | people | 4691.24 | 4585.05 | -106.19 | -2.26358 |
+| surveillance_program.work_rate | people | 48628.9 | 47777.3 | -851.558 | -1.75114 |
+| leadership.effects_share | fraction | 0.0867546 | 0.0868611 | 0.00010645 | 0.122703 |
+| governance.track_record | fraction | 0.999088 | 0.998727 | -0.000360752 | -0.0361081 |
+| governance.reliance | 1 | 1 | 1 | 0 | 0 |
+| ai_tools.progress | fraction*fraction | 0.99807 | 0.99807 | 0 | 0 |
+| ai_tools.review_progress | fraction*fraction | 0.917915 | 0.917915 | 0 | 0 |
+| leadership.surge_experts | people | 0 | 0 | 0 | — |
+| leadership.payroll | USD2025_bn/year | 17.0247 | 17.0247 | 0 | 0 |
+| researchers.people | people*fraction | 1216.05 | 1216.05 | 0 | 0 |
+| operators.people | people | 4213.63 | 4190.53 | -23.0963 | -0.548134 |
+| collection_specialists.people | people | 32213.2 | 32213.2 | 0 | 0 |
+| analysts.people | people | 2892.16 | 2915.25 | 23.0963 | 0.798585 |
+| analysts.available | people*years/ratio/year | 2891.92 | 2915.01 | 23.0944 | 0.798585 |
+| analysts.defensive_share | 1/ratio | 0.0333763 | 0.0333763 | 0 | 0 |
+| surveillance_program.staff | people*fraction | 37018.4 | 37014.1 | -4.31497 | -0.0116563 |
+| effects_program.staff | people*fraction | 3516.6 | 3520.91 | 4.31497 | 0.122703 |
+| surveillance_program.capacity | people*years/year/fraction/fraction | 4165.38 | 3344.3 | -821.075 | -19.7119 |
+| effects_program.capacity | people*years/year/fraction/fraction | 467.386 | 358.42 | -108.966 | -23.314 |
+| learning.retained | ratio | 0.262308 | 0.257462 | -0.00484628 | -1.84755 |
+| defenders.hardening | ratio | 0 | 0 | 0 | — |
+| defenders.closing | ratio | 2.99614 | 2.99614 | 0 | 0 |
 
+## slow_spy_planning against ai_fast
 
-
-## Limits of the results
-
-The reviewers of this scenario state these limits.
-
-- The model follows one country. Other countries' attacks, and a race between countries, change the attention of defenders and the value of attacks in ways that the model does not follow.
-- Value is in units of one expert-year of surveillance in 2026. The model compares the two missions; it gives no price of either.
-- Most values are assumptions of this scenario, with ranges that a reader can explore. A range is not a measured interval.
-
-## Key inputs
-
-| Input | Value | Where the value comes from |
-| --- | --- | --- |
-| Access stage: share of the work that AI does at the end of AI progress | 87%; range 0–95% | Access takes 0.3 expert-years for an attack and 1.2 for each target, and about half a year today. In a test range without defenders, an AI model took over a 32-step network that would take an expert about 20 hours, in 3 of 10 tries, and an automated framework made working exploits for about half of the recent known flaws that it tried, at about USD 3 each. At the end of AI progress AI does 87% of the work, and access takes days. |
-| Share of the work of running accesses that AI does at the end of AI progress | 90%; range 0–95% | AI does a growing share of the work of running implants: 30% today, because the automated control of implants in groups has run since 2010, and 90% at the end of AI progress, as in one AI-orchestrated espionage campaign. AI work costs supervision, which the implants that one collection specialist runs at once share, and compute, as in the stages of an attack. So the gain of surveillance from AI is a result, and the implants deployed limit it. |
-| Targets of one attack at the end of AI progress | 30 targets/operation; range 1–100 targets/operation | One attack hits one target today. With AI, one attack hits about 30 targets at once. The scenario chooses both. |
-| Assessed outcomes at which lessons have half of the weight in the force's choices | 5,000 targets; range 300–20,000 targets | Lessons get weight in the force's choices as they grow against a prior strength: with shape 1, the Bayesian weight of evidence of that strength. The scenario chooses 5,000 assessed outcomes, so today's lessons have about 9% of the weight and a few attacks teach little. With this strength today's split is a stable rest point, as two decades of a marginal effects program suggest. A weaker prior with a steeper curve can make it unstable: with a prior of about 500 or less and a shape above about 2, today is a tipping point between two regimes. |
-| Share of the threat flow that the defenders answer that comes from the force's attacks today | 5%; range 1–30% | The defenders answer the whole threat flow: 884 flaws were first seen exploited in 2025, and 90 zero-days were exploited in the wild, from many actors. The force's attacks are 5% of the threat that they answer today, counted in targets, and the rest of the flow stays as it is. The scenario chooses the share. |
-| Rate at which the force loses its lessons | 0.3 per_year; range 0.1–0.7 per_year | The force loses its lessons of effects at 30% a year to patches, burned tools, staff turnover and secrecy that limits sharing. These are the skills that only attacks practice, so they fade faster than the lessons of access, which surveillance also practices. The scenario chooses the rate. |
-| Response of the target split to the difference in returns | 2 times; range 0.5–10 times | The target split is a logistic function of the difference in returns between attacks and surveillance, between the floor and the ceiling. Equal returns keep today's split. The steepness says how strongly budgets follow results. In one study of US programs, 10 points on a 100-point performance score moved proposed budgets by 4 to 5%. If those 10 points stand for a difference in returns of 0.02 to 0.1, the steepness is about 0.8 to 4. The scenario takes 2, with a range from 0.5 to 10. |
-| Spread of the log-odds of a plan's success from the defenders that all of its attacks face | 0.3 times; range 0.1–0.46 times | Attacks massed on one objective face one defender, its national CERT and a few security vendors. So the log-odds of a plan's success move together around the plan: by 0.3 by default, with a range from 0.1 to 0.46. Against one defender, the monthly hit share of a drone campaign moved by about 0.27 to 0.46 in log-odds; unconnected victims of ransomware moved together by at most about 0.13 a quarter. All of those drones were one type of weapon, so the drone figure can also hold a part from the attacker's side. The steps that the attacks themselves share are a separate step that can fail. Unconnected targets share no defender, so their log-odds move together by about 0.13, the bound that ransomware victims show, and a shared step fails less often. The plan counts on the total effect of all of the force's attacks. The option tests the essay's claim that AI makes many small, unconnected attacks reliable in total. Across campaigns, the success of mass attacks on unconnected victims through one flaw still fell as the victims' defenses matured. |
-
-## Evidence behind the AI's moves
-
-Each assumption is followed by the published sources behind it. A source marked "Limit" bounds or qualifies the assumption and one marked "Contradicts" argues against it; neither supports it.
-
-**How the model of a country's cyber force works.** One capable country splits its cyber operators between surveillance and effects operations (attacks) for 25 years. Four fixed groups do the work: researchers, operators, collection specialists and analysts. Each operation is a chain of steps, and each step takes the units of the step before, people's hours and capabilities from a pool. An attack's targets go through initial access, movement inside the network and the effect, and the attack then waits ready or is made at once. Surveillance's accesses go through initial access, movement and the deployment of an implant, and the implants collect while they live. AI changes the share of the work that it does. Military doctrine is an indicator: plans count on cyber attacks after a plan passes planning reviews in a row.
-
-- A Lasting Defeat: The Campaign to Destroy ISIS (Belfer Center for Science and International Affairs, 2017): The intelligence community delayed or blocked attacks that it claimed would hinder collection: the two missions compete.
-- Limit: M-Trends 2026: Data, Insights, and Strategies From the Frontlines (Google Cloud Blog, 2026): Criminal groups now pass an initial access to another group within seconds; the model's two missions never pass access to each other.
-
-## Every pathway
-
-Each pathway pairs one of the options below with one choice of Response.
-
-**AI progress · Campaign targets · Funding rule · Funding surge · Defender hardening · Tempo**
-
-- **No AI progress · One objective · Current results · No surge · No hardening · Peacetime:** The cyber force works as today: human experts do the tactical work. The force masses its attacks on one military objective, whose targets share one defender. The leaders fund attacks for the value that their results give now. The leaders get no extra money for attacks. The defenders' lasting capability stays as it is today. The country is at peace.
-- **No AI progress · One objective · Current results · No surge · No hardening · Wartime:** The cyber force works as today: human experts do the tactical work. The force masses its attacks on one military objective, whose targets share one defender. The leaders fund attacks for the value that their results give now. The leaders get no extra money for attacks. The defenders' lasting capability stays as it is today. The country goes to war in 2026: the moment to use an attack held ready comes about monthly, an attack must land within a week of the decision, and the planners review every quarter.
-- **No AI progress · One objective · Current results · The 2025 surge · No hardening · Peacetime:** The cyber force works as today: human experts do the tactical work. The force masses its attacks on one military objective, whose targets share one defender. The leaders fund attacks for the value that their results give now. The leaders get USD 0.25 billion more for attacks in each year from 2026 to 2029. The defenders' lasting capability stays as it is today. The country is at peace.
-- **No AI progress · Dispersed targets · Current results · No surge · No hardening · Peacetime:** The cyber force works as today: human experts do the tactical work. The force spreads its attacks over many unconnected targets that share no defender, and the plan counts on their total effect. The leaders fund attacks for the value that their results give now. The leaders get no extra money for attacks. The defenders' lasting capability stays as it is today. The country is at peace.
-- **Slow AI progress · One objective · Current results · No surge · No hardening · Peacetime:** AI reaches about two thirds of its end in 12 years. The force masses its attacks on one military objective, whose targets share one defender. The leaders fund attacks for the value that their results give now. The leaders get no extra money for attacks. The defenders' lasting capability stays as it is today. The country is at peace.
-- **Fast AI progress · One objective · Current results · No surge · No hardening · Peacetime:** AI reaches about two thirds of its end in 4 years. The force masses its attacks on one military objective, whose targets share one defender. The leaders fund attacks for the value that their results give now. The leaders get no extra money for attacks. The defenders' lasting capability stays as it is today. The country is at peace.
-- **Fast AI progress · One objective · Current results · No surge · Defenders' AI · Peacetime:** AI reaches about two thirds of its end in 4 years. The force masses its attacks on one military objective, whose targets share one defender. The leaders fund attacks for the value that their results give now. The leaders get no extra money for attacks. The defenders' AI hardens their networks: at the end of AI progress it takes 0.5 log-odds of an attack's success. The country is at peace.
-- **Fast AI progress · One objective · Results and lessons · No surge · No hardening · Peacetime:** AI reaches about two thirds of its end in 4 years. The force masses its attacks on one military objective, whose targets share one defender. The leaders also fund attacks for the value of what the attacks teach. The leaders get no extra money for attacks. The defenders' lasting capability stays as it is today. The country is at peace.
-- **Fast AI progress · Dispersed targets · Current results · No surge · No hardening · Peacetime:** AI reaches about two thirds of its end in 4 years. The force spreads its attacks over many unconnected targets that share no defender, and the plan counts on their total effect. The leaders fund attacks for the value that their results give now. The leaders get no extra money for attacks. The defenders' lasting capability stays as it is today. The country is at peace.
-- **AI progress, then costs rise · One objective · Current results · No surge · No hardening · Peacetime:** AI reaches about two thirds of its end in 4 years. From 2038, the costs of attacks rise again and take back most of the progress. The force masses its attacks on one military objective, whose targets share one defender. The leaders fund attacks for the value that their results give now. The leaders get no extra money for attacks. The defenders' lasting capability stays as it is today. The country is at peace.
-
-**Response**
-
-- **Slow patching:** Defenders patch the flaws that attacks use slowly, and their attention fades within about half a year.
-- **Fast patching:** Defenders patch fast, so access that the force builds in advance lasts less long, and their attention lasts about a year.
-
-**The same operation: No AI progress**
-
-- **Slow patching · No AI progress:** The cyber force works as today: human experts do the tactical work.
-- **Slow patching · Fast AI progress · Dispersed targets:** AI reaches about two thirds of its end in 4 years.
-- **Slow patching · Fast AI progress · Defenders' AI:** The defenders' AI hardens their networks: at the end of AI progress it takes 0.5 log-odds of an attack's success.
-- **Slow patching · Fast AI progress · One AI share for each stage of the analysts:** AI does one share of each kind of the analysts' work: 20% of the planning and 30% of the damage assessment at the end of AI progress, on the slower path.
-- **Slow patching · Fast AI progress · Slow planning of surveillance:** AI helps the analysts with each target of an attack, but the planning of a new access of surveillance moves only as the review and the approval of an attack do.
-
-| Pathway | Attacks made since the start | Deaths | Serious casualties, including deaths | Economic loss |
-| --- | --- | --- | --- | --- |
-| Slow patching · No AI progress | 8,880 operations | not estimated | not estimated | not estimated |
-| Slow patching · No AI progress · Wartime | 19,200 operations | not estimated | not estimated | not estimated |
-| Slow patching · No AI progress · The 2025 surge | 9,180 operations | not estimated | not estimated | not estimated |
-| Slow patching · No AI progress · Dispersed targets | 8,880 operations | not estimated | not estimated | not estimated |
-| Slow patching · Slow AI progress | 6,860 operations | not estimated | not estimated | not estimated |
-| Slow patching · Fast AI progress | 5,290 operations | not estimated | not estimated | not estimated |
-| Slow patching · Fast AI progress · One AI share for each stage of the analysts | 3,980 operations | not estimated | not estimated | not estimated |
-| Slow patching · Fast AI progress · Slow planning of surveillance | 5,110 operations | not estimated | not estimated | not estimated |
-| Slow patching · Fast AI progress · Defenders' AI | 5,230 operations | not estimated | not estimated | not estimated |
-| Slow patching · Fast AI progress · Funding counts the lessons | 5,380 operations | not estimated | not estimated | not estimated |
-| Slow patching · Fast AI progress · Dispersed targets | 5,290 operations | not estimated | not estimated | not estimated |
-| Slow patching · AI progress, then costs rise | 6,280 operations | not estimated | not estimated | not estimated |
-
-## The AI operation
-
-The country's cyber force when it makes attacks: its experts, its access and its tools. An AI agent does more of the work as AI improves.
-
----
-
-This brief is generated from the scenario definition and its computed results. Figures are model outputs under the stated assumptions, rounded to three significant figures; they are not forecasts.
+| Reading | Unit | ai_fast | slow_spy_planning | Change (run − baseline) | Change (%) |
+|---|---|---:|---:|---:|---:|
+| total_attacks | operations | 7168.63 | 7168.63 | 0 | 0 |
+| attacks_per_year | operations/year | 288 | 288 | 0 | 0 |
+| effects_program.completed | staff_years | 111587 | 111258 | -328.799 | -0.294659 |
+| surveillance_program.completed | staff_years | 1.1598e+06 | 1.14139e+06 | -18411.6 | -1.58748 |
+| effects_program.work_rate | people | 4691.24 | 4675.72 | -15.5183 | -0.330793 |
+| surveillance_program.work_rate | people | 48628.9 | 47796.7 | -832.174 | -1.71128 |
+| leadership.effects_share | fraction | 0.0867546 | 0.0864712 | -0.000283383 | -0.326648 |
+| governance.track_record | fraction | 0.999088 | 0.998727 | -0.000360752 | -0.0361081 |
+| governance.reliance | 1 | 1 | 1 | 0 | 0 |
+| ai_tools.progress | fraction*fraction | 0.99807 | 0.99807 | 0 | 0 |
+| ai_tools.review_progress | fraction*fraction | 0.917915 | 0.917915 | 0 | 0 |
+| leadership.surge_experts | people | 0 | 0 | 0 | — |
+| leadership.payroll | USD2025_bn/year | 17.0247 | 17.0247 | 0 | 0 |
+| researchers.people | people*fraction | 1216.05 | 1216.05 | 0 | 0 |
+| operators.people | people | 4213.63 | 4213.63 | 0 | 0 |
+| collection_specialists.people | people | 32213.2 | 32213.2 | 0 | 0 |
+| analysts.people | people | 2892.16 | 2892.16 | 0 | 0 |
+| analysts.available | people*years/ratio/year | 2891.92 | 2891.92 | 0 | 0 |
+| analysts.defensive_share | 1/ratio | 0.0333763 | 0.0333763 | 0 | 0 |
+| surveillance_program.staff | people*fraction | 37018.4 | 37029.9 | 11.4869 | 0.0310303 |
+| effects_program.staff | people*fraction | 3516.6 | 3505.11 | -11.4869 | -0.326648 |
+| surveillance_program.capacity | people*years/year/fraction/fraction | 4165.38 | 3319.4 | -845.972 | -20.3096 |
+| effects_program.capacity | people*years/year/fraction/fraction | 467.386 | 465.665 | -1.72113 | -0.368246 |
+| learning.retained | ratio | 0.262308 | 0.258025 | -0.00428287 | -1.63276 |
+| defenders.hardening | ratio | 0 | 0 | 0 | — |
+| defenders.closing | ratio | 2.99614 | 2.99614 | 0 | 0 |

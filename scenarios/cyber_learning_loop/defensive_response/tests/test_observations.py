@@ -93,16 +93,17 @@ def test_brief_reports_the_defensive_observations_and_the_two_distinct_indices(m
     assert remediation.values == pytest.approx([2.2] * 3)
 
 
-def test_catalogue_entry_resolves_the_same_defensive_program_brief_and_evidence(model):
+def test_catalogue_entry_and_leaf_share_the_defensive_equations(model):
     entry = catalogue.entries()['cyber_learning_loop']
     assert entry.parent == FOLDER.parent
     canonical = load_scenario(entry)
-    assert canonical.model_hash == model.model_hash
     assert not canonical.reports
-    # The entry paths differ. The public inputs and displayed reading selection agree.
-    canonical_brief, nested_brief = brief_of(canonical), brief_of(model)
-    assert canonical_brief.show == nested_brief.show
-    assert canonical_brief.drivers == nested_brief.drivers
-    assert not canonical_brief.sweeps and not canonical_brief.spreads
-    # The publication includes each exercised record and its definition.
-    assert render(canonical) == (FOLDER / 'results/readings.md').read_text()
+    strategic = run(canonical.program, canonical.configure('no_ai'))
+    leaf = replay(model, {})
+    times = [year * YEAR for year in BASELINE['years']]
+    paths = brief_of(model).show
+    for left, right in zip(
+        read(strategic, canonical.program, paths, times), read(leaf, model.program, paths, times), strict=True
+    ):
+        assert left.path == right.path and left.values == pytest.approx(right.values)
+    assert render(model) == (FOLDER / 'results/readings.md').read_text()

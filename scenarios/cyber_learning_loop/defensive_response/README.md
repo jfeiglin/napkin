@@ -1,6 +1,6 @@
 # Defensive attention and remediation
 
-The catalogue package and this entry share one model. It follows a security team's response to aggregate observed incident volume. A volume of 1 represents its reference period. A workload surge raises the attention level the team can sustain. Actual attention approaches that level over time and recovers when volume falls. The horizon is 25 years.
+This standalone entry follows a security team's response to aggregate observed incident volume. The strategic catalogue entry imports the same defensive equations and supplies its modeled AI uptake to them. A volume of 1 represents its reference period. A workload surge raises the attention level the team can sustain. Actual attention approaches that level over time and recovers when volume falls. The horizon is 25 years.
 
 The published reference readings show each value at the start and horizon with its unit and supporting records. [Reference readings](results/readings.md)
 

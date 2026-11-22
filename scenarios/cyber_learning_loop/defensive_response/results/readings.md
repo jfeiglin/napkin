@@ -4,7 +4,7 @@ How quickly does a security team’s attention respond to changes in observed wo
 
 Aggregate defensive monitoring and remediation over 25 years.
 
-Model revision `0d0a56e7d0539fea1b2f111135a0e12dcdd42837c7561c0476335bca7be3abea`. Readings are instantaneous, without reporting lags. All times are in hours.
+Model revision `2b2611783c215b3c3fab16e5984b5a90098ef0f182794e4800de5bcd7b8bbde8`. Readings are instantaneous, without reporting lags. All times are in hours.
 
 ## Default run
 
