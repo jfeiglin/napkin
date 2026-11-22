@@ -294,6 +294,13 @@ class _Translation:
             outflow=self.endpoint(value.outflow),
             inflow=self.endpoint(value.inflow),
             unit=value.type.unit if isinstance(value.type, p.Number) else '',
+            refers_to=(
+                (value.type.template, value.type.event)
+                if isinstance(value.type, p.OccurrenceType)
+                else (value.type.template,)
+                if isinstance(value.type, p.EntityType)
+                else ()
+            ),
         )
 
     def endpoint(self, endpoint):
@@ -391,6 +398,7 @@ class _Translation:
             [self.step(each) for each in event.steps],
             event.origin,
             ranges,
+            {each.name: each.type.template for each in event.params if isinstance(each.type, p.EntityType)},
         )
 
     def solver(self, solver):

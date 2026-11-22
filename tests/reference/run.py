@@ -78,6 +78,7 @@ from .evaluate import (
 from .exact import solve_affine
 from .model import Assign, Branch, Config, E, Flow, Move, Start, Switch, Until, lit, number, scale_of, show
 from .poly import Irrational, Poly, plain
+from .stocks import planned_stocks
 
 _MISSING = object()
 BUILTIN = ('started', 'done', 'active')
@@ -132,7 +133,7 @@ class Tx:
         self.writes = {}
         self.moves = []
         self.starts = []
-        self.edited = Counter()  # what the edits of a breakpoint added to a store, which is no write
+        self.edited = []  # each staged edit and its contribution from outside, in order
 
 
 @dataclasses.dataclass(eq=False)
@@ -237,6 +238,10 @@ class Run:
             for ev in ent.template.events:
                 self.view.occs[ent, ev.name] = []
                 self.triggers += [Trig(ent, ev, tr, i) for i, tr in enumerate(ev.triggers)]
+        stores, self.local_stores = planned_stocks(self)
+        for cell in sorted(stores, key=label):
+            if isinstance(self.view.cells[cell], Fraction):
+                self._note_store(cell)
 
     def _start_value(self, ent, inst, f):
         scope = Scope(ent)
@@ -475,9 +480,9 @@ class Run:
             }
         )
         self._note('edit', owner, origin=self.paused['at'])
-        if cell in self.stores and isinstance(old, Fraction):
-            self.ledger.append(('edit', t, cell, value - old))  # a transfer from or to outside
         if tx is None:  # before a stage, between two commits: the edit commits at once
+            if cell in self.stores and isinstance(old, Fraction):
+                self.ledger.append(('edit', t, cell, value - old))
             view.cells[cell] = value
             if old != value:
                 view.entered[cell] = t
@@ -512,7 +517,7 @@ class Run:
                 old = tx.writes.get(cell, self.view.cells[cell])
                 tx.writes[cell] = value
                 if isinstance(old, Fraction) and isinstance(value, Fraction):
-                    tx.edited[cell] += value - old
+                    tx.edited.append((cell, value - old))
             return
         names = (origin, occ.event.origin) if first else (origin,)
         hit = next(
@@ -1320,16 +1325,20 @@ class Run:
             moved[dst] += amount
             self.ledger.append(('move', t, src, dst, amount))
             self._note('move', tx.occ.label if tx.occ is not None else '', origin=origin)
+        for cell, change in tx.edited:
+            if cell in self.stores:
+                self.ledger.append(('edit', t, cell, change))
+                moved[cell] += change
         for cell, value in tx.writes.items():
             old = view.cells.get(cell)
             if (
                 cell in self.stores
                 and isinstance(old, Fraction)
                 and isinstance(value, Fraction)
-                and value - old != moved[cell] + tx.edited[cell]
+                and value - old != moved[cell]
             ):
                 self.ledger.append(
-                    ('write', t, cell, value - old - moved[cell] - tx.edited[cell])
+                    ('write', t, cell, value - old - moved[cell])
                 )  # a direct write: from or to outside
             view.cells[cell] = value
             if old != value:  # `elapsed` restarts only when the committed value differs
@@ -1380,6 +1389,10 @@ class Run:
                 view.cells[cell] = self._range(cell, d, ev, view.cells[cell])
             view.entered[cell] = t
             self._endpoints(cell, d, scope)  # an occurrence's own store has endpoints as a member's has
+        for name in sorted(self.local_stores.get((ent, event.name), ())):
+            cell = Cell(occ, name)
+            if isinstance(view.cells.get(cell), Fraction):
+                self._note_store(cell)
         occs.append(occ)
         self._note('start', occ.label, origin=event.origin)
         if self.phase == 'conditions':
@@ -1757,6 +1770,8 @@ class Run:
                 tot['to_sink'] += e[6] if e[5] is None and e[4] is not None else 0
             elif e[0] in ('opening', 'write'):
                 tot[e[0]] += e[3]
+            elif e[0] == 'edit':
+                tot['write'] += e[3]  # an edit is also a direct transfer from or to outside
         expected = tot['opening'] + tot['write'] + tot['from_source'] - tot['to_sink']
         return {
             'held': held,

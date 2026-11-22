@@ -327,6 +327,7 @@ class Field:
     outflow: Endpoint = None
     inflow: Endpoint = None
     unit: str = ''  # the spelling of its declared unit, for messages
+    refers_to: tuple = ()  # entity template, optionally followed by an occurrence's event
 
 
 def _opt(x):
@@ -563,6 +564,7 @@ class Event:
     steps: list = field(default_factory=list)
     origin: str = ''
     ranges: dict = field(default_factory=dict)
+    entity_params: dict = field(default_factory=dict)  # parameter -> accepted receiver template
 
 
 def event(name, params=(), locals=(), triggers=(), steps=()):
