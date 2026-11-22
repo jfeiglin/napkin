@@ -198,6 +198,7 @@ def report(record, program, configuration, paths, times, lags=None, model=None, 
 
         model = side_table(model, program)
     lags = dict(lags or {})
+    paths = tuple(paths)
     times = tuple(float(t) for t in times)
     horizon = float(record.manifest.horizon)
     for t in times:
