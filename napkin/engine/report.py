@@ -528,7 +528,7 @@ class _Trail:
         times = sorted({t for t in times if self.reader.refusal(key, t) is None})
         sure, maybe, unread, applied = self.reached(key, found, times)
         used = []
-        for part in sorted(found.edges, key=lambda each: (each.origin, each.owner, each.kind)):
+        for part in sorted(found.edges, key=lambda each: (each.origin, each.owner, each.kind, each.fields)):
             if part in sure:
                 did, why = self.acted(part, found, applied)
             elif part in maybe:
@@ -779,7 +779,7 @@ class _Trail:
         engine names are not ones that a formula reads (a stage, a trigger)."""
         owner = part.owner
         if part.kind in ('network field', 'rate'):
-            fields = part.origin
+            fields = '.'.join((part.origin, *part.fields))
             if owner:
                 template = self.program.member(owner)[0]
                 fields = fields.removeprefix(template.name + '.')

@@ -146,12 +146,14 @@ class Change:
 @dataclass(frozen=True)
 class Part:
     """A declaration or a computed field in the evidence graph. The origin names the declaration
-    and, for a network field or solved rate, its field. The owner is its receiver, the root (''),
+    that carries source citations. Fields distinguish computed reads of the same declaration.
+    The owner is its receiver, the root (''),
     or the scope of an occurrence value (`tank.receive#`)."""
 
     kind: str
     origin: str
     owner: str = ''
+    fields: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1432,7 +1434,7 @@ class Proofs:
                 # The other flows at an end share it with this one.
                 certain(other.part for other in index.writers.get(key, ()) if other.kind in ('flow', 'route'))
             for name in ('request', 'capacity'):
-                setting = Part('network field', f'{part.origin}.{name}', part.owner)
+                setting = Part('network field', part.origin, part.owner, (name,))
                 certain(index.settings.get(setting, ()))
             if writer.event is not None:
                 certain([Part('event', writer.event, part.owner)])
@@ -1505,7 +1507,7 @@ class Proofs:
             _, owner, flow, field, at = point
             solver = self.index().rate_solvers.get((owner, flow.origin))
             if solver is not None:
-                part = Part('rate', f'{flow.origin}.{field}', at.member.id)
+                part = Part('rate', flow.origin, at.member.id, (field,))
                 places[part] = (('flow', owner, flow, at), solver)
                 return [part]
         if kind == 'value':
@@ -1521,7 +1523,7 @@ class Proofs:
                 kind = point[0]
         if kind == 'network field':
             _, _, declared, at, fields = point
-            part = Part(kind, '.'.join((declared.origin, *fields)), at.member.id if at.member else '')
+            part = Part(kind, declared.origin, at.member.id if at.member else '', fields)
             places.setdefault(part, point)
             return [part]
         if kind in ('flow', 'rate', 'leg'):
