@@ -81,3 +81,38 @@ def test_touching_from_the_exterior_does_not_arm_a_new_outward_contact():
     # (2x-1)² touches from above then keeps rising on the exterior side.
     output = step([1.0], [[-4, 4, 0]])
     assert bound_crossings(output, 2, 6, [0], [0], [1]) == []
+
+
+@pytest.mark.parametrize('direction', [-1, 1])
+@pytest.mark.parametrize('accepted', [None, [0.0]])
+def test_subnormal_departure_must_reach_a_distinct_coordinate(direction, accepted):
+    # x²(1-x) peaks at 4/27. Three minimum subnormals give a peak below half
+    # a representable value, while four give a distinguishable excursion.
+    quantum = math.ulp(0.0)
+    for n, expected in ((3, []), (4, [(2, 0)])):
+        amplitude = n * quantum * direction
+        output = step([0.0], [[0.0, amplitude, -amplitude]])
+        assert bound_crossings(output, 2, 6, [0], [0], [direction], accepted_end=accepted) == expected
+        # The opposite face sees the representable inward departure return at the endpoint.
+        assert bound_crossings(output, 2, 6, [0], [0], [-direction], accepted_end=accepted) == (
+            [(6, 0)] if n == 4 else []
+        )
+
+
+@pytest.mark.parametrize('sign', [-1, 1])
+def test_inward_release_has_a_distinct_level_when_allowance_rounds_away(sign):
+    from napkin.engine.allocation import StockFaces
+
+    level = np.array([1230980.1235242249])
+    low, high = np.array([sign > 0]), np.array([sign < 0])
+    faces = StockFaces(level - 1, level + 1, [1.0], 1e-9)
+    armed = faces.armed(low, high, releases=(level, 1e-12))
+    assert armed.kinds == ('release',)
+    assert armed.levels[0] == math.nextafter(level[0], sign * math.inf)
+
+
+def test_monotone_departure_without_a_separate_endpoint_requires_a_distinct_coordinate():
+    for coordinate, delta in ((1.5, math.ulp(1.5)), (0.0, math.ulp(0.0))):
+        output = step([coordinate], [[delta, 0.0, 0.0]])
+        assert bound_crossings(output, 2, 3, [0], [coordinate], [1]) == []
+        assert bound_crossings(output, 2, 6, [0], [coordinate], [1]) == [(2, 0)]

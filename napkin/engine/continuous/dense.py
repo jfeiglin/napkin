@@ -146,6 +146,19 @@ def _turn_sign(d, c, b, a, minimum):
     return (value > 0) - (value < 0)
 
 
+def _distinct_turn(level, sign, c, b, a, minimum):
+    """Does the extremum of a step starting on this face reach a different float?"""
+    direction = -1 if minimum else 1
+    neighbor = math.nextafter(level, direction * sign * math.inf)
+    if math.isinf(neighbor):
+        return True  # no finite neighboring face in this direction
+    # Compare the exact extremum with the midpoint, even when that midpoint is
+    # half the smallest subnormal. At the midpoint respect ties-to-even.
+    midpoint = (Fraction(neighbor) - Fraction(level)) * int(sign) / 2
+    side = _turn_sign(-midpoint, c, b, a, minimum)
+    return side == direction or (not side and float((Fraction(neighbor) + Fraction(level)) / 2) != level)
+
+
 def _first_arrival(initial, level, sign, c, b, a, start, end, last):
     """First arrival from the negative side of one signed coordinate cubic."""
 
@@ -173,6 +186,23 @@ def _first_arrival(initial, level, sign, c, b, a, start, end, last):
     before = start
     first = d if start == 0 else gap(start)
     stops = [(x, minimum) for x, minimum in _turns(c, b, a) if start < x < end]
+    # A step that never leaves its starting coordinate cannot rearm the same
+    # face. Inspect the extrema and the dense endpoint even if an independently
+    # accepted endpoint rounds back to the face.
+    if (
+        start == 0
+        and initial == level
+        and last in (None, 0)
+        and not any(_distinct_turn(level, sign, c, b, a, minimum) for _, minimum in stops)
+    ):
+        x = Fraction(end)
+        distance = ((Fraction(a) * x + Fraction(b)) * x + Fraction(c)) * x
+        try:
+            ends_on_face = float(Fraction(level) + int(sign) * distance) == level
+        except OverflowError:
+            ends_on_face = False
+        if ends_on_face:
+            return None
     stops.append((end, None))
     for after, minimum in stops:
         final = last if after == end and last is not None else gap(after, minimum)

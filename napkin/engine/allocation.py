@@ -109,7 +109,11 @@ class StockFaces:
         ]
         if releases is not None:
             held, atol = releases
-            watches.extend(((low, held + atol, 1, 'release'), (high, held - atol, -1, 'release')))
+            # A positive allowance can round away at a large accepted stock. Its
+            # release must still require a change in the inward direction.
+            above = np.maximum(held + atol, np.nextafter(held, np.inf))
+            below = np.minimum(held - atol, np.nextafter(held, -np.inf))
+            watches.extend(((low, above, 1, 'release'), (high, below, -1, 'release')))
         rows, levels, directions, kinds = [], [], [], []
         for mask, limits, direction, kind in watches:
             selected = np.flatnonzero(mask)
