@@ -232,6 +232,11 @@ def outcome(distribution, eligible, u, site=''):
         raise SimulationError(f'{site}: no eligible outcome has a weight to draw (eligible: {names})')
     if u is None:
         return max(weights, key=lambda pair: pair[1])[0]  # `max` keeps the first of equal weights
+    if math.isinf(total):
+        # Rescale by one binary exponent so the largest eligible weight is below one.
+        exponent = math.frexp(max(weight for _, weight in weights))[1]
+        weights = [(member, math.ldexp(weight, -exponent)) for member, weight in weights]
+        total = sum(weight for _, weight in weights)
     reached = 0.0
     for member, weight in weights:
         reached += weight / total
