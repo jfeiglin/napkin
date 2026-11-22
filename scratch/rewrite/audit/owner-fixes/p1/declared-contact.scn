@@ -1,0 +1,12 @@
+scenario "Receiving tank"
+    horizon 2 h
+yard:
+    water: L = 0 L in [0 L, 0.625 L]
+    flow fill: SOURCE -> this.water
+        request = formula((1 + t / 1 h) * 1 L/h)
+owner:
+    distribute = solver:
+        inputs:
+            fill = yard.fill
+        solve_for:
+            fill.actual_rate
