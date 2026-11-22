@@ -315,11 +315,17 @@ def _end_checks(arrays, w, optima, levels):
         if before is not None:
             for kind, what in ((FLOW, 'the flows'), (OTHER, 'the others')):
                 stage = w.kind == kind
+                if not stage.any():
+                    continue
+                current, previous, target = xi[stage], before[stage], w.target[stage]
+                if kind == OTHER:
+                    metric = w.metric_scale[stage] / w.scale[stage]
+                    current, previous, target = current / metric, previous / metric, target / metric
                 # A rounding moves a coordinate within the precision to which the end checks hold it.
-                precision = CHECK * (1.0 + np.abs(before[stage]))
-                if kind == FLOW and not rate_rounding(xi[stage], before[stage], precision):
+                precision = CHECK * (1.0 + np.abs(previous))
+                if kind == FLOW and not rate_rounding(current, previous, precision):
                     return SolveFailure(NUMERICAL, 'flow publication', 'a rounding changed a selected flow')
-                worse = farther(xi[stage], before[stage], w.target[stage], precision) if stage.any() else 0.0
+                worse = farther(current, previous, target, precision)
                 if worse > 0:
                     return SolveFailure(
                         NUMERICAL,

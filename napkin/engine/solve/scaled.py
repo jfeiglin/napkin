@@ -1,11 +1,9 @@
 """A problem in working units, in the order of the columns and rows of a kept HiGHS instance.
 
-Each column is divided by its reference scale, so that a value of one is one scale of its unknown,
-and each row is then divided by its largest coefficient. An objective is divided by its largest
-coefficient, and the rate of a claim by its request, so that a claim reads a served fraction. Every
-tolerance of the library is in these units. Another spelling of the units of an unknown (W or kW)
-changes its bounds, its scale and its coefficients together, so its working form is the same but
-for rounding, and so is the answer.
+Flow coordinates use their physical rate units. Nonflow unknowns enter the hard constraints,
+written ranks and fair-sharing problems in physical coordinates. Their declared reference scales
+specify the metric on the final feasible face and are retained separately for that distance.
+Rows and objectives are normalized after choosing these working coordinates.
 """
 
 from __future__ import annotations
@@ -15,6 +13,8 @@ import copy
 import numpy as np
 import scipy.sparse as sp
 
+from .problem import OTHER
+
 
 class Scaled:
     """The working form of an `Arrays` record; `reordered` puts it in the order of an instance."""
@@ -22,7 +22,8 @@ class Scaled:
     def __init__(self, arrays):
         self.arrays = arrays
         self.n, self.m = arrays.n, arrays.m
-        s = self.scale = arrays.scale
+        self.metric_scale = arrays.scale
+        s = self.scale = np.where(arrays.kind == OTHER, 1.0, arrays.scale)
         self.lower, self.upper = arrays.lower / s, arrays.upper / s
         self.target = arrays.target / s
         self.kind = arrays.kind
@@ -53,7 +54,7 @@ class Scaled:
         """The same form with its columns and rows in the order `columns` and `rows` (positions in
         this form)."""
         other = copy.copy(self)
-        for name in ('scale', 'lower', 'upper', 'target', 'kind', 'columns'):
+        for name in ('scale', 'metric_scale', 'lower', 'upper', 'target', 'kind', 'columns'):
             setattr(other, name, getattr(self, name)[columns])
         for name in ('row_scale', 'row_lower', 'row_upper', 'rows'):
             setattr(other, name, getattr(self, name)[rows])

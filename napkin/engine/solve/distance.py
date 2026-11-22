@@ -77,6 +77,7 @@ from scipy.sparse.linalg import splu
 from .failures import DISTANCE_BUDGET, NUMERICAL, SolveFailure
 from .kept import OPTIMAL, Status, quadratic
 from .problem import FLOW, OTHER
+from .scaled import row_max
 
 EPS_START = 1.0  # the first proximal weight of a coordinate with no weight
 EPS = 1e-3  # its last proximal weight
@@ -109,7 +110,27 @@ def select(face, w, budget, work):
         xi = stage(A, row_lower, row_upper, lower, upper, w.target, flows * 1.0, budget, work, 'the flows')
         lower[flows] = upper[flows] = xi[flows]
     if others.any() or xi is None:
-        xi = stage(A, row_lower, row_upper, lower, upper, w.target, others * 1.0, budget, work, 'the others')
+        # The LP chose the face in physical coordinates. Only the distance between remaining
+        # nonflow values uses their declared metric. Change coordinates once for either QP method.
+        free = others & (lower < upper)
+        scale, target = None, w.target
+        if np.any(w.metric_scale[free] != w.scale[free]):
+            scale = np.ones(w.n)
+            scale[free] = w.metric_scale[free] / w.scale[free]
+            # A common change of the metric leaves its minimizer unchanged. Fit the relative
+            # lengths to the physical boxes so QP primal tolerances still resolve their widths.
+            widths = upper[free] - lower[free]
+            widths = np.where(np.isfinite(widths), widths, 1.0)
+            scale[free] /= np.max(scale[free] / widths)
+            A = sp.csr_array(A.multiply(scale))
+            size = row_max(A)
+            rows = np.where(size > 0, size, 1.0)
+            A = sp.csr_array(A.multiply((1.0 / rows)[:, None]))
+            row_lower, row_upper = row_lower / rows, row_upper / rows
+            lower, upper, target = lower / scale, upper / scale, target / scale
+        xi = stage(A, row_lower, row_upper, lower, upper, target, others * 1.0, budget, work, 'the others')
+        if scale is not None:
+            xi *= scale
     return xi
 
 

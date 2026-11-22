@@ -11,12 +11,13 @@ one; where each claim left can be served but not all together, the part is held 
 The exact sequential method (prototype A3): one linear program `max t` with F_i . x >= t for each
 pending claim of the tier and t <= 1. At its optimum t*, a claim whose row has a dual above TAU is at
 t* in every optimal answer, by complementary slackness, and the max-min answer is one of them, so
-that claim is held at t*. The duals of the claim rows sum to one (the cost of t), so each program
+that claim is held at t*. The duals of the claim rows times their level coefficients sum to one
+(the cost of the working level), so each program
 holds at least one claim, and t* rises or stays. When t* reaches one, every pending claim is served
 in full. A claim whose columns the face has fixed reads one value in every answer, so it is held at
 that value without a program (a closed flow that keeps its request).
 
-A held claim gets the lower bound F_i . x >= t* - FIX, never an equality: t* is known only to the
+A held claim gets a lower bound below t* by at most FIX, never an equality: t* is known only to the
 feasibility tolerance of HiGHS, and an equality at the computed level made a later program
 infeasible at 30,000 places (A3). A held claim cannot rise above its level in the later programs
 without lowering a claim at that level, so the lower bound holds it. A claim of one column is held by
@@ -69,6 +70,7 @@ TAU = 1e-9  # a dual above this holds its claim
 FIX = 1e-7  # a held claim keeps its level to this (the feasibility tolerance of HiGHS)
 FULL = 1e-9  # t* within this of one serves every pending claim in full
 UPDATES = 100  # the updates of a factorization of the basis before HiGHS factorizes it again
+SMALL_GAIN = np.sqrt(TIGHT)  # below this, a tight fractional tolerance loses over half its digits in a rate
 
 
 def share(kept, face, w, budget, work):
@@ -95,14 +97,28 @@ def _tier(kept, face, F, tier, budget, work):
     step = f'fair sharing, tier {tier}'
     part = _parts(kept, F, pending, ~fixed)
     count = int(part.max()) + 1
-    scale = 1.0 / np.maximum(1.0, row_max(F))  # no entry of a claim row above one
+    gain = row_max(F)
+    # Each independent part can choose its own unit of t without changing its optimum. If a unit
+    # of rate buys a tiny fraction, give that fraction one working unit: both the rate and the
+    # level participate in the row and in the LP's reduced costs. Ordinary parts keep t in fractions.
+    fraction_unit = np.ones(count)
+    small = pending & (gain < SMALL_GAIN)
+    if small.any():
+        np.minimum.at(fraction_unit, part[small], gain[small])
+    unit = fraction_unit[part]
+    scale = 1.0 / np.maximum(unit, gain)
+    # Where another claim of this same part gains much faster, normalizing just its rate entry
+    # would vanish its t entry. Balance their magnitudes about one in that row instead.
+    disparate = (unit < 1.0) & (scale * unit < SMALL_GAIN)
+    scale[disparate] = np.sqrt(scale[disparate]) / np.sqrt(unit[disparate])
+    t_coefficient = scale * unit
     single = np.diff(F.indptr) == 1
-    t = kept.add_cols(np.full(count, -INF), np.ones(count), sp.csc_array((kept.m, count)))
+    t = kept.add_cols(np.full(count, -INF), 1.0 / fraction_unit, sp.csc_array((kept.m, count)))
     cost = np.zeros(kept.n)
     cost[t] = -1.0
     kept.set_cost(cost)
     claims = np.flatnonzero(pending)
-    own = sp.csr_array((-scale[claims], (claims, part[claims])), shape=(K, count))  # -t of its part
+    own = sp.csr_array((-t_coefficient[claims], (claims, part[claims])), shape=(K, count))
     rows = sp.hstack([sp.diags_array(scale) @ F, sp.csr_array((K, kept.n - width - count)), own]).tocsr()
     first = kept.add_rows(np.where(pending, 0.0, -INF), np.full(K, INF), rows)
     # each t starts at its upper bound: with no shortage the first program needs no iteration
@@ -118,14 +134,22 @@ def _tier(kept, face, F, tier, budget, work):
             while pending.any():
                 if work.fair_programs >= budget.fair_programs:
                     raise _exceeded(step, reached, programs, levels, pending, budget)
-                run = ranked.solve(kept, step)
+                try:
+                    run = ranked.solve(kept, step)
+                except SolveFailure as failure:
+                    # Every t has a finite upper bound. After adding an aggregate row, primal
+                    # simplex can report an unbounded direction. Recheck with the default method.
+                    if failure.name != UNBOUNDED or programs == 0:
+                        raise
+                    primal.close()
+                    run = ranked.solve(kept, step)
                 work.programs += 1
                 work.fair_programs += 1
                 programs += 1
                 run = ranked.exact(kept, run, work, step)
                 if programs == 1:
                     primal.enter_context(kept.option('simplex_strategy', PRIMAL_SIMPLEX))
-                found = run.x[t]  # t* of each part
+                found = run.x[t] * fraction_unit  # the physical fraction of each part
                 # A served fraction counts from zero: in a part whose smallest fraction is zero or
                 # below, the claims that no answer serves are held at zero and nothing more, and the
                 # part shares the rest (`_unserved`); where each can be served but not all together,
@@ -148,8 +172,11 @@ def _tier(kept, face, F, tier, budget, work):
                 for p in np.unique(part[pending]).tolist():
                     reached[p].append(1.0 if full[p] else float(found[p]))
                 served = pending & full[part]
+                # The dual of an unscaled claim is y_i * t_coefficient_i, with uncertainty
+                # TAU * t_coefficient_i. Compare in the library's row units: a positive, resolved
+                # dual still proves the level forced if the claim has a very small share of t's cost.
                 held = served | (pending & ~full[part] & (run.y[first] > TAU))
-                # the duals of a part's claim rows sum to one (the cost of its t): each part holds one
+                # The claim duals weighted by their t coefficients sum to t's unit cost.
                 short = np.unique(part[pending & ~full[part]])
                 if not np.isin(short, part[held]).all():
                     raise SolveFailure(NUMERICAL, step, 'no claim has a dual', {'programs': programs})
@@ -188,10 +215,12 @@ def _parts(kept, F, pending, free):
 
 
 def _hold(kept, face, F, scale, first, index, single, level, width):
-    """F_i . x >= level_i - FIX for the claims `index` at their levels: a bound for a claim of one
+    """The lower bound at the claims' levels with the working tolerance: a bound for a claim of one
     column, else a row."""
     kept.set_row_bounds(first[index], np.full(len(index), -INF), np.full(len(index), INF))
-    floor = np.minimum(level, 1.0) - FIX
+    # FIX is an allowance in the working row. In a row scaled up to measure the physical rate,
+    # a full FIX of the fraction would allow the distance step to undo part of the sharing.
+    floor = np.nextafter(np.minimum(level, 1.0) - FIX / np.maximum(1.0, scale[index]), -np.inf)
     one = single[index]
     if one.any():
         claims = index[one]
@@ -225,7 +254,10 @@ def _unserved(kept, F, claims, width, step, work, check):
             check()
             cost = np.zeros(probe.n)
             start, end = F.indptr[i], F.indptr[i + 1]
-            cost[F.indices[start:end]] = -F.data[start:end]
+            terms = F.data[start:end]
+            gain = np.max(np.abs(terms))
+            unit = gain if gain < SMALL_GAIN else 1.0
+            cost[F.indices[start:end]] = -terms / unit
             probe.set_cost(cost)
             try:
                 run = ranked.solve(probe, step)
@@ -235,7 +267,7 @@ def _unserved(kept, F, claims, width, step, work, check):
                 raise
             work.programs += 1
             work.fair_programs += 1
-            if -float(run.objective) <= TAU:
+            if -float(run.objective) * unit <= TAU:
                 found.append(i)
     return np.array(found, dtype=np.int64)
 

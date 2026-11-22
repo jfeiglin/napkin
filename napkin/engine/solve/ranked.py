@@ -130,6 +130,13 @@ def _sides(value, lower, upper):
     not basic exactly its bound; a row's value is its activity, so it is near its bound."""
     low = np.isfinite(lower) & (np.abs(value - lower) <= NEAR * (1.0 + np.abs(lower)))
     high = np.isfinite(upper) & (np.abs(value - upper) <= NEAR * (1.0 + np.abs(upper)))
+    # Tolerance neighborhoods can overlap even when the physical bounds are distinct.
+    # A dual on the nearer bound must still pin it for the following ranks.
+    overlap = low & high & (lower != upper)
+    if overlap.any():
+        lo_gap = np.abs(value[overlap] - lower[overlap])
+        hi_gap = np.abs(value[overlap] - upper[overlap])
+        low[overlap], high[overlap] = lo_gap < hi_gap, hi_gap < lo_gap
     return low, high
 
 
