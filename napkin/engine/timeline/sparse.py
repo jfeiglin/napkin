@@ -1080,6 +1080,7 @@ class Sparse(MovingTransfers, Way):
             reversal=reversal,
             contacted=self.contacted,
             clocks=clocks,
+            stock_at=self.run.stock_state.point,
         )
 
     def _turns(self, solution, start, end):

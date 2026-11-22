@@ -19,6 +19,7 @@ import numpy as np
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
 from ...expressions import evaluate, names_in, stock_face_dependencies
+from . import affine as affine_forms
 from .walk import walked
 
 # The coefficients of the [13/13] Pade approximant of the exponential, and the largest 1-norm for
@@ -596,23 +597,15 @@ def compartment_solution(system, run, field, classifier, departures, end, descri
                 value = yield walk(node.operand)
                 if value is None:
                     return None
-                sign = -1 if node.op == 'neg' else 1
-                return sign * value[0], {k: sign * v for k, v in value[1].items()}
+                return affine_forms.scale(value, -1 if node.op == 'neg' else 1)
             if isinstance(node, nodes.Binary):
                 a = yield walk(node.left)
                 b = yield walk(node.right)
                 if a is None or b is None:
                     return None
-                if node.op in ('add', 'sub'):
-                    sign = -1 if node.op == 'sub' else 1
-                    keys = a[1].keys() | b[1].keys()
-                    return a[0] + sign * b[0], {k: a[1].get(k, 0) + sign * b[1].get(k, 0) for k in keys}
-                if node.op == 'mul' and (not a[1] or not b[1]):
-                    if a[1]:
-                        a, b = b, a
-                    return a[0] * b[0], {k: a[0] * v for k, v in b[1].items()}
-                if node.op == 'div' and not b[1] and b[0] != 0:
-                    return a[0] / b[0], {k: v / b[0] for k, v in a[1].items()}
+                combined = affine_forms.binary(node.op, a, b)
+                if combined is not None:
+                    return combined
             certificate = repayment_certificates.get(node)
             if certificate:
                 return certificate

@@ -15,7 +15,7 @@ from ...expressions import ExpressionError, compile_program, evaluate, names_in
 from ...program.config import Numerics
 from ..errors import SimulationError
 from ..solvers import radau_rate
-from . import dense
+from . import affine, dense
 from .bounds import state_limits
 from .transfers import CollocationRates
 from .walk import walked
@@ -887,7 +887,57 @@ def curved_motion(t, y, h, drift, rates, side_at, place):
     return motion
 
 
-def departing_branches(surfaces, t, y, side_at, rates, place, moving, contacted, comparisons):
+def affine_departure(pair, values, drift, place, contacted, selected, choose, forms_for, physical, rates):
+    """Certify the open side of two affine operands at a physical or nested contact.
+    Return zero to keep an observed offset inside its band, or None to use the curved trajectory."""
+    left, right = values
+    forms = forms_for(selected)
+    if forms is None:
+        return None
+    velocity, size = affine.velocity(forms, drift, place)
+    if abs(velocity) <= Numerics.rtol * size:
+        return None
+
+    coincident = left == right or pair in contacted
+    if (
+        physical is not None
+        and pair not in contacted
+        and abs(left - right) <= math.ulp(left) + math.ulp(right)
+    ):
+        # An integrated stock can miss its physical balance by one rounding at a located
+        # change of an inner branch. If the incoming pieces had equal velocities, compare
+        # their actual stocks before deciding whether this was a coincidence or a near miss.
+        incoming = {key: -sign if key in contacted else sign for key, sign in selected.items()}
+        if incoming != selected:
+            old = forms_for(incoming)
+            stocks = (forms[0].keys() | forms[1].keys()) - {'t'}
+            if stocks and old is not None and affine.velocity(old, drift, place)[0] == 0:
+                booked = physical(stocks)
+                if booked(pair[0]) != booked(pair[1]):
+                    return 0
+                coincident = True
+    if not coincident:
+        return None
+
+    # A branch can change the rates of its own controlling stocks. Require the same
+    # direction on its proposed field before committing to a first-order departure.
+    sign = 1 if velocity > 0 else -1
+    outgoing = {**selected, pair: sign}
+    choose(outgoing)
+    try:
+        next_forms = forms_for(outgoing)
+        if next_forms is not None:
+            next_velocity, size = affine.velocity(next_forms, rates(), place)
+            if sign * next_velocity > Numerics.rtol * size:
+                return sign
+    finally:
+        choose(selected)
+    return None
+
+
+def departing_branches(
+    surfaces, t, y, side_at, rates, place, moving, contacted, comparisons, *, certify=None
+):
     """Select the sides a segment leaves on, including comparisons between two moving expressions.
     At a contact their equal values alone cannot pick a side. Compare their values along the
     outgoing trajectory; arithmetic outside the condition continues to read the actual state."""
@@ -914,6 +964,11 @@ def departing_branches(surfaces, t, y, side_at, rates, place, moving, contacted,
 
         for (a, b), (left, right) in contacts.items():
             try:
+                if certify is not None and not (directed(a, b) or directed(b, a)):
+                    sign = certify((a, b), (left, right), drift)
+                    if sign is not None:
+                        signs[a, b] = sign
+                        continue
                 if left != right and (a, b) not in contacted:
                     # An interpolated inventory at a scheduled cut can miss a physical
                     # tangency by a few ulps. Look for equality on the local trajectory.
@@ -1144,6 +1199,7 @@ def starting_sides(system, run, field):
         reversal=reversal,
         contacted=run.contacted,
         consumed=run.contact_clocks,
+        stock_at=getattr(field, 'stock_at', None),
     )
 
 
@@ -1200,6 +1256,7 @@ def far_sides(
     contacted=(),
     consumed=(),
     clocks=None,
+    stock_at=None,
 ):
     """Select the open segment at the actual state after the round's edits. The outgoing clock
     chooses the velocity used to resolve coincident store and composite switches. All fields
@@ -1296,8 +1353,45 @@ def far_sides(
     # A jump across an enclosing min/max/if changes its winning operand without
     # crossing its incoming root. Read each layer with all inner departures installed.
     signs = dict(clock_branches)
+
+    def booked_reader(stocks):
+        # Read only the coordinates present in these affine operands. No trial or ledger
+        # cursor is changed, and the ledger is queried at the moment's actual clock.
+        booked = departure.copy()
+        for name in stocks:
+            booked[place[name]] = float(stock_at(name, t)[0])
+        return side_at(t, booked)
+
+    def certify(pair, values, drift):
+        read = side_at(at, departure)
+
+        def forms_for(choices):
+            return affine.operands(
+                pair,
+                read,
+                place,
+                moving,
+                comparisons.definition,
+                lambda node: branch_expression(node, choices),
+            )
+
+        return affine_departure(
+            pair,
+            values,
+            drift,
+            place,
+            contacted,
+            signs,
+            choose,
+            forms_for,
+            booked_reader if stock_at is not None else None,
+            lambda: rates(at, departure),
+        )
+
     for layer in layers:
-        found = departing_branches(layer, at, departure, side_at, rates, place, moving, reached, comparisons)
+        found = departing_branches(
+            layer, at, departure, side_at, rates, place, moving, reached, comparisons, certify=certify
+        )
         if band_edges:
             edges = [pair for pair in band_edges if found.get(pair) == 0]
             if edges:

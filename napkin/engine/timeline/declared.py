@@ -1647,6 +1647,7 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
             reversal=reversal,
             contacted=contacted,
             consumed=contacted,
+            stock_at=self.run.stock_state.point,
         )
         if region.lookups:
             rows, ranks = region.rank_members(

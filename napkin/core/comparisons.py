@@ -242,6 +242,10 @@ class Comparisons:
         unit, floor = found
         return Binding(unit, floor, floor if isinstance(floor, expr.Node) else None)
 
+    def definition(self, name):
+        """The live formula for a bound name, when the binding supplies one."""
+        return self._binding(name).definition
+
     def control_names(self, roots):
         """Names a generated program can need to choose a floor, through its named formulas."""
         controls, seen, pending = set(), set(), list(roots)
@@ -424,7 +428,7 @@ class Comparisons:
             if isinstance(n, expr.Ref) and self.named is not None:
                 if self._literal_reference is not None:
                     return 'literal', (), self._literal_reference(n.name)
-                definition = self._binding(n.name).definition
+                definition = self.definition(n.name)
                 if isinstance(definition, expr.Node):
                     return 'pos', (definition,), None
             return node_parts(n)

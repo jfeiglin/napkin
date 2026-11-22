@@ -542,6 +542,7 @@ class ComponentWay(MovingTransfers, Way):
         # What it read when it was built, which holds while it lasts and a checkpoint saves.
         self.captured = (known, missing, rigid)
         self.component = Component(system, context, [values[name] for name in stores], rigid)
+        self.component.field.stock_at = run.stock_state.point
         self.component.field.paired_requests = self._pair(system, plan)
         self.component.state.time = float(t)
         self.component.state.contact_clocks = (
