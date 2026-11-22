@@ -241,7 +241,7 @@ class Run:
         stores, self.local_stores = planned_stocks(self)
         for cell in sorted(stores, key=label):
             if isinstance(self.view.cells[cell], Fraction):
-                self._note_store(cell)
+                self._open_store(cell)
 
     def _start_value(self, ent, inst, f):
         scope = Scope(ent)
@@ -395,14 +395,19 @@ class Run:
             cells[Cell(f, 'capacity')] = self._prop(decl.capacity, scope)
             cells[Cell(f, 'request')] = self._prop(decl.request, scope)
         for cell in network.stores_of(f):
-            self._note_store(cell)
+            self._meet_store(cell)
         self.flow_at[owner, decl.name] = f
         self.view.live.append(f)
         return f
 
-    def _note_store(self, cell):
-        """A cell becomes a store. What it holds at that time came from outside the flows: it is
-        recorded as an opening balance."""
+    def _meet_store(self, cell):
+        """A flow joined or a move committed. Its occurrence endpoints must drain before retirement."""
+        if isinstance(cell.owner, Occ):
+            cell.owner.met_stores.add(cell.name)
+        self._open_store(cell)
+
+    def _open_store(self, cell):
+        """Record the opening inventory once, including for an endpoint first used by a later event."""
         if cell in self.stores:
             return
         amount = self.view.cells[cell]
@@ -1319,8 +1324,8 @@ class Run:
         view, t = self.view, self.view.t
         moved = Counter()
         for src, dst, amount, origin in tx.moves:
-            self._note_store(src)
-            self._note_store(dst)
+            self._meet_store(src)
+            self._meet_store(dst)
             moved[src] -= amount
             moved[dst] += amount
             self.ledger.append(('move', t, src, dst, amount))
@@ -1392,7 +1397,7 @@ class Run:
         for name in sorted(self.local_stores.get((ent, event.name), ())):
             cell = Cell(occ, name)
             if isinstance(view.cells.get(cell), Fraction):
-                self._note_store(cell)
+                self._open_store(cell)
         occs.append(occ)
         self._note('start', occ.label, origin=event.origin)
         if self.phase == 'conditions':
@@ -1465,7 +1470,8 @@ class Run:
         formula of the occurrence, its flows' settings included, keeps the result it has now, or
         the reason why it has none (decision D7); then its flows leave their endpoints."""
         view, t = self.view, self.view.t
-        for cell in sorted((c for c in self.stores if c.owner is occ), key=lambda c: c.name):
+        for name in sorted(occ.met_stores):
+            cell = Cell(occ, name)
             left = view.cells[cell]
             if abs(left) > self.config.atol_factor * max(self.own_scales[cell], abs(left)):
                 raise RunFailed(

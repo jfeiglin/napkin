@@ -49,6 +49,7 @@ class Occ:
     step: int = 0
     due: object = None  # the time of its next stage, when one is scheduled
     waiting: bool = False  # at an `until` gate
+    met_stores: set[str] = field(default_factory=set)  # locals met by a live flow or committed move
 
     @property
     def label(self):

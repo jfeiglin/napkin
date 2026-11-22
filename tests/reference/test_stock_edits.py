@@ -17,6 +17,33 @@ def edits(run):
     return [(row[2].name, row[3]) for row in run.ledger if row[0] == 'edit']
 
 
+@pytest.mark.parametrize('guard', ['false', 'true'], ids=['unused-endpoint', 'committed-move'])
+def test_an_occurrence_books_its_opening_and_retires_only_the_stores_actually_met(guard):
+    model = compile_text(
+        f"""scenario "An occurrence with a conditional move"
+    horizon 1 h
+yard:
+    received: L = 0 L @test
+    work = event(): @test
+        lot: L = 100 L
+        after 0 h when {guard}:
+            move 1 L from lot to this.received
+yard.work.start()
+
+record test: assumption "A synthetic retirement check."
+""",
+        UNITS,
+    )
+    assert not model.reports
+    run, error = run_of(model.program, model.configuration)
+    balance = run.conservation()
+    assert balance['balanced'] and balance['opening'] == balance['held'] == 100
+    if guard == 'true':
+        assert run.view.t == 0 and 'its store yard.work#0.lot still holds 99 L' in str(error)
+    else:
+        assert run.view.t == 1 and error is None
+
+
 def test_an_edit_before_the_first_move_is_a_transfer_from_outside():
     model = compile_text(
         """scenario "Edit before a planned move"
