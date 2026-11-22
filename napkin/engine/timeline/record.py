@@ -794,7 +794,7 @@ class Recorder:
         boolean = plan.values[name].boolean
         try:
             stepped = run.stepped_of(name) if plan.stepped(name) else None
-            if stepped is None:
+            if stepped is None and plan.fixed_filter(name):
                 run.kept_of(name)
         except FAILURES as problem:
             return [(0.0, Unavailable(str(problem)), 0.0)]
@@ -884,9 +884,7 @@ class Recorder:
                 return known(readers[read](t))
 
             members = plan.members_at(dynamic.source, value)
-            return dynamic_value(
-                dynamic, members, lambda each: plan.project(each, dynamic.steps), value, t, plan.units
-            )
+            return dynamic_value(dynamic, members, plan, value, t, plan.units)
 
         return self.formula(name, histories, end, sorted(plan.dynamic_reads(name)), point=point)
 
@@ -1804,16 +1802,14 @@ class Reader:
         self._ready(sorted(plan.dynamic_reads(name)), t)
         try:
             members = plan.members_at(dynamic.source, read)
-            return dynamic_value(
-                dynamic, members, lambda each: plan.project(each, dynamic.steps), read, t, plan.units
-            )
+            return dynamic_value(dynamic, members, plan, read, t, plan.units)
         except FAILURES as problem:
             return Unavailable(str(problem))
 
     def _derived(self, name, t, read):
         """A reduction or a keyed read at a time, from the recorded values of what it reads. Which
-        entries it keeps is read from the recorded values of the fixed fields that its tests read,
-        once. Reusing the selection credits the same tested fields at each reading. What it reads
+        entries it keeps is read from the predicate at the requested time. An immutable selection
+        can be reused, crediting the same tested fields at each reading. What it reads
         for sure is found first: the tests, then the kept entries of a reduction,
         or the keys of a keyed read and its key; a keyed read reads only the entry that it selects."""
         plan = self.plan
@@ -1828,7 +1824,8 @@ class Reader:
                     return read(other)
 
                 entries = kept(derived.tests, selector, self.units)
-                self.kept[name] = entries, tuple(dict.fromkeys(tested))
+                if plan.fixed_filter(name):
+                    self.kept[name] = entries, tuple(dict.fromkeys(tested))
             else:
                 entries, tested = self.kept[name]
                 self._ready(tested, t)

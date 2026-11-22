@@ -748,6 +748,13 @@ class Former:
         if value.kind == DYNAMIC:
             dynamic = self.plan.dynamic[name]
             members = self.plan.members(dynamic.source)
+            if any(self.reads_unknown(control) for control in dynamic.controls(members, self.plan)):
+                raise self._refused(f'{dynamic.spelled}: a filter or key reads an unknown of the solver')
+            read, units = self._reader(), self.plan.units
+            if dynamic.op == 'at':
+                point = dynamic.member_at(members, self.plan, read, self.t, units)
+                return (yield self._value(nodes.ref(self.plan.project(point, dynamic.steps)), ()))
+            members = dynamic.selected(members, read, units, self.t)
             names = [self.plan.project(point, dynamic.steps) for point in members]
             return (yield self._reduced(dynamic.op, names, dynamic.spelled))
         if value.kind == LOOKUP:
@@ -1526,7 +1533,7 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
             if not any(self.former._symbolic(node) for node in pair)
         ]
         lookups = key_surfaces(
-            self.plan, dependencies.formulas | dependencies.stepped | dependencies.leaves, moving
+            self.plan, dependencies.formulas | dependencies.stepped | dependencies.leaves, moving, formulas
         )
         defined = self.former.region.defined if self.former.region is not None else ()
         self.region = Region(surfaces, lookups, defined)

@@ -392,7 +392,7 @@ def _chain(infer, first, links):
             raise ExpressionError('Unsupported comparison')
         right = infer(operand)
         same(left, right)
-        if left.kind in ('boolean', 'string') and op not in ('eq', 'ne'):
+        if left.kind not in ('number', 'zero') and op not in ('eq', 'ne'):
             raise ExpressionError('Ordered comparisons require numeric values')
         left = right
     return BOOLEAN

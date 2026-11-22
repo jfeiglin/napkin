@@ -6,8 +6,8 @@
    with no recursion, so a chain through the rows of a large table is no limit: an evaluation that
    asks for a read that is not known yet waits while that read is computed (`Pending`, on the stack
    of `walk.walked`), so a side that its evaluation does not take is never read (`reads.py`). A draw is executed there,
-   keyed by its site and its member (`chance.py`); each is an entry of the trace. An input that the configuration sets must lie in its admitted range. The entries that each `where`
-   keeps are found from fixed values, once (`kept_of`), and so is the sorted index of the keys of
+   keyed by its site and its member (`chance.py`); each is an entry of the trace. An input that the configuration sets must lie in its admitted range. A selection over immutable fields
+   is evaluated once (`kept_of`), as is the sorted index of the keys of
    each keyed read (`stepped_of`). Then each assertion over inputs is checked once; one that does not
    hold fails the run at the start, as an error of the setup that the plan found does.
 2. **The sizes.** A store's size helps set its integrator tolerance (D8): its
@@ -339,10 +339,12 @@ class Run:
 
     def kept_of(self, name):
         """The places of the entries that the where tests of a reduction or a keyed read keep: the
-        tests read what is fixed for each member, so the reads of one collection share them."""
+        selection is shared only when the members and enclosing operands are immutable."""
         found = self._kept.get(name)
         if found is None:
             derived = self.plan.reductions.get(name) or self.plan.keyed[name]
+            if not self.plan.fixed_filter(name):
+                return kept(derived.tests, self.value_of, self.plan.units)
             shared = self._kept.get(id(derived.tests))
             if shared is None or shared[1] is not derived.tests:
                 shared = self._kept[id(derived.tests)] = (
@@ -733,9 +735,7 @@ class Run:
         members = plan.members(dynamic.source)
         if dynamic.keep is None and dynamic.steps and dynamic.op not in ('at', 'latest'):
             self._ask((plan.project(point, dynamic.steps) for point in members), tx, known)
-        return dynamic_value(
-            dynamic, members, lambda point: plan.project(point, dynamic.steps), read, t, units
-        )
+        return dynamic_value(dynamic, members, plan, read, t, units)
 
     def _ask(self, names, tx, known):
         """Raise `Pending` for the derived names among `names` that the read in progress has not

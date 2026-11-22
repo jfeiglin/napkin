@@ -1,7 +1,7 @@
 """The branches and keyed rows of a smooth segment. The arithmetic on them still moves."""
 
 from ...core import expr as nodes
-from ..continuous.integrate import branch_expression, comparison_side, departing_branches
+from ..continuous.integrate import branch_expression, comparison_side, departing_branches, surfaces_of
 
 
 class Region:
@@ -10,15 +10,28 @@ class Region:
     def __init__(self, surfaces=(), lookups=None, defined=()):
         self.defined = defined  # rates whose arithmetic is part of this trial field
         self.lookups = lookups or {}
-        keys = (pair for rows in self.lookups.values() for pair in rows)
+        keys = (pair for name in self.lookups for pair in self.lookup_surfaces(name))
         self.surfaces = tuple(dict.fromkeys((*surfaces, *keys)))
         self.set({}, {})
 
-    def _winners(self, run, signs, compare):
+    def lookup_surfaces(self, name):
+        keys, filters = self.lookups[name]
+        return (*keys, *filters)
+
+    def _winners(self, run, signs, operand, compare):
         """Select the greatest eligible key in creation order. The later entry wins a tie."""
         rows = {}
-        for name, pairs in self.lookups.items():
-            eligible = (k for k in run.kept_of(name) if signs.get(pairs[k], -1) >= 0)
+        for name, (pairs, _) in self.lookups.items():
+            keyed = run.plan.keyed[name]
+            if run.plan.fixed_filter(name):
+                members = run.kept_of(name)
+            else:
+                members = (
+                    k
+                    for k, test in enumerate(keyed.tests)
+                    if test is None or operand(branch_expression(test, signs))
+                )
+            eligible = (k for k in members if signs.get(pairs[k], -1) >= 0)
             winner = next(eligible, None)
             if winner is None:
                 continue
@@ -27,12 +40,12 @@ class Region:
                 direction = compare(name, pair)
                 if direction is not None and direction <= 0:
                     winner = challenger
-            rows[name] = run.plan.keyed[name].names[winner]
+            rows[name] = keyed.names[winner]
         return rows
 
     def selected_rows(self, run, signs, operand):
         return self._winners(
-            run, signs, lambda _, pair: comparison_side(pair, operand, run.plan.units.comparisons)
+            run, signs, operand, lambda _, pair: comparison_side(pair, operand, run.plan.units.comparisons)
         )
 
     def rank_members(self, run, signs, t, y, side_at, rates, places, moving, contacted):
@@ -61,7 +74,7 @@ class Region:
                 self.rank_owners.setdefault(pair, []).append(name)
             return direction
 
-        return self._winners(run, signs, compare), ranks
+        return self._winners(run, signs, operand, compare), ranks
 
     def set(self, signs, rows):
         """Install the active branches and invalidate expressions selected for the previous segment."""
@@ -79,11 +92,23 @@ class Region:
         return self.rows.get(name)
 
 
-def key_surfaces(plan, names, moving):
-    """The operands whose crossing can select a different row between moments."""
-    return {
-        name: [(keyed.key, nodes.ref(k) if isinstance(k, str) else nodes.const(k)) for k in keyed.keys]
-        for name in names
-        if (keyed := plan.keyed.get(name)) is not None
-        and (moving(keyed.key) or any(isinstance(k, str) and moving(nodes.ref(k)) for k in keyed.keys))
-    }
+def key_surfaces(plan, names, moving, formulas):
+    """Each lookup's key comparisons and the switches that change its member selection."""
+    result = {}
+    for name in names:
+        keyed = plan.keyed.get(name)
+        if keyed is None:
+            continue
+        guards = ()
+        if not plan.fixed_filter(name):
+            guards = surfaces_of((test for test in keyed.tests if test is not None), formulas, moving)
+        if (
+            guards
+            or moving(keyed.key)
+            or any(isinstance(k, str) and moving(nodes.ref(k)) for k in keyed.keys)
+        ):
+            pairs = tuple(
+                (keyed.key, nodes.ref(k) if isinstance(k, str) else nodes.const(k)) for k in keyed.keys
+            )
+            result[name] = pairs, guards
+    return result

@@ -18,7 +18,7 @@ continuous engine and the record read these names; nothing reads the spelling of
   compare by identity. A `where` test is resolved for each entry; its constant parts are folded
   here, and `T.instances.where(link == this)` takes its entries from the reverse index of the link.
   A `where` over flows compares the ends of each member, `item.source` and `item.sink`, by
-  identity with a store (`collections.Ends`, `_ends`): each such comparison is answered for each
+  identity with a store (`collections.MemberFilter`, `_ends`): each such comparison is answered for each
   flow here, or, over the flows of an endpoint whose members change in a run, for each member as
   the dynamic read reads it (`Dynamic.keep`).
 - **Kinds.** An input is fixed for the run: the configuration's value, or its default. A stored value
@@ -116,9 +116,8 @@ continuous engine and the record read these names; nothing reads the spelling of
   (`definitions_of`).
 
 A part that the engine does not run is refused by name (`Outside`) with its reason: an assignment
-of a collection in a stage (links are fixed for the run), a solver whose problem reads a `where` over
-the flows of an endpoint whose members change in a run (`_refuse_kept_in_solvers`), and the type
-errors that the program's check lets through.
+of a collection in a stage (links are fixed for the run), and type errors that the program's check
+lets through.
 """
 
 from __future__ import annotations
@@ -163,14 +162,15 @@ from ..continuous.walk import walked
 from ..errors import SimulationError
 from .collections import (
     Dynamic,
-    Ends,
     Entries,
     Keyed,
+    MemberFilter,
     Reduction,
     aggregate_node,
+    guarded_reduction,
     kept,
+    member_at,
     node_of,
-    occurrence_at,
     selected,
 )
 from .pools import Keys, pools_of
@@ -537,7 +537,7 @@ class Plan:
         # Connection): `directed`, `route` and `legs` name a flow, `forward`, `backward` and `leg` a
         # connection of a route or of a flow with legs.
         self._parts = {}
-        self._numbers = {}  # the creation number of each flow and connection, from 1 (its key)
+        self._numbers = {}  # the creation number of each flow and connection, from 0 (its key)
         # (origin, the member that it belongs to, its node): over inputs, checked once; over state
         # (`checks`), checked after every round and moment and watched between moments.
         self.asserts, self.checks = [], []
@@ -547,7 +547,8 @@ class Plan:
         # (the id of a named collection's init, the owner of its scope) -> what it names (`_named`),
         # and whether a resolution of one is under way, which a nested one waits for.
         self._collection_points, self._naming = {}, False
-        self._chosen_of = {}  # the id of the keys of a keyed read's entries -> (whole numbers, `Keys`)
+        self._chosen_of = {}  # a shared key sequence and its predicates -> natural key index
+        self._fixed_filters = {}  # test tuple identity -> (tuple, whether all operands are immutable)
         self._fixed_lookups = {}  # the keyed reads that the inputs were found to fix (`_fixed`)
         self._expanded = {}
         self._expanding = False  # while an expansion is found: a read of one not found yet asks for it
@@ -634,7 +635,6 @@ class Plan:
             for event in scope[0].events
             for index in range(len(event.triggers))
         ]
-        self._refuse_kept_in_solvers()
         self._connect()
         self._classify_asserts()
 
@@ -658,7 +658,7 @@ class Plan:
                 return Binding(unit, definition, definition)
             elif value.kind == DYNAMIC and self.dynamic[name].op == 'at':
                 projection = self.dynamic[name]
-                if projection.key is None:
+                if projection.key is None and projection.keep is None and projection.by is None:
                     members = self.occurrences[projection.source[1:]]
                     owner = latest(members) if latest is not None else members[-1] if members else None
                     if owner is not None:
@@ -667,10 +667,10 @@ class Plan:
 
                 def choose(read):
                     members = self.members_at(projection.source, read)
-                    point = occurrence_at(members, projection.key, read, units, None, projection.spelled)
+                    point = projection.member_at(members, self, read, None, units)
                     return nodes.ref(self.project(point, projection.steps))
 
-                names = tuple(self.project(m, projection.steps) for m in self.members(projection.source))
+                names = tuple(self.project(m, projection.steps) for m in self.members_ever(projection.source))
                 controls = self.dynamic_reads(name) - set(names)
                 if projection.key is not None:
                     controls.update(nodes.names(projection.key))
@@ -717,21 +717,6 @@ class Plan:
                 keys.update(n for test in keyed.tests if test is not None for n in nodes.names(test))
                 return Binding(unit, SelectedScale(choose, keys, keyed.names))
         return Binding(unit, unit, definition)
-
-    def _refuse_kept_in_solvers(self):
-        """A solver's problem reads a where over the flows of an endpoint whose members change in a
-        run nowhere: the problem names the members of such a read without its test."""
-        for declared in self.solvers.values():
-            parts = [node for _, node in declared.constraints]
-            parts += [node for _, node, _ in declared.objectives]
-            for node in parts:
-                for name in sorted(self.expansion(node).leaves):
-                    found = self.dynamic.get(name)
-                    if found is not None and found.keep is not None:
-                        raise Outside(
-                            f'{declared.origin}: {found.spelled} in a solver: this engine reads a where over '
-                            'the flows of an endpoint whose members change in a run outside solvers'
-                        )
 
     @classmethod
     def of(cls, program, configuration):
@@ -798,6 +783,24 @@ class Plan:
         self._fixed_lookups.update(dict.fromkeys(seen, True))
         return True
 
+    def fixed_filter(self, name):
+        """Whether membership can be reused across states and historical reads. Only direct reads
+        of immutable fields qualify. A formula can be redefined even if its opening is constant."""
+        derived = self.reductions.get(name) or self.keyed[name]
+        return self._fixed_tests(derived.tests)
+
+    def _fixed_tests(self, tests):
+        found = self._fixed_filters.get(id(tests))
+        if found is None:
+            fixed = all(
+                read in self.values and self.values[read].kind in FIXED
+                for test in tests
+                if test is not None
+                for read in nodes.names(test)
+            )
+            found = self._fixed_filters[id(tests)] = (tests, fixed)
+        return found[1]
+
     def _members_part(self, keyed, values):
         """What the members of a keyed read read that the inputs do not fix (`Expanded`): of their
         keys and their tests, or (`values`) of the values that they project; each found once for
@@ -812,7 +815,7 @@ class Plan:
             else:
                 reads = {name for test in keyed.tests if test is not None for name in nodes.names(test)}
                 reads |= {each for each in keyed.keys if isinstance(each, str)}
-            expansions = [self.expanded(read) for read in sorted(reads - {'t'})]
+            expansions = [self.expanded(read) for read in sorted(reads)]
             found = Expanded.union([part for part in expansions if not self._fixed(part)])
             found = (found, keyed)  # the keyed read keeps the ids of its tuples
             self._members[key] = found
@@ -821,6 +824,8 @@ class Plan:
     def fixed_keys(self, name):
         """Whether the inputs fix the keys and the tests of the members of a keyed read: its index of
         keys is then the same for the whole run."""
+        if not self.fixed_filter(name):
+            return False
         found = self._members_part(self.keyed[name], False)
         return not (found.leaves or found.formulas or found.stepped or found.time)
 
@@ -851,13 +856,13 @@ class Plan:
         that keyed reads share."""
         if not isinstance(keyed.key, nodes.Const) or isinstance(keyed.key.value, bool | str):
             return None
-        found = self._chosen_of.get(id(keyed.keys))
+        found = self._chosen_of.get((id(keyed.keys), id(keyed.tests)))
         if found is None or found[0] is not keyed.keys:
             natural = all(test is None for test in keyed.tests) and all(
                 type(key) is int for key in keyed.keys
             )
             found = (keyed.keys, natural, Keys(keyed.keys) if natural and keyed.keys else None)
-            self._chosen_of[id(keyed.keys)] = found
+            self._chosen_of[id(keyed.keys), id(keyed.tests)] = found
         if not found[1]:
             return None
         place = found[2].find(float(keyed.key.value)) if found[2] is not None else None
@@ -871,9 +876,19 @@ class Plan:
         found = self.reads_now(self.lookup_reads(name))
         return found.time or any(leaf in moving for leaf in found.leaves)
 
+    def _number_flow(self, name):
+        self._numbers[name] = len(self._numbers)
+
     def number(self, name):
-        """The creation number of a flow or a connection, from 1: its natural key."""
+        """The creation number of a flow or a connection, from 0: its natural key."""
         return self._numbers[name]
+
+    def creation_number(self, point):
+        """Tie order of the member or flow on which a static collection defines its key."""
+        kind, name = point
+        if kind == 'member':
+            return self.program.member(name)[1]
+        return self.number(name)
 
     def _is_rate(self, name):
         value = self.values.get(name)
@@ -1060,7 +1075,7 @@ class Plan:
         with legs."""
         owner = self.owner_of(scope)
         name = name_of(Key(owner, (flow.name,)))
-        self._numbers[name] = len(self._numbers) + 1
+        self._number_flow(name)
         if flow.kind == p.LEGS:
             fraction = name_of(Key(owner, (flow.name, 'served_fraction')))
             self._add(Value(fraction, Key(owner, (flow.name, 'served_fraction')), RATE, None, ''))
@@ -1075,7 +1090,7 @@ class Plan:
                 self.shared.add(name_of(rate))
                 self._add(Value(name_of(rate), rate, FORMULA, node, leg.unit))
                 self._parts[made.name] = (LEG, made)
-                self._numbers[made.name] = len(self._numbers) + 1
+                self._number_flow(made.name)
                 legs.append(made)
             made = Flow(name, None, None, None, None, '', LEGS, tuple(legs))
             self._parts[name] = (LEGS, made)
@@ -1098,7 +1113,7 @@ class Plan:
                         self.shared.add(name_of(key))
                     self._add(Value(name_of(key), key, FORMULA, node, flow.unit))
                 self._parts[leg.name] = (leg.role, leg)
-                self._numbers[leg.name] = len(self._numbers) + 1
+                self._number_flow(leg.name)
             self._parts[name] = (ROUTE, made)
             self.flows[name] = made
             return
@@ -1838,17 +1853,26 @@ class Plan:
             made = [('occurrence', item) for item in self.occurrences[(member, event)]]
             if occ.rpartition('#')[0] == f'{member}.{event}':
                 made.append(('occurrence', occ))
+            timed = timed and source[4] is None
             selector = None if timed else self.node(key, scope, origin)
             if value.name in references:
                 return ('occurrence', references[value.name])
 
             try:
-                point = occurrence_at(
-                    made, selector, lambda name: read_entry(name, scope), self.units, t, spelled(path)
+                point = member_at(
+                    made,
+                    source[1],
+                    selector,
+                    lambda name: read_entry(name, scope),
+                    self.units,
+                    t,
+                    spelled(path),
+                    self,
+                    *source[3:],
                 )
             except ExpressionError as problem:
                 raise SimulationError(f'{origin}: {problem}') from problem
-            if not timed:
+            if not timed or source[3] is not None:
                 references[value.name] = point[1]
             return point
         found = self.resolve(path, scope, origin)
@@ -1997,14 +2021,26 @@ class Plan:
                 raise Outside(f'{origin}: {spelled(start.source)} is no collection')
             return ('many', self._where(source[1], start.test, scope, origin))
         if isinstance(start, By):
-            entries = self._many(start.source, scope, origin, item)
-            keys = []
-            for point in entries.points:
+            source = self.resolve(start.source, scope, origin, item)
+            if source[0] == 'dynamic' and not source[2]:
+                return (*source[:4], start.key)
+            if source[0] != 'many':
+                raise Outside(f'{origin}: {spelled(start.source)} is no collection')
+            entries = source[1]
+            # A projection preserves the previous keys and their tie order. A new key
+            # belongs to the member at this point, which may be reached through a link.
+            indexed = zip(entries.points, entries.tests)
+            if not entries.whole:
+                indexed = sorted(indexed, key=lambda entry: self.creation_number(entry[0]))
+            points, tests, keys = [], [], []
+            for point, test in indexed:
                 found = self._step(point, start.key, origin)
                 if found[0] != 'value':
                     raise Outside(f'{origin}: `by({start.key})`, which names no value')
+                points.append(point)
+                tests.append(test)
                 keys.append(found[1])
-            return ('many', replace(entries, keys=tuple(keys), whole=False))
+            return ('many', Entries(entries.template, tuple(points), tuple(tests), tuple(keys)))
         if isinstance(start, Local):
             frame = scope[3] if scope is not None and len(scope) > 3 else None
             if frame is None or start.name not in frame.names:
@@ -2085,7 +2121,7 @@ class Plan:
         if kind == 'event':
             if name != 'occurrences':
                 raise Outside(f'{origin}: the {name} of the event {point[1]}.{point[2]} (a type error)')
-            return ('dynamic', ('occurrences', point[1], point[2]), ())
+            return ('dynamic', ('occurrences', point[1], point[2]), (), None, None)
         if kind == 'dynamic':
             return ('dynamic', point[1], point[2] + (name,), *point[3:])
         if kind == 'occurrence':
@@ -2114,10 +2150,10 @@ class Plan:
         if kind == 'end':
             end = self.ends[(point[1], point[2])]
             if name == 'flows' and self.dynamic_ends:
-                return ('dynamic', ('flows', point[1], point[2]), ())
+                return ('dynamic', ('flows', point[1], point[2]), (), None, None)
             if name == 'flows':
                 points = tuple(('flow', flow) for flow in end.flows)
-                keys = tuple(self._numbers[flow] for flow in end.flows)
+                keys = tuple(self.number(flow) for flow in end.flows)
                 return ('many', Entries(None, points, (None,) * len(points), keys))
             if name == 'allocation':
                 return ('allocation', point[1], point[2])
@@ -2205,7 +2241,7 @@ class Plan:
             if point[0] == 'flow':
                 if ends is None:
                     ends = self._ends(test, scope, origin)
-                node = ends.node(point[1])
+                node = ends.node(point)
             elif point[0] == 'member':
                 node = self.node(test, scope, origin, item=point)
             else:
@@ -2257,19 +2293,17 @@ class Plan:
         )
 
     def _dynamic_where(self, source, start, scope, origin):
-        """A where over the flows of an endpoint whose members change in a run: the dynamic read
-        keeps its members by the test (`_ends`), found for each as it is read."""
-        if source[1][0] != 'flows' or source[2]:
-            raise Outside(
-                f'{origin}: {spelled(start.source)}.where(...): a where over the occurrences of an event '
-                'or over a projection, which the language leaves out (a type error)'
-            )
-        before = source[3] if len(source) > 3 else None
-        ends = self._ends(start.test, scope, origin)
-        return ('dynamic', source[1], (), replace(ends, before=before))
+        """Bind the enclosing operands now and the fields of each new member on demand."""
+        if source[2]:
+            raise Outside(f'{origin}: a where needs a collection of members')
+        if source[1][0] == 'flows':
+            test = self._ends(start.test, scope, origin)
+        else:
+            test = MemberFilter(lambda point: self.node(start.test, scope, origin, item=point))
+        return (*source[:3], replace(test, before=source[3]), source[4])
 
     def _ends(self, test, scope, origin):
-        """The test of a where over flows (`collections.Ends`): each comparison of an end of the
+        """The test of a where over flows (`collections.MemberFilter`): each comparison of an end of the
         member (`item.source`, `item.sink`) by `==` or `!=` with a stored number of the scope, or
         with the member's other end, is an atom that each flow answers by identity; the rest of the
         test is bound as any expression of the scope. An end read in any other way is refused."""
@@ -2334,7 +2368,23 @@ class Plan:
         rest = Expr(node, tuple((name, read) for name, read in test.reads if name in left))
         answered = [f'?{k}' for k in range(len(atoms))]
         bound = self._bound(rest, scope, origin, answered=answered)[0]
-        return Ends(tuple(atoms), bound, self.connections)
+        outer = {name: nodes.ref(name) for name in nodes.names(bound) if name not in answered}
+
+        def bind(point):
+            if not atoms:
+                return bound
+            connection = self.connections[point[1]]
+            ends = {
+                'source': connection.source if connection.source is not None else ('SOURCE',),
+                'sink': connection.sink if connection.sink is not None else ('SINK',),
+            }
+            names = dict(outer)
+            for k, (op, *sides) in enumerate(atoms):
+                a, b = (ends[field] if kind == 'end' else field for kind, field in sides)
+                names[f'?{k}'] = nodes.const((a == b) == (op == 'eq'))
+            return _renamed(bound, names)
+
+        return MemberFilter(bind)
 
     def _derived_name(self, read, scope, item):
         """The engine name of a reduction or a keyed read: its spelling, after the member that it
@@ -2369,9 +2419,31 @@ class Plan:
         if names is not None and not entries.points and read.op == 'count':
             names = None
         self._derived[key] = name
-        self.reductions[name] = Reduction(name, read.op, entries.tests, names, spelled(read))
+        reduction = Reduction(name, read.op, entries.tests, names, spelled(read))
         unit = self._unit_of(names[0]) if names and read.op in ('sum', 'min', 'max') else ''
-        self._add(Value(name, None, REDUCE, None, unit, read.op in ('any', 'all')))
+        boolean = read.op in ('any', 'all')
+        if self._fixed_tests(entries.tests):
+            self.reductions[name] = reduction
+            self._add(Value(name, None, REDUCE, None, unit, boolean))
+        else:
+            fallback = None
+            if read.op in ('min', 'max'):
+                # An extremum has no identity. Repeating a retained value preserves its answer.
+                # If none qualifies, the lookup raises at the read, just like an empty extremum.
+                selected = f'{name}|retained'
+                keys = tuple(range(len(names)))
+                self.keyed[selected] = Keyed(
+                    selected,
+                    entries.tests,
+                    keys,
+                    names,
+                    nodes.const(len(names)),
+                    False,
+                    f'{reduction.spelled}: {read.op} of an empty collection',
+                )
+                self._add(Value(selected, None, LOOKUP, None, unit))
+                fallback = nodes.ref(selected)
+            self._add(Value(name, None, FORMULA, guarded_reduction(reduction, fallback), unit, boolean))
         return name
 
     def _keyed(self, path, scope, origin, item):
@@ -2391,12 +2463,13 @@ class Plan:
         if found is None:
             source = self.resolve(lookup.source, scope, origin, item)
             if source[0] == 'dynamic':
-                if source[1][0] != 'occurrences' or source[2]:
-                    raise Outside(
-                        f'{origin}: {spelled(path)}: the lookup requires a collection of occurrences'
-                    )
-                selector = None if by_time else self.node(lookup.key, scope, origin, item)
-                return self._dynamic(path, 'at', source[1], path.steps, scope, item, selector=selector)
+                if source[2]:
+                    raise Outside(f'{origin}: {spelled(path)} needs a collection of members')
+                timed = by_time and source[1][0] == 'occurrences' and source[4] is None
+                selector = None if timed else self.node(lookup.key, scope, origin, item)
+                return self._dynamic(
+                    path, 'at', source[1], path.steps, scope, item, *source[3:], selector=selector
+                )
             entries = self._many(lookup.source, scope, origin, item)
             points = entries.points
             for step in path.steps:
@@ -2419,27 +2492,38 @@ class Plan:
         self._add(Value(name, None, LOOKUP, None, unit, boolean))
         return name
 
-    def _dynamic(self, read, op, source, steps, scope, item, keep=None, selector=None):
+    def _dynamic(self, read, op, source, steps, scope, item, keep=None, by=None, selector=None):
         """The engine name of a read of a collection whose members change in a run, which the plan
         holds in `dynamic`; `keep` is the test of a where over its flows (`_ends`)."""
         key, name = self._derived_name(read, scope, item)
         if key in self._derived:
             return name
         self._derived[key] = name
-        self.dynamic[name] = Dynamic(name, op, source, tuple(steps), spelled(read), keep, selector)
-        boolean = op in ('any', 'all') or (op == 'at' and self._projects_boolean(source, steps))
-        self._add(Value(name, None, DYNAMIC, None, '', boolean))
+        self.dynamic[name] = Dynamic(name, op, source, tuple(steps), spelled(read), keep, selector, by)
+        unit, boolean = self._projected_type(source, tuple(steps))
+        if op in ('any', 'all', 'count', 'latest'):
+            unit, boolean = '', op in ('any', 'all')
+        self._add(Value(name, None, DYNAMIC, None, unit, boolean))
         return name
 
-    def _projects_boolean(self, source, steps):
-        """Whether the steps from an occurrence of an event name a yes/no."""
-        if source[0] != 'occurrences' or len(steps) != 1:
-            return False
-        if steps[0] in ('done', 'active'):
-            return True
-        event = self.events[(source[1], source[2])][3]
-        part = next((part for part in (*event.params, *event.locals) if part.name == steps[0]), None)
-        return isinstance(part, p.Value) and isinstance(part.type, p.Bool)
+    def _projected_type(self, source, steps):
+        """Unit and boolean kind of a projected value, including before the first member arrives."""
+        if not steps:
+            return '', False
+        field = steps[0]
+        if source[0] == 'flows':
+            if steps in (('request',), ('capacity',), ('actual_rate',)):
+                return self._unit_of(self.ends[source[1:]].request), False
+        elif len(steps) == 1:
+            if field in ('done', 'active'):
+                return '', True
+            if field == 'started':
+                return 'h', False
+            event = self.events[(source[1], source[2])][3]
+            part = next((part for part in (*event.params, *event.locals) if part.name == field), None)
+            if isinstance(part, p.Value):
+                return _type_of(part.type)
+        return '', False
 
     def project(self, point, steps, origin=''):
         """The engine name that the steps from a member of a dynamic collection name."""
@@ -2535,10 +2619,9 @@ class Plan:
         """The engine names that a dynamic read reads over the whole run: what each member that it
         ever had projects, and the fields that say when each is a member."""
         dynamic = self.dynamic[name]
-        found = set(dynamic.keep.reads()) if dynamic.keep is not None else set()
-        if dynamic.key is not None:
-            found.update(nodes.names(dynamic.key) - {'t'})
-        for point in self.members_ever(dynamic.source):
+        members = self.members_ever(dynamic.source)
+        found = dynamic.controls(members, self) - {'t'}
+        for point in members:
             if dynamic.steps:
                 found.add(self.project(point, dynamic.steps))
             owner = point[1] if point[0] == 'occurrence' else self.occurrence_of(point[1])
@@ -2756,12 +2839,11 @@ class Plan:
                 continue
             seen.add(name)
             dynamic = self.dynamic[name]
-            if not dynamic.steps:
-                continue
-            consulted = [self.project(point, dynamic.steps) for point in self.members(dynamic.source)]
-            if dynamic.key is not None:
-                parts.append(self.expansion(dynamic.key))
-            for consulted_name in consulted:
+            members = self.members(dynamic.source)
+            consulted = dynamic.controls(members, self)
+            if dynamic.steps:
+                consulted.update(self.project(point, dynamic.steps) for point in members)
+            for consulted_name in sorted(consulted):
                 inner = self.expanded(consulted_name)
                 parts.append(inner)
                 pending += [leaf for leaf in inner.leaves if leaf in self.dynamic]

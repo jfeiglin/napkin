@@ -193,15 +193,11 @@ class Vector:
             return [bound for _, bound in self.formulas[name].binding if bound != 't']
         if kind == 'dynamic':
             dynamic = plan.dynamic[name]
-            reads = (
-                [plan.project(member, dynamic.steps) for member in self._entries[name]]
-                if dynamic.steps
-                else []
-            )
-            if dynamic.key is not None:
-                reads.extend(sorted(nodes.names(dynamic.key) - {'t'}))
-                reads.extend(f'{member[1]}.started' for member in self._entries[name])
-            return reads
+            members = self._entries[name]
+            reads = dynamic.controls(members, plan)
+            if dynamic.steps:
+                reads.update(plan.project(member, dynamic.steps) for member in members)
+            return sorted(reads - {'t'})
         if kind == 'reduction':
             reduction = plan.reductions[name]
             return [] if reduction.names is None else [reduction.names[k] for k in self._kept(name)]
@@ -305,7 +301,7 @@ class Vector:
             return dynamic_value(
                 dynamic,
                 self._entries[name],
-                lambda m: plan.project(m, dynamic.steps),
+                plan,
                 evaluation.read,
                 t,
                 plan.units,
@@ -789,7 +785,7 @@ class Sparse(MovingTransfers, Way):
 
         self.moves = moves
         surfaces = integrate.surfaces_of(nodes_of([*names, *defined]), formulas, moves)
-        self.region = Region(surfaces, key_surfaces(plan, plan.expansion_of(names).leaves, moves))
+        self.region = Region(surfaces, key_surfaces(plan, plan.expansion_of(names).leaves, moves, formulas))
         self.surfaces = self.region.surfaces
         self.deciding = integrate.flow_switches(
             ((name, nodes_of(plan.settings_of(plan.flows[name]))) for name in self.flows), formulas, moves
@@ -800,7 +796,7 @@ class Sparse(MovingTransfers, Way):
                 fields = plan.settings_reads(plan.flows[flow])
                 for name in fields.leaves & self.region.lookups.keys():
                     self.lookup_flows.setdefault(name, []).append(flow)
-                    for pair in self.region.lookups[name]:
+                    for pair in self.region.lookup_surfaces(name):
                         self.deciding.setdefault(pair, []).append(flow)
         self.labels = {}
         if not stores:

@@ -111,3 +111,69 @@ def test_a_constant_key_over_a_literal_reads_the_entry_that_it_selects(seed):
     assert record.failure is None, record.failure.detail('message')
     (total,) = read(record, program, [f'm{reader}.total'], [1])
     assert total.values == (demands[reader] + demands[selected],)
+
+
+def test_an_occurrence_filter_reads_the_argument_at_the_requested_time_and_a_reference_keeps_its_choice():
+    found = model(
+        """
+        scenario "Changing occurrence argument"
+            horizon 3 h
+        yard:
+            seen: number = 0
+            visit = event(amount: number, keep: bool):
+                after 1 h:
+                    keep = false
+                after 1 h
+            remember = event():
+                selected = this.visit.occurrences.where(keep).by(amount).at(2)
+                after 2 h:
+                    this.seen = selected.amount
+        yard.visit.start(1, true)
+        yard.visit.start(2, true)
+        yard.remember.start()
+        kept = formula(count(yard.visit.occurrences.where(keep)))
+        """
+    )
+    record = run(found.program, found.configuration)
+    assert record.failure is None, record.failure.detail('message')
+    for times, expected in (((0.5, 1.5, 2.5), (2, 0, 0)), ((2.5, 1.5, 0.5), (0, 0, 2))):
+        (count,) = read(record, found.program, ['kept'], times)
+        assert count.values == expected
+    (seen,) = read(record, found.program, ['yard.seen'], [2.5])
+    assert seen.values == (2,)
+
+
+def test_a_new_key_breaks_ties_by_creation_of_the_projected_member():
+    found = model(
+        """
+        scenario "Ties after reversed links"
+            horizon 1 h
+        Station:
+            input rank: number = 1
+            input weight: number = 3
+            input cap: L/h = 0.25 L/h
+            water: L = 0 L
+            flow pipe: SOURCE -> this.water
+                request = 1 L/h
+                capacity = this.cap
+        left: Station
+        right: Station
+            weight = 8
+            cap = 0.75 L/h
+        Owner:
+            input rank: number = 1
+            station: Station
+        first: Owner
+            station = right
+        last: Owner
+            station = left
+        key_before = formula(Owner.instances.by(rank).station.at(1).weight)
+        key_after = formula(Owner.instances.station.by(rank).at(1).weight)
+        pipe_before = formula(Owner.instances.by(rank).station.pipe.at(1).actual_rate)
+        pipe_after = formula(Owner.instances.station.pipe.by(request).at(1 L/h).actual_rate)
+        """
+    )
+    record = run(found.program, found.configuration)
+    assert record.failure is None, record.failure
+    answers = read(record, found.program, ['key_before', 'key_after', 'pipe_before', 'pipe_after'], [0])
+    assert [reading.values for reading in answers] == [(3,), (8,), (0.25,), (0.75,)]

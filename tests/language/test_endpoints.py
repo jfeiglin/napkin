@@ -423,7 +423,7 @@ def test_a_where_over_flows_compares_an_end_with_a_store_of_their_quantity():
     assert 'these flows carry L/h, and power holds Wh' in found.message, found
 
 
-def test_a_projection_of_declared_flows_takes_its_where_before_the_projection():
+def test_a_where_filters_projected_flows_by_their_ends():
     text = """
         Customer:
             water: L = 0 in [0,]
@@ -441,8 +441,7 @@ def test_a_projection_of_declared_flows_takes_its_where_before_the_projection():
             water: L = 10 in [0,]
         x = formula(count(Customer.instances.fill.where(source == tank.water)))
         """
-    found = refused(text, 'collection', 8)
-    assert 'Template.instances.where(...).fill' in found.message, found
+    assert compiled(text).program
 
 
 # ---- refusals ---------------------------------------------------------------------------------------

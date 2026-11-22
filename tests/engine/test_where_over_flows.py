@@ -16,7 +16,6 @@ import textwrap
 import pytest
 
 from napkin.engine import read, run
-from napkin.engine.timeline import Outside
 from napkin.model.compile import compile_text
 from napkin.program.build import (
     SINK,
@@ -182,14 +181,12 @@ def test_a_where_of_a_where_keeps_what_both_keep():
     assert values(text, ['tank.elsewhere'], [0, 2], 2) == [(1, 1)]
 
 
-def test_a_where_over_flows_that_join_and_leave_is_refused_inside_a_solver():
-    """A solver's problem names the members of a collection of flows without the test of its where:
-    where an event owns flows, the engine refuses such a read there by name."""
+def test_a_solver_reads_the_filtered_requests_of_flows_that_join_and_leave():
     b = Builder(UNITS)
     depot = b.entity(
         'depot',
         value('water', 'L', 0, lower=0, upper=10),
-        flow('fill', SOURCE, this.water, capacity=q(3, 'L/h')),
+        flow('fill', SOURCE, this.water, request=q(3, 'L/h'), capacity=q(3, 'L/h')),
         event('deliver', flow('pipe', this.water, SINK, request=q(2, 'L/h')), after(q(2, 'h'))),
     )
     asked = fsum(named('depot').water.outflow.flows.where(item.sink != named('depot').water).request)
@@ -203,5 +200,35 @@ def test_a_where_over_flows_that_join_and_leave_is_refused_inside_a_solver():
         ),
     )
     b.setup(start(depot.deliver))
-    with pytest.raises(Outside, match='in a solver: this engine reads a where over the flows of an endpoint'):
-        run(b.finish(), Configuration(Request(1)))
+    program = b.finish()
+    record = run(program, Configuration(Request(3)))
+    assert record.failure is None, record.failure
+    (rate,) = read(record, program, ['depot.fill.actual_rate'], [0.5, 2.5])
+    assert rate.values == (2, 0)
+
+
+def test_a_solver_constrains_the_selected_flows_rate_after_filtering_and_ranking():
+    text = """
+        yard:
+            water: L = 0 L
+            flow first: SOURCE -> this.water
+                request = 2 L/h
+            flow second: SOURCE -> this.water
+                request = 3 L/h
+            other: L = 0 L
+            dormant = event():
+                flow third: this.other -> SINK
+                    request = 4 L/h
+                after 0.5 h
+            owner = solver:
+                inputs:
+                    a = this.first
+                    b = this.second
+                solve_for:
+                    a.actual_rate
+                    b.actual_rate
+                constraints:
+                    this.water.inflow.flows.where(sink == this.water).by(request).at(2 L/h).actual_rate <= 1 L/h
+        """
+    readings = values(text, ['yard.water', 'yard.first.actual_rate', 'yard.second.actual_rate'], [1], 1)
+    assert readings == [(4,), (1,), (3,)]

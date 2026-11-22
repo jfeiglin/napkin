@@ -5,9 +5,9 @@ keys and projections"). Each entry has its member, the `where` tests that keep i
 engine names, or None), its key (an engine name after `by(field)`, else the member's row, its natural
 key) and, after a projection, the engine name of the value that it projects. A `where` reads only
 what is fixed for each member (links, inputs, the ends of flows; the program's check refuses the
-rest), so which entries a collection keeps is fixed for the run and found at its start.
+rest). An enclosing operand or an occurrence argument can change, so selection reads its current value.
 
-A `where` over flows (`Ends`) tests the ends of each member: `item.source` and `item.sink` are the
+A `where` over flows (`MemberFilter`) tests the ends of each member: `item.source` and `item.sink` are the
 stores at them, or none at SOURCE and SINK, and compare with `==` or `!=` by identity, as entities
 do (spec, "What each scope can see": a connection reads its two endpoint identities). Each such
 comparison is answered for each flow, so the test of an entry is the rest of the test, with those
@@ -35,6 +35,7 @@ count or a least value of values that hold between moments is followed by an int
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -107,117 +108,105 @@ class Keyed:
 
 
 @dataclass(eq=False)
-class Ends:
-    """The test of a `where` over flows (see the module). `atoms` are its comparisons of an end of
-    the member by `==` or `!=`, each (op, side, side), a side being ('end', 'source' or 'sink') or
-    ('store', the engine name of a stored number); `rest` is the rest of the test, a node over engine
-    names in which the k-th atom is the name `?k`; `connections` gives the `plan.Connection` of each
-    connection by its engine name; `before` is the test of a `where` that this one narrows."""
+class MemberFilter:
+    """A filter bound to each realized member. Cache its expression, whose operands remain live."""
 
-    atoms: tuple
-    rest: nodes.Node
-    connections: dict
-    before: Ends | None = None
+    bind: Callable
+    before: MemberFilter | None = None
     _nodes: dict = field(default_factory=dict)
 
-    def node(self, connection):
-        """The test of one flow, a connection by its engine name: the rest, with the answers of its
-        ends in place of the atoms."""
-        found = self._nodes.get(connection)
-        if found is None:
-            made = self.connections[connection]
-            ends = {
-                'source': made.source if made.source is not None else ('SOURCE',),
-                'sink': made.sink if made.sink is not None else ('SINK',),
-            }
-            answers = {}
-            for k, (op, *sides) in enumerate(self.atoms):
-                a, b = (ends[name] if kind == 'end' else name for kind, name in sides)
-                answers[f'?{k}'] = nodes.const((a == b) == (op == 'eq'))
-            found = self._nodes[connection] = _answered(self.rest, answers)
-        return found
+    def node(self, point):
+        if point not in self._nodes:
+            self._nodes[point] = self.bind(point)
+        return self._nodes[point]
 
-    def keeps(self, point, value, units):
-        """Whether the test keeps a member of a dynamic collection (its point), from the values of
-        engine names."""
-        if self.before is not None and not self.before.keeps(point, value, units):
+    def keeps(self, point, value, units, t):
+        if self.before is not None and not self.before.keeps(point, value, units, t):
             return False
-        return bool(lazily(self.node(point[1]), value, units))
+        return bool(lazily(self.node(point), value, units, t))
 
-    def reads(self):
-        """The engine names that the test reads besides the ends of its members."""
-        found = set(self.before.reads()) if self.before is not None else set()
-        return found | {name for name in nodes.names(self.rest) if not name.startswith('?')} - {'t'}
-
-
-def _answered(node, answers):
-    """A node with the names of `answers` replaced by the nodes that it gives them."""
-    if isinstance(node, nodes.Ref):
-        return answers.get(node.name, node)
-    if isinstance(node, nodes.Const):
-        return node
-    if isinstance(node, nodes.Unary):
-        return nodes.unary(node.op, _answered(node.operand, answers))
-    if isinstance(node, nodes.Binary):
-        return nodes.binary(node.op, _answered(node.left, answers), _answered(node.right, answers))
-    if isinstance(node, nodes.Compare):
-        return nodes.compare(node.ops, [_answered(part, answers) for part in node.operands])
-    if isinstance(node, nodes.BoolOp):
-        return nodes.boolean(node.op, [_answered(part, answers) for part in node.values])
-    if isinstance(node, nodes.IfElse):
-        return nodes.if_else(*(_answered(part, answers) for part in (node.test, node.body, node.orelse)))
-    return nodes.call(node.function, [_answered(part, answers) for part in node.args])
+    def reads(self, members):
+        """Operands read by any of the filters on the supplied members."""
+        found = self.before.reads(members) if self.before is not None else set()
+        for point in members:
+            found.update(nodes.names(self.node(point)))
+        return found
 
 
 @dataclass(frozen=True)
 class Dynamic:
-    """A read of a collection whose members change during a run: the occurrences of an event
-    (`source` is `('occurrences', member, event)`, members in their order of creation), or the
-    connections present at an endpoint (`('flows', store, side)`), of which a `where` keeps those
-    that `keep` (`Ends`) keeps. `op` is a reduction (`sum`, `count`, `any`, `all`, `min`, `max`),
-    `at` (`.occurrences.at(t)`: the newest occurrence that has started, which is the one created
-    last) or `latest` (the time of the newest start, which `since(e)` subtracts from the time;
-    `spelled` is the `since`); `steps` go from each member to the value that it projects."""
+    """A reduction, lookup or latest start over event occurrences or active endpoint flows.
+    Members retain creation order. An explicit rank replaces their natural creation or start key.
+    Each projection reads its selected member in the state of the caller."""
 
     name: str
     op: str
     source: tuple
     steps: tuple[str, ...]
     spelled: str
-    keep: Ends | None = None
-    key: nodes.Node | None = None  # None for the current time on an occurrence lookup
+    keep: MemberFilter | None = None
+    key: nodes.Node | None = None  # None for the current time on a natural occurrence lookup
+    by: str | None = None
 
-    def selected(self, members, value, units):
+    def controls(self, members, plan):
+        """The names consulted to filter or select these members, before reading their values."""
+        found = self.keep.reads(members) if self.keep else set()
+        if self.key is not None:
+            found.update(nodes.names(self.key))
+        if self.op == 'at':
+            if self.by is not None:
+                found.update(plan.project(point, (self.by,)) for point in members)
+            elif self.source[0] == 'occurrences' and self.key is not None:
+                found.update(f'{point[1]}.started' for point in members)
+        return found
+
+    def member_at(self, members, plan, read, t, units):
+        return member_at(
+            members, self.source, self.key, read, units, t, self.spelled, plan, self.keep, self.by
+        )
+
+    def selected(self, members, value, units, t=None):
         """The members retained by the authored filter at this read."""
-        return members if self.keep is None else [m for m in members if self.keep.keeps(m, value, units)]
+        return members if self.keep is None else [m for m in members if self.keep.keeps(m, value, units, t)]
 
 
-def occurrence_at(members, key, read, units, t, spelled):
-    """The last started occurrence whose start is at or before the authored key."""
-    if key is None and members:
-        return members[-1]
-    if key is not None:
-        at = float(lazily(key, read, units, t))
-        for member in reversed(members):
-            if float(known(read(f'{member[1]}.started'))) <= at:
-                return member
-    raise ExpressionError(f'{spelled}: no occurrence has started at or before the requested time')
+def member_at(members, source, key, read, units, t, spelled, plan, keep=None, by=None):
+    """Greatest eligible key, with later creation winning a tie, across active flows or occurrences."""
+    if keep is not None:
+        members = [member for member in members if keep.keeps(member, read, units, t)]
+    if source[0] == 'occurrences' and by is None:
+        if key is None and len(members):
+            return members[-1]
+        if key is not None:
+            limit = lazily(key, read, units, t)
+            for member in reversed(members):
+                if known(read(f'{member[1]}.started')) <= limit:
+                    return member
+        raise ExpressionError(f'{spelled}: no occurrence has started at or before the requested time')
+    limit = lazily(key, read, units, t)
+    keys = [known(read(plan.project(m, (by,)))) if by is not None else plan.number(m[1]) for m in members]
+    index = Keys(keys).find(limit)
+    if index is None:
+        raise ExpressionError(f'{spelled}: no member has a key at or below {limit}')
+    return members[index]
 
 
-def dynamic_value(dynamic, members, project, value, t, units):
-    """The value of a dynamic read at time t from its members at t (their points, in order), the
-    engine name that each projects (`project(point)`) and the values of engine names."""
-    members = dynamic.selected(members, value, units)
+def dynamic_value(dynamic, members, plan, value, t, units):
+    """Evaluate a dynamic collection using the membership and value reader for this time."""
     op = dynamic.op
+    if op == 'at':
+        point = dynamic.member_at(members, plan, value, t, units)
+        return known(value(plan.project(point, dynamic.steps)))
+    members = dynamic.selected(members, value, units, t)
     if op == 'latest':
         if not members:
             raise ExpressionError(f'{dynamic.spelled}: the event has not started')
         return float(known(value(f'{members[-1][1]}.started')))
-    if op == 'at':
-        return known(value(project(occurrence_at(members, dynamic.key, value, units, t, dynamic.spelled))))
     if not dynamic.steps:
         return combined(op, [None] * len(members), dynamic.spelled)
-    return combined(op, [known(value(project(member))) for member in members], dynamic.spelled)
+    return combined(
+        op, [known(value(plan.project(member, dynamic.steps))) for member in members], dynamic.spelled
+    )
 
 
 def known(value):
@@ -298,9 +287,26 @@ def node_of(reduction, entries):
     return aggregate_node(reduction.op, (reduction.names[k] for k in entries), reduction.spelled)
 
 
+def guarded_reduction(reduction, fallback=None):
+    """A reduction with changing membership is an ordinary formula.
+    Each branch reads the projected field only while its member qualifies. Integration and
+    event detection therefore see the same comparisons as point and historical evaluations."""
+    op = reduction.op
+    if fallback is None:
+        fallback = nodes.const({'sum': 0, 'count': False, 'any': False, 'all': True}[op])
+    parts = []
+    for i, condition in enumerate(reduction.tests):
+        member = nodes.const(True) if reduction.names is None else nodes.ref(reduction.names[i])
+        parts.append(member if condition is None else nodes.if_else(condition, member, fallback))
+    return _aggregate(op, parts, reduction.spelled)
+
+
 def aggregate_node(op, members, spelled):
     """The scalar expression for an operation on its selected member names."""
-    names = [nodes.ref(name) for name in members]
+    return _aggregate(op, [nodes.ref(name) for name in members], spelled)
+
+
+def _aggregate(op, names, spelled):
     if op == 'count':
         if not names:
             return nodes.const(0)

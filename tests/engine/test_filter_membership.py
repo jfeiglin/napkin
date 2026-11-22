@@ -1,4 +1,5 @@
 """A moving enclosing operand selects the members of a reduction in the same physical state."""
+
 from unittest.mock import patch
 
 import pytest
@@ -35,3 +36,25 @@ def test_flow_uses_the_members_selected_by_its_trial_state(limit):
     rate, stock = read(record, model.program, ['yard.fill.actual_rate', 'yard.stock'], [0.5, 1.5, 2])
     assert rate.values == pytest.approx([5, 3, 3])
     assert stock.values == pytest.approx([2.5, 6.5, 8], abs=3e-7)
+
+
+@pytest.mark.parametrize(('operation', 'amount'), [('min', 5), ('max', 6)])
+def test_filtered_extrema_follow_the_surviving_members(operation, amount):
+    model = compile_text(MODEL.replace('sum(Site', f'{operation}(Site'), UNITS)
+    record = run(model.program, model.configuration)
+    assert record.failure is None, record.failure
+    (stock,) = read(record, model.program, ['yard.stock'], [2])
+    assert stock.values == pytest.approx([amount], abs=3e-7)
+
+
+def test_empty_filtered_extremum_has_no_value():
+    source = MODEL.replace(
+        'flow fill: SOURCE -> this.stock\n        request = formula(sum(Site.instances.where(limit > this.clock).rate))',
+        'minimum = formula(min(Site.instances.where(limit < this.clock).rate))',
+    )
+    model = compile_text(source, UNITS)
+    record = run(model.program, model.configuration)
+    assert record.failure is None, record.failure
+    (minimum,) = read(record, model.program, ['yard.minimum'], [0, 1.5])
+    assert 'empty collection' in minimum.values[0].reason
+    assert minimum.values[1] == 2

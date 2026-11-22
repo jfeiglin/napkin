@@ -60,9 +60,11 @@ import dataclasses
 from collections import Counter
 from dataclasses import dataclass
 from fractions import Fraction
+from functools import cached_property
 from typing import Any
 
 from ..core import expr as nodes
+from ..core import units
 from ..core.comparisons import DEFAULT_FACTOR
 from ..core.literals import Literals, node_parts
 from . import parts as p
@@ -384,16 +386,20 @@ class Resolver:
         return (template, event) if isinstance(event, p.Event) else None
 
     def fixed_test(self, test, scope, where):
-        """A `where` filters on what is fixed for each member: links, inputs and the ends of flows."""
+        """A member filter can read its inputs, links, flow ends and occurrence start arguments/time."""
         for name, read in test.reads:
             if not isinstance(read, Path) or read.start != ITEM:
                 continue
             found = self.quiet().resolve(read, scope, where)
             fixed = found is None or found.kind == 'member'
             if found is not None and found.kind == 'value':
-                fixed = found.part.kind in (p.INPUT, p.LINK)
+                fixed = found.part.kind in (p.INPUT, p.LINK) or (
+                    isinstance(found.owner, p.Event) and found.part in found.owner.params
+                )
             if found is not None and found.kind == 'property':
-                fixed = found.name in FIXED_PROPERTIES
+                fixed = found.name in FIXED_PROPERTIES or (
+                    found.name == 'started' and found.of.kind == 'occurrence'
+                )
             if not fixed:
                 self.fail(
                     'where_live', where, f'`{name}` in a where is live state: put a formula on the member'
@@ -457,7 +463,7 @@ class Resolver:
         ):
             self.fail('distribution', where, f'`{spelled(source)}` holds no distribution')
 
-    def distribution(self, item, where):
+    def distribution(self, item, where, expected=None):
         counts = FAMILIES.get(item.family)
         if counts is None:
             self.fail('distribution', where, f'no family of distributions {item.family!r}')
@@ -474,6 +480,18 @@ class Resolver:
             )
         if item.family != 'categorical':
             self.unit(item.unit, where)
+
+        if isinstance(expected, p.DistributionType):
+            if item.family == 'categorical':
+                if expected.of != p.EnumType(item.enum):
+                    self.fail('type', where, f'expected {expected.of}, but the categorical gives {item.enum}')
+            elif not isinstance(expected.of, p.Number):
+                self.fail('type', where, f'expected {expected.of}, but {item.family} gives numbers')
+            else:
+                actual = self.unit(item.unit, where)
+                target = self.unit(expected.of.unit, where)
+                if actual is not None and target is not None and not actual.compatible(target):
+                    self.fail('unit', where, f'expected a distribution in {target.name}, not {actual.name}')
 
     def enum_member(self, enum, member, where):
         try:
@@ -672,7 +690,7 @@ class _Checker(Resolver):
         if isinstance(init, Formula):
             self.check_expr(init.expr, scope, where, 'a formula')
         elif isinstance(init, Distribution):
-            self.distribution(init, where)
+            self.distribution(init, where, value.type)
         elif isinstance(init, Path):
             if value.kind == p.COLLECTION:
                 self.collection(init, scope, where, None)
@@ -846,6 +864,9 @@ class _Checker(Resolver):
         scope = Scope(template, event)
         names = [part.name for part in (*event.params, *event.locals)]
         self.unique(names, event.origin, f'a parameter or a local of {event.name}')
+        for part in (*event.params, *event.locals):
+            if part.name in p.OCCURRENCE_PROPERTIES:
+                self.fail('reserved', part.origin, f'{part.name!r} is a built-in field of an occurrence')
         for param in event.params:
             if param.kind not in (p.STATE, p.LINK):
                 self.fail('kind', param.origin, f'the parameter {param.name!r} is a value or an entity')
@@ -945,8 +966,10 @@ class _Checker(Resolver):
                     where,
                     f'`{spelled(statement.event)}` takes {wanted} arguments, not {len(statement.args)}',
                 )
-            for arg in statement.args:
+            for index, arg in enumerate(statement.args):
                 self.check_expr(arg, scope, where)
+                if found is not None and found.kind == 'event' and index < len(found.part.params):
+                    self.argument(arg, found.part.params[index], scope, where)
         elif isinstance(statement, p.If):
             self.check_expr(statement.test, scope, where)
             for inner in (*statement.then, *statement.orelse):
@@ -965,6 +988,134 @@ class _Checker(Resolver):
                 self.statement(inner, scope)
         else:
             self.fail('kind', getattr(statement, 'origin', ''), f'no statement: {type(statement).__name__}')
+
+    @cached_property
+    def argument_units(self):
+        return units.UnitSystem(
+            {u.name: {'dimensions': dict(u.dimension), 'scale': u.scale} for u in self.program.units}
+        )
+
+    def domain(self, kind):
+        """A program type in the unit algebra used to check argument expressions."""
+        if isinstance(kind, p.Number):
+            return units.Unit(self.program.unit(kind.unit).dimension)
+        if kind == p.BOOL:
+            return units.BOOLEAN
+        if kind == p.TEXT:
+            return units.STRING
+        if isinstance(kind, p.DistributionType):
+            outcome = self.domain(kind.of)
+            return units.Unit(outcome.dimensions, kind=f'distribution of {outcome.kind}')
+        return units.Unit(kind=str(kind))
+
+    def result_domain(self, found):
+        """The type of one resolved path or of one element in a reduction."""
+        if found.kind in ('value', 'unknown'):
+            return self.domain(found.part.type)
+        if found.kind == 'member':
+            return self.domain(p.EntityType(found.part.name))
+        if found.kind == 'occurrence':
+            return self.domain(p.OccurrenceType(found.owner.name, found.part.name))
+        if found.kind == 'property':
+            parent = found.of
+            if found.name in ('lower', 'upper'):
+                return self.domain(parent.part.type)
+            if found.name in ('mean', 'std'):
+                return self.domain(parent.part.type.of)
+            if found.name in ('started', 'done', 'active'):
+                return units.Unit((('time', 1),)) if found.name == 'started' else units.BOOLEAN
+            if found.name == 'served_fraction':
+                return units.NUMBER
+            if found.name in FIXED_PROPERTIES and parent.part is not None:
+                side = found.name
+                if parent.kind == 'leg' and parent.name == 'backward':
+                    side = 'sink' if side == 'source' else 'source'
+                if isinstance(getattr(parent.part, side), Path):
+                    # A flow has the unit of either store per hour (checked by rate_unit).
+                    return self.domain(p.Number(parent.part.unit)).multiply(units.Unit((('time', 1),)))
+            if found.name in ('actual_rate', 'request', 'capacity'):
+                if parent.part is None:
+                    parent = parent.of  # any connection of this endpoint
+                if parent.kind == 'endpoint':
+                    return self.domain(parent.part.type).multiply(units.Unit((('time', 1),)), divide=True)
+                return self.domain(p.Number(parent.part.unit))
+        raise units.ExpressionError(f'{found.name or found.kind!r} gives no value for an argument')
+
+    def read_domain(self, read, scope):
+        if isinstance(read, Time | Since | Elapsed):
+            return units.Unit((('time', 1),))
+        if isinstance(read, EnumValue):
+            return self.domain(p.EnumType(read.enum))
+        if isinstance(read, Draw):
+            if isinstance(read.source, Distribution):
+                source = read.source
+                kind = p.EnumType(source.enum) if source.family == 'categorical' else p.Number(source.unit)
+                return self.domain(kind)
+            found = self.quiet().resolve(read.source, scope, '')
+            if (
+                found is not None
+                and found.kind == 'value'
+                and isinstance(found.part.type, p.DistributionType)
+            ):
+                return self.domain(found.part.type.of)
+        if isinstance(read, Reduce):
+            found = self.quiet().collection(read.source, scope, '', retained=None)
+            if found is None:
+                return None
+            if read.op == 'count' and (
+                found.kind in ('member', 'occurrence', 'flow', 'leg')
+                or (found.kind == 'value' and isinstance(found.part.type, p.EntityType))
+            ):
+                return units.NUMBER
+            element = self.result_domain(found)
+            if read.op in ('count', 'any', 'all'):
+                if element != units.BOOLEAN:
+                    raise units.ExpressionError(f'{read.op} needs a projection of yes/no values')
+                return units.NUMBER if read.op == 'count' else units.BOOLEAN
+            if element.kind != 'number':
+                raise units.ExpressionError(f'{read.op} needs a projection of numbers')
+            return element
+        if isinstance(read, Path):
+            found = self.quiet().resolve(read, scope, '')
+            if found is not None:
+                if found.many and found.kind == 'member':
+                    if found.part is None:
+                        return units.Unit(kind='untyped collection')
+                    return self.domain(p.CollectionType(found.part.name))
+                value = self.result_domain(found)
+                return (
+                    units.Unit(value.dimensions, kind=f'projection of {value.kind}') if found.many else value
+                )
+        return None  # the ordinary path check diagnoses this read
+
+    def argument(self, arg, parameter, scope, where):
+        """A start supplies a value of the declared parameter's type in the caller's scope."""
+        if not isinstance(arg, Expr):
+            return
+        try:
+            names = {name: self.read_domain(read, scope) for name, read in arg.reads}
+            if any(kind is None for kind in names.values()):
+                return
+            actual, _ = units.unit_of(arg.node, names, self.argument_units)
+            expected = self.domain(parameter.type)
+        except KeyError:
+            return  # an unknown unit or field has its own diagnostic
+        except (units.ExpressionError, ArithmeticError) as error:
+            self.fail('arguments', where, f'argument for {parameter.name!r}: {error}')
+            return
+        if actual.compatible(expected) or (actual == units.ZERO and expected.kind == 'number'):
+            return
+        code = 'unit' if actual.kind == expected.kind == 'number' else 'type'
+        target = parameter.type.unit or 'a number' if isinstance(parameter.type, p.Number) else expected.kind
+        supplied = actual.kind
+        if actual.kind == 'number':
+            supplied = (
+                ' * '.join(name if power == 1 else f'{name}^{power}' for name, power in actual.dimensions)
+                or 'a plain number'
+            )
+        self.fail(
+            code, where, f'the parameter {parameter.name} expects {target}, and the argument gives {supplied}'
+        )
 
     def selector_enum(self, selector, scope):
         """The enum of a switch's selector, when the selector is one read whose enum is known."""
@@ -994,7 +1145,9 @@ class _Checker(Resolver):
             self.check_expr(value.expr, scope, where, 'a formula')
             self.lifetime(target, value, scope, where)
         elif isinstance(value, Distribution):
-            self.distribution(value, where)
+            self.distribution(
+                value, where, found.part.type if found is not None and found.kind == 'value' else None
+            )
         elif isinstance(value, Path):
             self.resolve(value, scope, where)
         elif isinstance(value, p.Priority):

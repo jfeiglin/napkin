@@ -48,15 +48,15 @@ gives the part as its `origin` (`tank.water`, `Place.level`, `close` at the top 
   known before its value. `Order` then follows each member's own connections, which the links fix
   when the model compiles (R-A1-30): a `where` that compares links keeps the members that it names.
   A cycle is refused with its chain, `a.total reads b.total reads a.total`.
-- **Collections** (`<T>`) are typed with their template and their key: `Template.instances`, a
-  literal, `where` (a bare name in its test that is a field of the member is the member's, and it
-  must be fixed: an input or a link), `by(field)` (the key) and `.at(x)` (one member, `x` in the
+- **Collections** (`<T>`) carry their member type and their key. In a `where` comparison, the left
+  field comes from the member and the right expression from the enclosing scope. The operations
+  include `by(field)` (the key) and `.at(x)` (one member, `x` in the
   key's unit). A key fixed when the model compiles selects its entry there: over the instances or a
   literal of members it is that member, read by its id (`chosen`), and `Order` reads the entry of
   each member's own collection (`Order.chosen`), so what reads the entry depends on it alone. A
   step from a collection is a projection, which only a reduction reads: `sum` and
   `min`/`max` of numbers, `count` of members or of yes/no values, `any` and `all` of yes/no values.
-  An endpoint's `flows` take a `where` too (`flows_where`): in its test the bare names `source` and
+  A collection of flows takes a `where` too: in its test the bare names `source` and
   `sink` are the member's ends (`FlowEnd`), fixed for the flow's lifetime, which compare with `==`
   or `!=` to a stored number, by identity (`count(tank.water.outflow.flows.where(sink ==
   clinic.water))`); a flow's rates and settings are live, and no where tests them.
@@ -362,6 +362,8 @@ class Many:
     def __str__(self):
         if isinstance(self.of, Ent):
             return f'a collection of {self.of.template}'
+        if isinstance(self.of, (FlowOf, Occ)):
+            return f'a collection of {self.of}'
         return f'a projection of {self.of}'
 
 
@@ -420,16 +422,8 @@ class EndOf:
 
 
 @dataclass(frozen=True)
-class Flows:
-    """The member under test of a `where` over an endpoint's flows (`Scope.item`): any flow incident
-    there, whose rates are in `rate`."""
-
-    rate: Num
-
-
-@dataclass(frozen=True)
 class FlowEnd:
-    """An end of the member under test of a `where` over an endpoint's flows (`source`, `sink`): the
+    """An end of the member under test of a `where` over flows (`source`, `sink`): the
     store at that end, or SOURCE or SINK, fixed for the flow's lifetime. It is no value: the test
     compares it with `==` or `!=` to a stored number, or to the member's other end, and the program
     compares stores by identity there. `rate` is the unit of the flows' rates."""
@@ -1285,15 +1279,14 @@ class Refused(Exception):
 @dataclass(frozen=True)
 class Scope:
     """Where an expression stands: the template whose member `this` names ('' at the top level), and
-    inside the test of a `where` the template of the member under test (`item`), or `Flows` for a
-    flow of an endpoint's flows. Inside an event,
+    inside the test of a `where` the type of the member under test (`item`). Inside an event,
     `event` is its path, whose parameters and locals the bare names read; inside a trigger, which
     has no occurrence (`trigger` is its path), `captures` are the paths of the captures that it has
     taken so far. Inside a solver, `solver` is its path, whose inputs and unknowns the bare names
     read."""
 
     owner: str = ''
-    item: str | Flows | None = None
+    item: Ent | FlowOf | Occ | None = None
     event: str | None = None
     captures: tuple = ()
     trigger: str | None = None
@@ -1513,8 +1506,8 @@ class Resolver:
     # ---- expressions -----------------------------------------------------------------------------
 
     def is_member(self, node):
-        """Whether a node is a bare member of an enum (`OPEN`): a capital name that is no template."""
-        return isinstance(node, n.Name) and node.name[:1].isupper() and node.name not in self.templates
+        """Whether a bare name can be an enum value in a typed expression."""
+        return isinstance(node, n.Name) and node.name[:1].isupper()
 
     def member_of(self, node, expected):
         """A bare member of an enum, which takes its enum from its place (`expected`)."""
@@ -1549,7 +1542,11 @@ class Resolver:
             return Const(node.value, BOOL)
         if isinstance(node, n.Text):
             return Const(node.value, TEXT)
-        if self.is_member(node) and not self.item_field(scope, node.name):
+        if (
+            self.is_member(node)
+            and not self.item_field(scope, node.name)
+            and (isinstance(unit, EnumOf) or node.name not in self.templates)
+        ):
             return self.member_of(node, unit)
         if isinstance(node, (n.Name, n.Member, n.Collection)) or (
             isinstance(node, n.Method) and node.name in KEYED
@@ -1611,15 +1608,19 @@ class Resolver:
             return self.binary(node, scope)
         if isinstance(node, n.Compare):
             # A bare member of an enum takes the enum of the operand beside it (`gate == OPEN`).
+            scoped = [(item, self.operand_scope(scope, i, item)) for i, item in enumerate(node.operands)]
             operands = [
-                None if self.is_member(item) else self.expression(item, scope) for item in node.operands
+                None
+                if self.is_member(item) and not self.item_field(own, item.name)
+                else self.expression(item, own)
+                for item, own in scoped
             ]
             enum = next(
                 (item.type for item in operands if item is not None and isinstance(item.type, EnumOf)), None
             )
             operands = [
-                self.member_of(item, enum) if found is None else found
-                for item, found in zip(node.operands, operands)
+                self.expression(item, own, enum) if found is None else found
+                for (item, own), found in zip(scoped, operands)
             ]
             if len(node.ops) > 1 and any(isinstance(item.type, FlowEnd) for item in operands):
                 self.fail('type', 'an end of a flow is compared once, as sink == clinic.water', node)
@@ -1657,11 +1658,12 @@ class Resolver:
             # error). An interval with one end left empty cannot be reversed: it is one comparison.
             value = self.expression(node.value, scope)
             self.want_number(value, node, 'in')
+            outer = replace(scope, item=None) if scope.item is not None else scope
             low = high = None
             if node.low is not None:
-                low, value = self.alike(self.expression(node.low, scope), value, node, 'in')
+                low, value = self.alike(self.expression(node.low, outer), value, node, 'in')
             if node.high is not None:
-                value, high = self.alike(value, self.expression(node.high, scope), node, 'in')
+                value, high = self.alike(value, self.expression(node.high, outer), node, 'in')
             self.interval(low, high, 'the interval of this test', node, (node.low, node.high))
             if low is not None and high is not None:
                 return Apply('call', (value, low, high), BOOL, 'within')
@@ -1990,9 +1992,37 @@ class Resolver:
     # ---- paths -------------------------------------------------------------------------------------
 
     def item_field(self, scope, name):
-        """Whether a bare name is a value of the member under test of a `where` of members."""
-        found = self.syntax.get(f'{scope.item}.{name}') if isinstance(scope.item, str) else None
-        return found is not None and isinstance(found[1], n.Declaration)
+        """Whether a bare name denotes a field of the member under test."""
+        item = scope.item
+        if isinstance(item, Ent):
+            return isinstance(self.syntax.get(f'{item.template}.{name}', (None, None))[1], n.Declaration)
+        if isinstance(item, Occ):
+            return name in OCCURRENCE or self.syntax.get(f'{item.event}.{name}', (None,))[0] == item.event
+        return isinstance(item, FlowOf) and name in (*ENDS, *FLOW_READS)
+
+    def operand_scope(self, scope, index, node):
+        """A filter comparison takes its left field from the member and its right expression from
+        the enclosing scope. An unbound flow-end marker also works in a reversed end comparison."""
+        if scope.item is None or index == 0:
+            return scope
+        outer = replace(scope, item=None)
+        if isinstance(scope.item, FlowOf) and isinstance(node, n.Name) and node.name in ENDS:
+            name = node.name
+            if (
+                name not in self.root
+                and name not in self.entities
+                and name not in self.instances
+                and name not in self.tables
+                and name not in self.templates
+                and self.scoped_name(node, outer) is None
+            ):
+                return scope
+        return outer
+
+    def filter_field(self, read):
+        """Fixed member fields and the current arguments of occurrences can select a member.
+        An argument can change within its invocation, so the read itself does not become fixed."""
+        return read.fixed or isinstance(self.syntax.get(read.part, (None, None))[1], n.Param)
 
     def path(self, node, scope):
         """What a name, a dotted path, a keyed operation or a literal names, as a `Read` with its
@@ -2006,7 +2036,10 @@ class Resolver:
         if not isinstance(node, n.Member):
             self.fail('syntax', 'only a name, a member or a collection has parts', node)
         head = node.base.name if isinstance(node.base, n.Name) else None
-        if head is not None and not self.item_field(scope, head):
+        if head is not None and (head in self.tables or head in self.templates or node.name == 'instances'):
+            local = self.scoped_name(node.base, scope)
+            if local is not None:
+                return self.step(local, node.name, node)
             if head in self.tables:
                 return self.row(head, node.name, node)
             if head in self.templates:
@@ -2017,7 +2050,8 @@ class Resolver:
                 self.fail('unknown_name', f'{head} is no template' + close(head, self.templates), node)
         return self.step(self.path(node.base, scope), node.name, node)
 
-    def name(self, node, scope):
+    def scoped_name(self, node, scope):
+        """What the scope binds before the top-level declarations or a dotted table/template head."""
         name = node.name
         if name == 'this':
             if not scope.owner:
@@ -2025,7 +2059,7 @@ class Resolver:
             return Read(('this',), (), Ent(scope.owner), True)
         if name == 't':
             return Read(('time',), (), self.num('h', node))
-        if isinstance(scope.item, Flows) and name in (*ENDS, *FLOW_READS):
+        if isinstance(scope.item, FlowOf) and name in (*ENDS, *FLOW_READS):
             # A bare name of a flow's own in the test of a where over flows is the member's.
             if name in FLOW_READS:
                 self.fail(
@@ -2036,7 +2070,7 @@ class Resolver:
                 )
             return Read(('item',), (name,), FlowEnd(scope.item.rate), True)
         if self.item_field(scope, name):
-            return self.step(Read(('item',), (), Ent(scope.item), True), name, node)
+            return self.step(Read(('item',), (), scope.item, True), name, node)
         for capture in scope.captures:
             if capture.rpartition('.')[2] == name:
                 return Read(('local', name), (), self.done[capture].type, part=capture)
@@ -2059,6 +2093,13 @@ class Resolver:
                     ('local', name), (), source.type, source.fixed, source.formula, source.stored, source.part
                 )
             return Read(('local', name), (), self.value(own).type, part=own)
+        return None
+
+    def name(self, node, scope):
+        local = self.scoped_name(node, scope)
+        if local is not None:
+            return local
+        name = node.name
         if name in self.root:
             value = self.value(name)
             formula = name if value.kind == FORMULA else ''
@@ -2183,12 +2224,22 @@ class Resolver:
                 value = self.value(own)
                 stored = _stored(value) and value.init is not None
                 return Read(
-                    base.start, steps, self.projected(value.type, kind, name, node), stored=stored, part=own
+                    base.start,
+                    steps,
+                    self.projected(value.type, kind, name, node),
+                    fixed=base.fixed and fixed_kind(value),
+                    stored=stored,
+                    part=own,
                 )
             if name in OCCURRENCE:
                 found = OCCURRENCE[name]
                 found = self.num(found, node) if isinstance(found, str) else found
-                return Read(base.start, steps, self.projected(found, kind, name, node))
+                return Read(
+                    base.start,
+                    steps,
+                    self.projected(found, kind, name, node),
+                    fixed=base.fixed and name == 'started',
+                )
             names = [
                 key.rpartition('.')[2] for key, (owner, _) in self.syntax.items() if owner == inner.event
             ]
@@ -2314,19 +2365,9 @@ class Resolver:
         return Read(('literal', items), (), Many(Ent(templates[0])), all(item.fixed for item in items))
 
     def keyed(self, node, scope):
-        """`c.where(test)`, `c.by(field)` and `c.at(key)` of a collection of members, and `where` of
-        an endpoint's flows (`flows_where`)."""
+        """Filter a collection, set its numeric key, or select one member."""
         source = self.path(node.base, scope)
-        if isinstance(source.type, Many) and isinstance(source.type.of, FlowOf) and node.name == 'where':
-            return self.flows_where(source, node, scope)
-        if isinstance(source.type, Many) and isinstance(source.type.of, Occ) and node.name != 'at':
-            self.fail(
-                'collection',
-                f'the occurrences of an event are read with .at(t), the newest start, in this version, '
-                f'not .{node.name}(...)',
-                node,
-            )
-        if not (isinstance(source.type, Many) and isinstance(source.type.of, (Ent, Occ))):
+        if not (isinstance(source.type, Many) and isinstance(source.type.of, (Ent, FlowOf, Occ))):
             self.fail(
                 'collection', f'.{node.name}(...) takes a collection of members, not {source.type}', node
             )
@@ -2335,10 +2376,10 @@ class Resolver:
             self.fail('arguments', f'.{node.name}(...) takes one argument', node)
         (arg,) = node.args
         if node.name == 'where':
-            test = self.expression(arg, Scope(scope.owner, of.template))
+            test = self.expression(arg, replace(scope, item=of))
             self.want_bool(test, node, 'where')
             for read in reads_of(test):
-                if read.start == ('item',) and not read.fixed:
+                if read.start == ('item',) and not self.filter_field(read):
                     self.fail(
                         'where_live',
                         f'where tests what is fixed for each member, and {".".join(read.steps)} is not: '
@@ -2347,19 +2388,13 @@ class Resolver:
                     )
             return Read(('where', source, test), (), source.type, source.fixed and fixed(test))
         if node.name == 'by':
-            path = f'{of.template}.{getattr(arg, "name", "")}'
-            if not isinstance(arg, n.Name) or not isinstance(self.syntax.get(path, (0, 0))[1], n.Declaration):
-                parts = self.parts_of(of.template)
-                self.fail(
-                    'unknown_name',
-                    f'by names a value of {of.template}' + close(getattr(arg, 'name', ''), parts),
-                    node,
-                )
-            value = self.value(path)
-            if not isinstance(value.type, Num):
-                self.fail('type', f'a key is a number, and {arg.name} is {value.type}', node)
+            if not isinstance(arg, n.Name):
+                self.fail('unknown_name', 'by names a numeric field of a member', node)
+            key_field = self.step(Read(('item',), (), of, True), arg.name, arg)
+            if not isinstance(key_field.type, Num):
+                self.fail('type', f'a key is a number, and {arg.name} is {key_field.type}', node)
             return Read(
-                ('by', source, arg.name), (), Many(of, value.type), source.fixed and fixed_kind(value)
+                ('by', source, arg.name), (), Many(of, key_field.type), source.fixed and key_field.fixed
             )
         found = self.expression(arg, scope)
         self.want_number(found, node, '.at')
@@ -2420,26 +2455,6 @@ class Resolver:
                     ids += [f'{item.name}.{id}' for id in sorted(rows)]
         self.creation[template] = found = {id: number for number, id in enumerate(ids)}
         return found
-
-    def flows_where(self, source, node, scope):
-        """`flows.where(test)` of an endpoint's flows (spec, "Collections, keys and projections": a
-        fixed-field filter over an endpoint collection follows its membership changes). The bare
-        names `source` and `sink` of the test are the member's ends, which are fixed for the flow's
-        lifetime and compare by identity (`FlowEnd`); its rates and settings are live, and refused.
-        The test reads the enclosing scope as the test of a where of members does."""
-        flow = source.type.of
-        if flow.flow:
-            self.fail(
-                'collection',
-                f'a where over flows narrows the flows of an endpoint (water.outflow.flows); a projection '
-                f'of {flow.flow} narrows its members first, as Template.instances.where(...).{flow.flow.rpartition(".")[2]}',
-                node,
-            )
-        if len(node.args) != 1:
-            self.fail('arguments', '.where(...) takes one argument', node)
-        test = self.expression(node.args[0], Scope(scope.owner, Flows(flow.rate)))
-        self.want_bool(test, node, 'where')
-        return Read(('where', source, test), (), source.type)
 
     def ends_alike(self, left, right, node, op):
         """The sides of a comparison of an end of a flow (`FlowEnd`): `==` or `!=` with another end,
@@ -3686,12 +3701,9 @@ class Resolver:
         args = []
         for arg, param in zip(call.args, params):
             found = self.expression(arg, scope, param.type if isinstance(param.type, EnumOf) else None)
-            if not compatible(found.type, param.type):
-                if not (_zero(found) and isinstance(param.type, Num)):
-                    code = 'unit' if isinstance(found.type, Num) and isinstance(param.type, Num) else 'type'
-                    self.fail(
-                        code, f'the parameter {param.name} is {param.type}, and this is {found.type}', node
-                    )
+            # A literal zero adopts its numeric parameter's unit in the program.
+            # Program.check validates the signature of both ways of authoring the call.
+            if _zero(found) and isinstance(param.type, Num) and found.type != param.type:
                 found = Const(found.value, param.type)
             args.append(found)
         return DeclaredStart(path, event, tuple(args), node.line)
@@ -3998,7 +4010,7 @@ class Resolver:
                     f'{name} is a formula of {template}: a member replaces it with formula(...)',
                     node,
                 )
-            body = self.expression(node.body, scope)
+            body = self.expression(node.body, scope, value.type if isinstance(value.type, EnumOf) else None)
             if not compatible(body.type, value.type):
                 self.fail('unit', f'{name} of {template} is {value.type}, and this formula {body.type}', node)
             return False, Given(name, Retain(body, body.type), evidence, line)

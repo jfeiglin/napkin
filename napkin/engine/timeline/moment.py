@@ -107,7 +107,7 @@ from ...program import parts as p
 from ...program.refs import Distribution, Formula, Lookup, spelled
 from ..continuous.walk import walked
 from ..errors import SimulationError
-from .collections import kept, occurrence_at
+from .collections import kept, member_at
 from .plan import BACKWARD, FORMULA, FORWARD
 from .reads import lazily
 
@@ -584,23 +584,26 @@ class Moment:
         return found[0]
 
     def statement_point(self, path, scope, origin, tx):
-        """Resolve an occurrence lookup using the state at this statement, including prior writes."""
+        """Resolve a dynamic target using the state at this statement, including prior writes."""
         if isinstance(path.start, Lookup):
             source = self.resolved(path.start.source, scope, origin)
-            if source[0] == 'dynamic' and source[1][0] == 'occurrences' and not source[2]:
+            if source[0] == 'dynamic' and not source[2]:
                 key = self.run.occurrences.node(path.start.key, scope, origin)
 
                 def read(name):
                     return self.run.value(name, tx=tx)
 
                 try:
-                    point = occurrence_at(
+                    point = member_at(
                         self.plan.members(source[1]),
+                        source[1],
                         key,
                         read,
                         self.run.units_for(tx),
                         self.run.now,
                         spelled(path),
+                        self.plan,
+                        *source[3:],
                     )
                 except ExpressionError as problem:
                     raise SimulationError(f'{origin}: {problem}') from problem
@@ -760,13 +763,12 @@ class Moment:
             return found.node
         dynamic = self.plan.dynamic.get(name)
         if dynamic is not None and dynamic.op == 'at':
-            point = occurrence_at(
+            point = dynamic.member_at(
                 self.plan.members(dynamic.source),
-                dynamic.key,
+                self.plan,
                 lambda n: run.value(n, tx=tx),
-                run.units_for(tx),
                 run.now,
-                dynamic.spelled,
+                run.units_for(tx),
             )
             return nodes.ref(self.plan.project(point, dynamic.steps))
         return None
