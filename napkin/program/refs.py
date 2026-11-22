@@ -23,6 +23,7 @@ core's literal call `q(number, unit)`, whose unit is a spelling of the program's
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from fractions import Fraction
 
@@ -43,6 +44,19 @@ FAMILIES = {
     'lognormal': (2, 4),
     'categorical': (),
 }
+
+
+def numeric_support(family, params):
+    """The support in the distribution's own unit, for a numeric family of the given arity."""
+    if len(params) not in FAMILIES.get(family, ()):
+        return None
+    if len(params) == 4:
+        return params[2], params[3]
+    if family == 'normal':
+        return -math.inf, math.inf
+    if family == 'lognormal':
+        return 0, math.inf
+    return params[0], params[-1]
 
 
 # ---- where a path starts ---------------------------------------------------------------------------
@@ -229,6 +243,15 @@ class Expr:
             if found == name:
                 return read
         raise KeyError(name)
+
+
+def drawn_distribution(initial):
+    """The distribution written directly in a draw that supplies the entire initializer."""
+    if isinstance(initial, Expr) and isinstance(initial.node, nodes.Ref):
+        for name, read in initial.reads:
+            if name == initial.node.name and isinstance(read, Draw) and isinstance(read.source, Distribution):
+                return read.source
+    return None
 
 
 @dataclass(frozen=True)

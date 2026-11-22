@@ -183,6 +183,7 @@ from ..core.comparisons import DEFAULT_FACTOR, against, collapsed_interval, nume
 from ..core.expr import DEEPEST
 from ..core.literals import Literals
 from ..core.units import authored_decimal, dimension_power, rational, scale_of
+from ..program.refs import numeric_support
 from .language import nodes as n
 from .language import tables
 from .language.format import expression as written_as
@@ -2994,17 +2995,10 @@ class Resolver:
     def support(self, source, lower, upper, node):
         """The range of an input whose default draws: the written range, which must hold the support
         of the distribution, or the support of a bounded distribution."""
-        params, unit = source.params, source.type.of
-        if len(params) == 4:
-            ends = (params[2], params[3])
-        elif source.family == 'normal':
-            ends = (-math.inf, math.inf)
-        elif source.family == 'lognormal':
-            ends = (0, math.inf)  # above zero; the default range leaves both sides open
-        else:
-            ends = (params[0], params[-1])
+        unit = source.type.of
+        ends = numeric_support(source.family, source.params)
         if lower is None and upper is None:
-            if source.family in ('normal', 'lognormal') and len(params) == 2:
+            if math.inf in ends:
                 return None, None
             return Const(ends[0], unit), Const(ends[1], unit)
         scale = self.scale(unit)

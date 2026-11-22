@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import functools
 import itertools
+import math
 import re
 from dataclasses import fields, is_dataclass, replace
 from fractions import Fraction
@@ -71,6 +72,8 @@ from .refs import (
     Reduce,
     Since,
     Where,
+    drawn_distribution,
+    numeric_support,
     renamed,
     spelled,
 )
@@ -659,7 +662,15 @@ def value(
 
 def input_(name, type=None, init=None, *, lower=None, upper=None, readonly=False, scale=None):
     """An `input`: fixed for the run, which a configuration can override."""
-    return _value(name, p.INPUT, type, init, lower, upper, readonly, scale, None, None)
+    field = _value(name, p.INPUT, type, init, lower, upper, readonly, scale, None, None)
+    if lower is None and upper is None and isinstance(field.type, p.Number):
+        source = drawn_distribution(field.init)
+        if source is not None:
+            ends = numeric_support(source.family, source.params)
+            if ends is not None and math.inf not in ends:
+                unit = p.Number(source.unit)
+                return replace(field, lower=_initial(ends[0], unit), upper=_initial(ends[1], unit))
+    return field
 
 
 def link(name, template):

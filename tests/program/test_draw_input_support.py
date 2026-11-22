@@ -59,6 +59,26 @@ def test_a_written_bound_keeps_the_supplied_domain(extra, low, high):
     assert program_bytes(make.finish()) == program_bytes(model.program)
 
 
+@pytest.mark.parametrize(
+    ('written', 'initial'),
+    [
+        ('this.prior.draw()', b.this.prior.draw()),
+        ('uniform(1 h, 3 h).draw() + 1 h', b.draw(b.uniform(1, 3, 'h')) + b.q(1, 'h')),
+    ],
+    ids=['named-distribution', 'calculated-default'],
+)
+def test_a_named_or_calculated_default_keeps_its_open_range(written, initial):
+    source = f'yard:\n    prior: distribution(h) = uniform(1 h, 3 h)\n    input delay: h = {written}\n'
+    expected = compile_text(source, UNITS).program
+    make = b.Builder(UNITS)
+    make.entity(
+        'yard', b.value('prior', b.dist_of('h'), b.uniform(1, 3, 'h')), b.input_('delay', 'h', initial)
+    )
+    actual = make.finish()
+    assert actual.templates[0].values[1].lower is actual.templates[0].values[1].upper is None
+    assert program_bytes(actual) == program_bytes(expected)
+
+
 @pytest.mark.parametrize('minutes,valid', [(29, False), (30, True), (60, True), (90, True), (91, False)])
 def test_overrides_respect_the_draws_physical_support_in_a_different_unit(minutes, valid):
     make = b.Builder(UNITS)
