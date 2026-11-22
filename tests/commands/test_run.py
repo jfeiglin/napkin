@@ -119,23 +119,30 @@ plant:
 """
 
 
-@pytest.mark.parametrize('horizon', ['7.2 h', '0.3 days', '432 min'])
+@pytest.mark.parametrize('horizon', ['7.2 h', '0.3 days', '72 tenths'])
 def test_a_read_at_the_horizon_however_spelled_is_a_read_at_the_last_moment(tmp_path, capsys, horizon):
-    """The horizon is an inclusive cutoff, held as the run holds every time: its exact value rounded
-    once (`program.config.Request`). The trigger fires at 2.4 h and at 7.2 h, so the plant has ticked
-    twice at its horizon, which a read gives however the horizon and the time of the read are spelled,
-    with a minute that its units file holds as the float 0.016666666666666666. A read at the horizon
-    gave "unavailable" when the horizon was exact and the time a float, and 432 min read 1, the time
-    before the second tick, when a minute was the decimal of its float."""
-    units = {'min': {'dimensions': {'time': 1}, 'scale': 1 / 60, 'description': 'A minute.'}}
+    """The trigger fires at 2.4 h and 7.2 h. Each spelling of the inclusive cutoff
+    uses a physically equivalent time, including a locally declared exact decimal scale."""
+    units = {'tenths': {'dimensions': {'time': 1}, 'scale': 0.1, 'description': 'A tenth of an hour.'}}
     path = package(tmp_path / 'clock', CLOCK.format(horizon=horizon), units)
-    for at in ('7.2h', '0.3days', '432min'):
+    for at in ('7.2h', '0.3days', '72tenths'):
         found = napkin(capsys, 'run', path, '--at', at, '--json')
         assert found.code == 0, found.err
         assert found.doc['times'] == [7.2]
         assert found.doc['values']['plant.ticks']['values'] == [2], (horizon, at)
     found = napkin(capsys, 'run', path, '--json')
     assert found.doc['times'] == [0, 7.2] and found.doc['values']['plant.ticks']['values'] == [0, 2]
+
+
+def test_an_authored_decimal_minute_reads_just_before_the_second_tick(tmp_path, capsys):
+    units = {
+        'min': {'dimensions': {'time': 1}, 'scale': 0.016666666666666666, 'description': 'Local minute.'}
+    }
+    path = package(tmp_path / 'clock', CLOCK.format(horizon='7.2 h'), units)
+    found = napkin(capsys, 'run', path, '--at', '432min', '--json')
+    assert found.code == 0, found.err
+    assert found.doc['times'] == [7.199999999999999]
+    assert found.doc['values']['plant.ticks']['values'] == [1]
 
 
 def test_napkin_run_prints_every_named_value_in_the_order_of_the_file(capsys):
