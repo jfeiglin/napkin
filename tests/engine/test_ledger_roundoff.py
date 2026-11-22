@@ -22,15 +22,15 @@ from tests.engine import (
 )
 
 
-def declared_faces_moving(monkeypatch):
+def declared_faces(monkeypatch, moving):
     connect = Plan.connect
 
-    def moving(plan, *args, **kwargs):
+    def use_declared(plan, *args, **kwargs):
         groups = connect(plan, *args, **kwargs)
-        return [replace(group, moves=True) if group.way == 'declared' else group for group in groups]
+        return [replace(group, moves=moving) if group.way == 'declared' else group for group in groups]
 
-    monkeypatch.setattr(Plan, 'connect', moving)
-    test_declared_stock_faces.test_a_declared_face_with_balanced_through_flow_keeps_its_stock(True)
+    monkeypatch.setattr(Plan, 'connect', use_declared)
+    test_declared_stock_faces.test_a_declared_face_with_balanced_through_flow_keeps_its_stock(moving)
 
 
 CASES = {
@@ -48,7 +48,8 @@ CASES = {
             'capacity', False, -0.5
         )
     ),
-    'a residue at a capped face stays in its band': declared_faces_moving,
+    'a residue at a capped face stays in its band': lambda patch: declared_faces(patch, True),
+    'a capped held flow retains its physical balance': lambda patch: declared_faces(patch, False),
 }
 
 
