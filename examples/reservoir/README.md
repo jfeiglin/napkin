@@ -1,28 +1,28 @@
 # Reservoir
 
-A storm fills a reservoir for five days. The operator of the dam sees the water level and decides
-when to open the spillway. The water is a share of the reservoir's capacity: 1 is full.
+A five-day storm adds 6% of the reservoir's capacity each day. It starts 60% full. When it reaches the operator's opening level of 70%, the default decision opens the spillway and releases 15% of capacity per day. The model records the water remaining, the total spilled, and the hours with water at or above the valley's risk level.
 
-It shows:
-
-- an actor: `operator` sees the water level (`sees`), and nothing else;
-- a choice of that actor (`choice`): when the water reaches the operator's level, open the spillway
-  or wait;
-- two results: the water let out over the spillway, and the time with the water above the level at
-  which the valley is at risk.
-
-The model has one run. In it, the operator opens the spillway at the level. When you play the
-operator, you make that choice yourself: if you wait, no water goes over the spillway, and the water
-can rise above the risk level.
-
-Run it from the folder that holds `examples/`:
+Run these commands from the repository root.
 
 ```sh
-napkin run examples/reservoir
-napkin play examples/reservoir --control operator
-napkin run examples/reservoir --set operator.level=0.85
+napkin run examples/reservoir --at 0h,40h,120h \
+    --value reservoir.water,reservoir.spilled,reservoir.risk_time
 ```
 
-`napkin play` stops at the operator's choice, shows what the operator sees, and asks for a pick.
-With `--json` it writes the choice as a line of JSON and reads the pick as one, so another program
-can play the operator.
+The spillway opens at 40 h. At 120 h the reservoir is 40% full, half its capacity has gone over the spillway, and the water has spent zero hours at or above the 80% risk level.
+
+To play the operator, pause after the forecast is drawn and before the choice takes effect.
+
+```sh
+napkin play examples/reservoir --break 'operator.decide.step[0].do[1]' \
+    --value reservoir.water,reservoir.spilled,reservoir.risk_time
+```
+
+Type `go` to accept the forecast. To keep the spillway closed, enter these two lines at the prompt.
+
+```text
+operator.decide#0.order = WAIT
+go
+```
+
+With this decision the reservoir ends 90% full, has spilled no water, and spends 40 hours at or above the risk level.

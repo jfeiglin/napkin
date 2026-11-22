@@ -8,6 +8,9 @@ reservoir = { column = 2 }
 [icon]
 drop = ["reservoir"]
 
+[role]
+operator = ["operator"]
+
 [triggers]
 rules = ["operator"]
 lines = 3          # the whole rule of the choice

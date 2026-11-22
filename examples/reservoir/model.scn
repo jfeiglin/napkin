@@ -7,48 +7,57 @@ scenario "A reservoir in a storm"
 
 reservoir:
     "The reservoir. Its water is a share of its capacity: 1 is full."
-    input inflow: fraction/day = 0.06 fraction/day in 0 fraction/day to 0.08 fraction/day
+    input inflow: fraction/day = 0.06 fraction/day in [0 fraction/day, 0.08 fraction/day]
         "Water that the storm brings in a day"
         @assumption "The example assumes that the storm brings 6% of the capacity in each day."
-    input spillway: fraction/day = 0.15 fraction/day in 0.05 fraction/day to 0.3 fraction/day
+    input spillway: fraction/day = 0.15 fraction/day in [0.05 fraction/day, 0.3 fraction/day]
         "Water that the open spillway lets out in a day"
         @assumption "The example assumes that the open spillway lets out 15% of the capacity in each day."
-    input risk: fraction = 0.8 in 0.5 to 1
+    input risk: fraction = 0.8 in [0.5, 1]
         "Water level above which the valley is at risk"
         @assumption "The example assumes that the valley is at risk above 80% of the capacity."
-    var water: fraction = 0.6 size 1
+    water: fraction = 0.6 in [0,] scale 1
         "Water in the reservoir"
         @assumption "The example assumes that the reservoir is 60% full when the storm starts."
-    var gate: "closed" | "open" = "closed"
+    gate: enum[CLOSED, OPEN] = CLOSED
         "Spillway"
         @assumption "The example assumes that the spillway is closed when the storm starts."
-    var spilled: fraction = 0 size 1
+    spilled: fraction = 0 scale 1
         "Water let out over the spillway"
         @identity "The water that goes over the spillway, as a share of the capacity, counted once."
-    output spilled
-    var risk_time: h = 0 h size 120 h
+    risk_time: h = 0 h scale 120 h
         "Time with the water above the risk level"
         @identity "The hours in which the water is above the risk level."
-    output risk_time
-    flow storm: -> water at inflow  @counts
-    flow spill: water -> spilled at spillway while gate is "open"  @counts
-    flow at_risk: -> risk_time at 1 if water >= risk else 0  @counts
+    flow storm: SOURCE -> this.water @counts
+        request = formula(this.inflow)
+        capacity = formula(this.inflow)
+    flow spill: this.water -> this.spilled @counts
+        request = formula(this.spillway if this.gate == OPEN else 0)
+        capacity = formula(this.spillway if this.gate == OPEN else 0)
+    flow at_risk: SOURCE -> this.risk_time @counts
+        request = formula(1 if this.water >= this.risk else 0)
+        capacity = formula(1 if this.water >= this.risk else 0)
 
 operator:
     "The operator of the dam."
-    role operator
-    sees reservoir.water
-    input level: fraction = 0.7 in 0.5 to 1
+    input level: fraction = 0.7 in [0.5, 1]
         "Water level at which the operator opens the spillway"
         @assumption "The example assumes that the operator opens the spillway at 70% of the capacity."
-    event decide once when reservoir.water >= level:  @rule
+    forecast = categorical(OPEN: 1, WAIT: 0)
+    decide = event(): @rule
         "The water reaches the level at which the operator opens the spillway."
-        choice
-        open 1:
-            "The operator opens the spillway."
-            reservoir.gate = "open"
-        wait else:
-            "The operator waits, and the spillway stays closed."
+        order: enum[OPEN, WAIT] = OPEN
+        when reservoir.water >= this.level:
+            this.decide.start()
+            reset when false
+        after 0 h:
+            order = this.forecast.draw()
+            switch order:
+                OPEN:
+                    "The operator opens the spillway."
+                    reservoir.gate = OPEN
+                WAIT:
+                    "The operator waits, and the spillway stays closed."
 
 record counts: identity "The model counts the water that comes in and goes out, each share once."
 record rule: assumption "The operator opens the spillway at that level; a reader who plays it can wait."

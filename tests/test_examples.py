@@ -1,311 +1,249 @@
-"""The examples (`examples/`, docs/language.md): packages that a reader runs as written.
-
-Each example compiles with full admission, gives an admissible default study with finite outcomes,
-is its own formatted text, has no library and no source, and rests each input and each output on a
-record written in place. Their outcomes are checked as properties, by arithmetic of their own on the
-inputs that the test reads from the model or edits: the tuners' total is the rate times the tuners
-times the time, until the tunings run out; the reservoir's water balance holds, its spillway lets out
-its rate for as long as it is open, the operator's choice comes when the water reaches the operator's
-level, and the time above the risk level follows from the straight lines of the water.
-"""
-
-from __future__ import annotations
+"""Run both example packages and compare their public readings with independent calculations."""
 
 import json
 import math
 import re
 import shutil
-from itertools import pairwise
+import tomllib
+from fractions import Fraction
+from itertools import product
 from pathlib import Path
 
 import pytest
 
-from napkin import actors, evaluate_study, evaluate_uncertainty, load_package, sample_result
-from napkin.engine import SamplingSettings, edits_for
-from napkin.model import ModelError, load_scenario
-from napkin.model.ir import thaw
+import napkin
+from napkin.engine import SamplingSettings
 from napkin.model.language.format import format_text
+from napkin.model.language.problems import LanguageError
 from napkin.model.library import vocabulary_path
 from napkin.paths import ENTRY
+from napkin.program.checkpoint import Breakpoint
 
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLES = ROOT / 'examples'
 FOLDERS = sorted(folder for folder in EXAMPLES.iterdir() if (folder / ENTRY).is_file())
-PRELUDE = json.loads((ROOT / 'napkin' / 'std' / 'units.json').read_text(encoding='utf-8'))
-# The scales of the prelude's times, in hours.
-DAY, YEAR = PRELUDE['day']['scale'], PRELUDE['year']['scale']
-# The kinds of a record that needs no source.
-KINDS = {'assumption', 'identity', 'convention'}
+PRELUDE = json.loads((ROOT / 'napkin/std/units.json').read_text())
+YEAR = PRELUDE['year']['scale']
+OUTPUTS = {
+    'piano_tuners': ('tunings_done',),
+    'reservoir': ('reservoir.spilled', 'reservoir.risk_time'),
+}
+PIANO = EXAMPLES / 'piano_tuners'
+RESERVOIR = EXAMPLES / 'reservoir'
+SWITCH = 'operator.decide.step[0].do[1]'
+ORDER = 'operator.decide#0.order'
 
 
-def model_of(name):
-    (model,) = load_package(EXAMPLES / name).values()
-    return model
-
-
-def points(study, run, times):
-    """{time: the values of the outputs} of one run of a study, at `times` and at the end."""
-    report = sample_result(study, times)
-    return {point['t']: point['values'] for point in report['runs'][run]['reporting_points'].values()}
+def configure(model, settings):
+    if not settings:
+        return model.configuration
+    return model.configure(
+        edits={'schema_version': napkin.SCHEMA_VERSION, 'model_hash': model.model_hash, 'set': settings}
+    )
 
 
 def test_the_examples_are_found():
-    assert {folder.name for folder in FOLDERS} >= {'piano_tuners', 'reservoir'}
+    assert {folder.name for folder in FOLDERS} >= OUTPUTS.keys()
 
 
 @pytest.mark.parametrize('folder', FOLDERS, ids=lambda folder: folder.name)
-def test_an_example_compiles_with_full_admission_and_its_default_study_is_admissible(folder):
-    models = load_package(folder)
-    assert list(models) == [folder.name]
-    (model,) = models.values()
-    assert model.admission_runs is None
-    study = evaluate_study(model)
-    assert study.admissible, study.diagnostics
-    assert not [item for item in study.diagnostics if item.get('severity', 'error') == 'error']
-    report = sample_result(study)
-    assert set(report['runs']) == set(model.runs)
-    for run in report['runs'].values():
-        final = run['reporting_points']['final']
-        assert set(final['statuses'].values()) == {'estimated'}
-        assert all(math.isfinite(value) for value in final['values'].values())
+def test_an_example_compiles_and_its_default_study_finishes_with_finite_outputs(folder):
+    models = napkin.load_package(folder)
+    assert tuple(models) == (folder.name,)
+    model = models[folder.name]
+    assert not model.reports
+    records = napkin.study(model)
+    assert len(records) == 1
+    for record in records.values():
+        assert record.failure is None and record.end == model.configuration.request.horizon
+        reported = napkin.report(
+            record, model.program, model.configuration, OUTPUTS[folder.name], [record.end], table=model.table
+        )
+        assert all(math.isfinite(row.values[0]) for row in reported.values)
 
 
 @pytest.mark.parametrize('folder', FOLDERS, ids=lambda folder: folder.name)
 def test_an_example_is_its_own_formatted_text(folder):
-    text = (folder / ENTRY).read_text(encoding='utf-8')
+    text = (folder / ENTRY).read_text()
     assert format_text(text) == text
 
 
 @pytest.mark.parametrize('folder', FOLDERS, ids=lambda folder: folder.name)
 def test_each_input_and_output_rests_on_a_record_written_in_place_and_no_source(folder):
-    """A record written in place has no name (a named record is cited by its name), and its kind needs
-    no source. The model has no library line, no source and no claim, and the folder no evidence."""
-    model = model_of(folder.name)
-    sites = thaw(model.evidence)['sites']
-    places = [tuple(name.split('.')) for name in model.inputs]
-    places += [tuple(name.split('.')) if '.' in name else ('output:', name) for name in model.outputs]
-    for place in places:
-        record = sites.get(place)
-        assert record is not None and 'name' not in record and record['kind'] in KINDS, place
-    assert {record['kind'] for record in sites.values()} <= KINDS
-    library = thaw(model.library)
-    assert (library['sources'], library['claims'], library['assumptions']) == ([], [], [])
+    model = napkin.load_scenario(folder)
+    paths = [
+        value.origin
+        for template in model.program.templates
+        for value in template.values
+        if value.kind == 'input'
+    ]
+    for path in [*paths, *OUTPUTS[folder.name]]:
+        (basis,) = model.table.evidence(path)
+        assert not basis.name and not basis.claims and not basis.rests_on and basis.explanation, path
+        assert basis.kind in {'assumption', 'identity', 'convention'}, path
+    assert all(
+        e.kind in {'assumption', 'identity', 'convention'}
+        for loc in model.table.locations
+        for e in loc.evidence
+    )
     assert vocabulary_path(folder / ENTRY) is None
     assert not (folder / 'evidence').exists()
 
 
-# ---- piano_tuners ---------------------------------------------------------------------------------
-
-PIANO = EXAMPLES / 'piano_tuners'
-# A unit as the file writes it: after a number (`3 tuner`), or as the type of a value (`: tunings =`).
-UNIT = r'[A-Za-z_]\w*(?:[/-][A-Za-z_]\w*|\^\d+)*'
-WRITTEN = re.compile(rf'\b\d[\d.]*(?:e[+-]?\d+)? +({UNIT})|: +({UNIT}) +=')
-
-
-# The words of the language that can follow a number without a unit: `0.6 size 1`, `1 if c else 0`.
-WORDS = {'in', 'to', 'size', 'if', 'else', 'and', 'or', 'versus'}
-
-
-def written_units(text):
-    """The units that a model file writes, outside its texts and its comments."""
-    code = re.sub(r'"[^"]*"', '', re.sub(r'(?m)^\s*#.*$', '', text))
-    return {unit for pair in WRITTEN.findall(code) for unit in pair if unit and unit not in WORDS}
-
-
-def unit_parts(unit):
-    """The declared units that a unit name is made of: `tunings/tuner-year` is tunings, tuner and year."""
-    return set(re.split(r'[/-]', re.sub(r'\^\d+', '', unit)))
-
-
 def test_piano_tuners_declares_exactly_the_units_that_it_uses():
-    """Each unit that the file writes is a declared unit or made of them; the parts that the prelude
-    does not hold are the package's own units, and the package declares no other. Without its units
-    file, the model does not compile."""
-    text = (PIANO / ENTRY).read_text(encoding='utf-8')
-    parts = set().union(*(unit_parts(unit) for unit in written_units(text)))
-    own = json.loads((PIANO / 'units.json').read_text(encoding='utf-8'))
-    assert parts - set(PRELUDE) == set(own)
-    model = model_of('piano_tuners')
-    assert set(own) <= set(thaw(model.library)['units'])
+    model = napkin.load_scenario(PIANO)
+    custom = json.loads((PIANO / 'units.json').read_text())
+    parts = {part for unit in model.program.units for part in re.findall(r'[A-Za-z_]\w*', unit.name)}
+    assert parts - PRELUDE.keys() == custom.keys()
+    for name, declaration in custom.items():
+        assert dict(model.program.unit(name).dimension) == declaration['dimensions']
 
 
 def test_piano_tuners_does_not_compile_without_its_units(tmp_path):
     shutil.copytree(PIANO, tmp_path / 'piano_tuners', ignore=shutil.ignore_patterns('units.json'))
-    with pytest.raises(ModelError) as caught:
-        load_scenario(tmp_path / 'piano_tuners' / ENTRY)
-    own = json.loads((PIANO / 'units.json').read_text(encoding='utf-8'))
-    messages = ' '.join(item['message'] for item in caught.value.diagnostics)
-    assert any(f"unknown unit '{name}" in messages for name in own)
+    with pytest.raises(LanguageError) as caught:
+        napkin.load_scenario(tmp_path / 'piano_tuners')
+    assert any(p.code == 'unit' and 'tuner' in p.message for p in caught.value.problems)
 
 
 def test_the_rate_of_the_tuners_is_in_a_composed_unit_with_no_entry():
-    model = model_of('piano_tuners')
-    unit = model.inputs['tuners.rate']['unit']
-    own = json.loads((PIANO / 'units.json').read_text(encoding='utf-8'))
-    assert unit == 'tunings/tuner-year' and unit not in own and unit not in PRELUDE
-    assert unit_parts(unit) == {'tunings', 'tuner', 'year'}
+    model = napkin.load_scenario(PIANO)
+    template, _ = model.program.member('tuners')
+    rate = next(v for v in template.values if v.name == 'rate')
+    custom = json.loads((PIANO / 'units.json').read_text())
+    assert rate.type.unit == 'tunings/tuner/year' and rate.type.unit not in custom | PRELUDE
+    assert model.program.unit(rate.type.unit).scale == Fraction(1, YEAR)
 
 
-def tunings_done(values, horizon):
-    """The closed form of the tunings done by `horizon` hours: the rate times the tuners times the time,
-    in years, until the tunings that the pianos need run out."""
-    return min(values['tuners.need'], values['tuners.rate'] * values['tuners.staff'] * horizon / YEAR)
+def tunings_done(need, rate, staff, hours):
+    return min(need, rate * staff * hours / YEAR)
 
 
 @pytest.mark.parametrize(
-    'body',
-    [
-        None,
-        {'set': {'tuners.staff': 2, 'tuners.rate': 700}},
-        {'set': {'tuners.staff': 8, 'tuners.need': 3000}},
-    ],
+    'settings',
+    [{}, {'tuners.staff': 2, 'tuners.rate': 700}, {'tuners.staff': 8, 'tuners.need': 3000}],
     ids=['default', 'fewer tuners', 'the tunings run out'],
 )
-def test_the_tunings_done_are_the_rate_times_the_tuners_times_the_time(body):
-    model = model_of('piano_tuners')
-    study = evaluate_study(model, edits_for(model, body) if body else None)
-    assert study.admissible, study.diagnostics
-    values = study.runs['base']['resolved'].parameter_values
-    horizon = model.time['horizon']
-    done = points(study, 'base', [horizon / 2])
-    for t in (horizon / 2, horizon):
-        assert done[t]['tunings_done'] == pytest.approx(tunings_done(values, t), rel=1e-9)
-    # The tunings that the pianos still need and those done add up to the need.
-    trajectory = study.runs['base']['trajectory']
-    end = trajectory.env_at(horizon)
-    assert end['tuners.due'] + end['tuners.done'] == pytest.approx(values['tuners.need'], rel=1e-12)
+def test_the_tunings_done_are_the_rate_times_the_tuners_times_the_time(settings):
+    model = napkin.load_scenario(PIANO)
+    record = napkin.run(model.program, configure(model, settings))
+    assert record.failure is None and record.end == YEAR
+    times = [YEAR / 2, YEAR]
+    need, rate, staff, done, due, total = napkin.read(
+        record,
+        model.program,
+        ['tuners.need', 'tuners.rate', 'tuners.staff', 'tuners.done', 'tuners.due', 'tunings_done'],
+        times,
+    )
+    for i, t in enumerate(times):
+        expected = tunings_done(need.values[i], rate.values[i], staff.values[i], t)
+        assert total.values[i] == pytest.approx(expected, rel=1e-9)
+        assert due.values[i] + done.values[i] == pytest.approx(need.values[i], rel=1e-12)
 
 
 def test_each_sample_of_the_tuners_draws_its_rate_and_holds_the_closed_form():
-    """The rate is a distribution: each of 8 samples draws its own rate within the support of the
-    distribution, and each sample's total is its closed form."""
-    model = model_of('piano_tuners')
-    support = model.inputs['tuners.rate']['distribution']['args']
-    result = evaluate_uncertainty(model, None, SamplingSettings(8, seed=7))
-    assert result.admissible, result.diagnostics
-    sampled = result.samples['base']
-    rates = [values['tuners.rate'] for values in sampled['values']]
-    assert len(set(rates)) == 8 and all(support['min'] <= rate <= support['max'] for rate in rates)
-    for values, completed in zip(sampled['values'], sampled['runs']):
-        trajectory = completed['trajectory']
-        done = trajectory.env_at(trajectory.horizon)['tuners.done']
-        assert done == pytest.approx(tunings_done(values, trajectory.horizon), rel=1e-9)
-
-
-# ---- reservoir --------------------------------------------------------------------------------------
-
-
-def operator_of(model):
-    (operator,) = [actor for actor in actors(model) if actor['name'] == 'operator']
-    return operator
+    model = napkin.load_scenario(PIANO)
+    samples = napkin.monte_carlo(
+        model.program,
+        model.configuration,
+        ['tuners.need', 'tuners.rate', 'tuners.staff', 'tuners.done'],
+        [YEAR],
+        SamplingSettings(8, 7),
+    ).samples
+    rates = []
+    for sample in samples:
+        assert sample.stopped is None
+        (need,), (rate,), (staff,), (done,) = sample.values
+        assert 600 <= rate <= 1200
+        assert done == pytest.approx(tunings_done(need, rate, staff, YEAR), rel=1e-9)
+        rates.append(rate)
+    assert len(set(rates)) == 8
 
 
 def test_the_reservoir_is_one_run_with_an_operator_who_sees_and_chooses():
-    """One run and no options, so `napkin play` needs no run; the operator's choice is what varies."""
-    model = model_of('reservoir')
-    assert len(model.runs) == 1 and not model.menu
-    operator = operator_of(model)
-    assert operator['sees'] and len(operator['choices']) == 1
-    assert len(operator['choices'][0]['outcomes']) >= 2
+    model = napkin.load_scenario(RESERVOIR)
+    assert not model.declared.options and not model.declared.runs
+    assert tomllib.loads((RESERVOIR / 'roles.toml').read_text())['entities']['operator'] == 'operator'
+    assert 'operator' in tomllib.loads((RESERVOIR / 'style.toml').read_text())['role']['operator']
+    session = napkin.Session(model.program, model.configuration, [Breakpoint(SWITCH)], table=model.table)
+    session.advance()
+    observed = session.view(['reservoir.water', ORDER])
+    assert observed.stop.at == SWITCH and observed.stop.t == pytest.approx(40)
+    level, choice = observed.values
+    assert (level.path, level.unit, level.value) == ('reservoir.water', 'fraction', pytest.approx(0.7))
+    assert choice.editable and choice.choices == ('OPEN', 'WAIT') and choice.value == 'OPEN'
 
 
-def test_a_played_reservoir_waits_for_the_operator_with_what_the_operator_sees():
-    model = model_of('reservoir')
-    operator = operator_of(model)
-    (run,) = model.runs
-    study = evaluate_study(model, play={'run': run, 'control': {'operator': 'reader'}, 'picks': []})
-    assert study.admissible, study.diagnostics
-    decision = study.decision
-    assert decision['event'] == operator['choices'][0]['event']
-    assert set(decision['view']) == set(operator['sees'])
-    assert all(outcome['available'] for outcome in decision['outcomes'])
+def hours_at_risk(start, slope, hours, threshold):
+    if not slope:
+        return hours if start >= threshold else 0
+    crossing = min(hours, max(0, (threshold - start) / slope))
+    return hours - crossing if slope > 0 else crossing
 
 
-def opened(trace, event, horizon):
-    """The times in which the spillway is open: from the choice `event` with the outcome `open` to the
-    end of the run, or none."""
-    return [
-        (entry['t'], horizon) for entry in trace if entry['rule'] == event and entry.get('outcome') == 'open'
-    ]
-
-
-def time_above(start, slope_of, breaks, level):
-    """The hours in which a water level that starts at `start` and runs on straight lines between the
-    times `breaks` (with the slope `slope_of(t)` on each) is at `level` or above."""
-    total, water = 0.0, start
-    for low, high in pairwise(breaks):
-        slope = slope_of((low + high) / 2)
-        end = water + slope * (high - low)
-        if water >= level and end >= level:
-            total += high - low
-        elif slope and (water >= level) != (end >= level):
-            crossing = low + (level - water) / slope
-            total += (high - crossing) if slope > 0 else (crossing - low)
-        water = end
-    return total
-
-
-def reservoir_study(model, body=None, picks=None):
-    """(the study of the reservoir's run under the edits `body`, played with `picks` when they are
-    given; its run; the water at the start and at the end; the outputs at the end, by their names)."""
-    (run,) = model.runs
-    play = None if picks is None else {'run': run, 'control': {'operator': 'reader'}, 'picks': picks}
-    study = evaluate_study(model, edits_for(model, body) if body else None, play=play)
-    assert study.admissible, study.diagnostics
-    trajectory = study.runs[run]['trajectory']
-    water = [trajectory.env_at(t)['reservoir.water'] for t in (0.0, trajectory.horizon)]
-    final = points(study, run, [])[trajectory.horizon]
-    outputs = {name.rpartition('.')[2]: final[key] for name, key in model.outputs.items()}
-    return study, run, water, outputs
-
-
-EDITS = [
-    None,
-    {'set': {'reservoir.inflow': 0.07, 'reservoir.spillway': 0.1, 'reservoir.risk': 0.7}},
-    {'set': {'reservoir.inflow': 0.08, 'reservoir.spillway': 0.05, 'operator.level': 0.75}},
+# The three published example configurations plus the migration sweep.
+SETTINGS = [
+    ('0.06', '0.15', '0.8', '0.7'),
+    ('0.07', '0.1', '0.7', '0.7'),
+    ('0.08', '0.05', '0.8', '0.75'),
+    *(
+        (a, b, c, '0.7')
+        for a, b, c in product(('0.03', '0.06'), ('0.06', '0.15'), ('0.6', '0.7', '0.8'))
+        if (a, b, c) != ('0.06', '0.15', '0.8')
+    ),
 ]
 
 
-@pytest.mark.parametrize(
-    'body', EDITS, ids=['default', 'a slower spillway', 'a spillway slower than the storm']
-)
-def test_the_water_of_the_reservoir_balances_and_follows_the_operator(body):
-    """The storm's water (its inflow times the time) is the change of the water in the reservoir plus
-    the water let out over the spillway; the spillway lets out its rate while it is open; the choice
-    comes when the water reaches the operator's level; and the time above the risk level is that of
-    the straight lines of the water before and after the choice."""
-    model = model_of('reservoir')
-    event = operator_of(model)['choices'][0]['event']
-    study, run, (start, end), outputs = reservoir_study(model, body)
-    values = study.runs[run]['resolved'].parameter_values
-    inflow, spillway = values['reservoir.inflow'] / DAY, values['reservoir.spillway'] / DAY
-    horizon = model.time['horizon']
-    assert end - start + outputs['spilled'] == pytest.approx(inflow * horizon, rel=1e-9)
-    spans = opened(study.runs[run]['trajectory'].trace, event, horizon)
-    assert len(spans) == 1  # the model's operator opens the spillway at the level
-    assert outputs['spilled'] == pytest.approx(spillway * sum(b - a for a, b in spans), rel=1e-9)
-    assert spans[0][0] == pytest.approx((values['operator.level'] - start) / inflow, rel=1e-9)
-    breaks = sorted({0.0, horizon, *(t for span in spans for t in span)})
-
-    def slope_of(t):
-        return inflow - (spillway if any(a <= t < b for a, b in spans) else 0.0)
-
-    risk = time_above(start, slope_of, breaks, values['reservoir.risk'])
-    assert outputs['risk_time'] == pytest.approx(risk, abs=1e-6)
+@pytest.mark.parametrize('inflow,spillway,risk,level', SETTINGS)
+def test_the_water_of_the_reservoir_balances_and_follows_the_operator(inflow, spillway, risk, level):
+    model = napkin.load_scenario(RESERVOIR)
+    edits = dict(
+        zip(
+            ('reservoir.inflow', 'reservoir.spillway', 'reservoir.risk', 'operator.level'),
+            map(float, (inflow, spillway, risk, level)),
+            strict=True,
+        )
+    )
+    record = napkin.run(model.program, configure(model, edits))
+    assert record.failure is None and record.end == 120
+    incoming, release = Fraction(inflow) / 24, Fraction(spillway) / 24
+    threshold, opening_level, start = Fraction(risk), Fraction(level), Fraction('0.6')
+    opens = (opening_level - start) / incoming
+    assert [e.t for e in record.entries('fire', 'operator.decide.when[0]')] == pytest.approx(
+        [float(opens)], rel=1e-9
+    )
+    times = (0, 24, 40, 60, 80, 96, 120)
+    water, spilled, risk_time = napkin.read(
+        record, model.program, ['reservoir.water', 'reservoir.spilled', 'reservoir.risk_time'], times
+    )
+    for i, at in enumerate(times):
+        closed = min(opens, at)
+        opened = at - closed
+        level_now = start + incoming * at - release * opened
+        duration = hours_at_risk(start, incoming, closed, threshold) + hours_at_risk(
+            opening_level, incoming - release, opened, threshold
+        )
+        assert water.values[i] == pytest.approx(float(level_now), rel=1e-9)
+        assert spilled.values[i] == pytest.approx(float(release * opened), rel=1e-9)
+        assert water.values[i] + spilled.values[i] == pytest.approx(float(start + incoming * at), rel=1e-9)
+        assert risk_time.values[i] == pytest.approx(float(duration), abs=1e-6)
 
 
 def test_an_operator_who_waits_lets_no_water_out_and_is_at_risk_for_longer():
-    """A pick to wait keeps the spillway closed: nothing goes over it, and the water rises with the
-    storm alone, on one straight line. The spillway only lowers the water, so with a wait the water is
-    above the risk level at least as long as when the spillway opens."""
-    model = model_of('reservoir')
-    event = operator_of(model)['choices'][0]['event']
-    study, run, (start, end), waited = reservoir_study(model, picks=[{'event': event, 'outcome': 'wait'}])
-    _, _, _, at_level = reservoir_study(model)
-    values = study.runs[run]['resolved'].parameter_values
-    inflow, horizon = values['reservoir.inflow'] / DAY, model.time['horizon']
-    assert waited['spilled'] == 0
-    assert end == pytest.approx(start + inflow * horizon, rel=1e-9)
-    risk = time_above(start, lambda t: inflow, [0.0, horizon], values['reservoir.risk'])
-    assert waited['risk_time'] == pytest.approx(risk, abs=1e-6)
-    assert waited['risk_time'] >= at_level['risk_time'] - 1e-6
+    model = napkin.load_scenario(RESERVOIR)
+    session = napkin.Session(model.program, model.configuration, [Breakpoint(SWITCH)])
+    session.advance()
+    session.edit(ORDER, 'WAIT')
+    session.advance()
+    waited = session.record
+    default = napkin.run(model.program, model.configuration)
+    assert waited.failure is None and default.failure is None and waited.end == default.end == 120
+    times = (40, 80, 120)
+    water, spilled, risk = napkin.read(
+        waited, model.program, ['reservoir.water', 'reservoir.spilled', 'reservoir.risk_time'], times
+    )
+    assert water.values == pytest.approx((0.7, 0.8, 0.9))
+    assert spilled.values == (0, 0, 0)
+    assert risk.values == pytest.approx((0, 0, 40), abs=1e-6)
+    (usual_risk,) = napkin.read(default, model.program, ['reservoir.risk_time'], times)
+    assert all(a <= b + 1e-6 for a, b in zip(usual_risk.values, risk.values, strict=True))
