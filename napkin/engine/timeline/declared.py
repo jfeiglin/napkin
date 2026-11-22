@@ -1752,6 +1752,7 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
         fails at once, and the run stops there, with the record to then."""
         numerics = self.plan.numerics
         window, now = until, self.time
+        armed = self.faces.armed(self.low, self.high)
         y = np.concatenate((self.y, np.zeros(len(self.leg_rows))))
         times, outputs, event, plain, solver = [now], [], None, False, None
         while True:
@@ -1774,7 +1775,7 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
                     raise SimulationError(f'the solver {self.declared.id}: {message} at {now:g} h')
                 start, end = float(solver.t_old), float(solver.t)
                 output = solver.dense_output()
-                found = self._events(output, start, end)
+                found = self._events(output, start, end, armed)
             except (SimulationError, ExpressionError, ArithmeticError):
                 solver = None
                 if self.failed is not None and self.failed[0] - now > numerics.crossing:
@@ -1810,54 +1811,37 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
         self.run.now = self.time
         return Segment(self.time, now, OdeSolution(times, outputs), event, plain)
 
-    def _events(self, solution, start, end):
+    def _events(self, solution, start, end, armed):
         """Locate store contacts and switch operands on this smooth step's dense trajectory."""
-        found = []
-        for s, name in enumerate(self.stores):
-            if self.low[s] or self.high[s]:
-                kind = 'release'
+        found = [(at, self.stores[row], kind) for at, row, kind in armed.crossings(solution, start, end)]
+        for row in np.flatnonzero(self.low | self.high).tolist():
 
-                def gap(t, s=s):
-                    y = solution(t)
-                    flows, _, raw, requests = self._at(t, y)
-                    carried = self.physical_rates(flows, requests)
-                    traffic = float(
-                        carried[self.net.ends[IN].of(s)].sum() + carried[self.net.ends[OUT].of(s)].sum()
-                    )
-                    direction = 1 if self.low[s] else -1
-                    gap = direction * raw[s] - departure.FACTOR * traffic
-                    if gap < -departure.SUM_ERROR * traffic or abs(raw[s]) > ANSWER * traffic or traffic == 0:
-                        return gap
-                    mask = np.zeros(len(self.stores), dtype=bool)
-                    mask[s] = True
-                    self.trial = self._held(y)
-                    try:
-                        self._formed(t, self.low, self.high)
-                        rate = self._face_rates(flows, mask, requests)[s]
-                    finally:
-                        self.trial = None
-                    return (
-                        max(math.ulp(traffic), gap) if direction * rate > 0 else min(-math.ulp(traffic), gap)
-                    )
+            def departing(t, row=row):
+                state = solution(t)
+                flows, _, raw, requests = self._at(t, state)
+                carried = self.physical_rates(flows, requests)
+                traffic = float(
+                    carried[self.net.ends[IN].of(row)].sum() + carried[self.net.ends[OUT].of(row)].sum()
+                )
+                direction = 1 if self.low[row] else -1
+                gap = direction * raw[row] - departure.FACTOR * traffic
+                if gap < -departure.SUM_ERROR * traffic or abs(raw[row]) > ANSWER * traffic or traffic == 0:
+                    return gap > 0
+                mask = np.zeros(len(self.stores), dtype=bool)
+                mask[row] = True
+                self.trial = self._held(state)
+                try:
+                    self._formed(t, self.low, self.high)
+                    rate = self._face_rates(flows, mask, requests)[row]
+                finally:
+                    self.trial = None
+                return direction * rate > 0
 
-                if gap(end) <= 0:
-                    continue
-            else:
-                level = solution(end)[s]
-                if level <= self.lower[s]:
-                    kind, bound, direction = 'lower bound', self.lower[s], -1
-                elif level >= self.upper[s]:
-                    kind, bound, direction = 'upper bound', self.upper[s], 1
-                else:
-                    continue
-
-                def gap(t, s=s, bound=bound, direction=direction):
-                    return direction * (solution(t)[s] - bound)
-
-                if gap(start) >= 0 and gap(end) <= 0:
-                    continue  # a free store resting exactly on its bound
-            at = start if gap(start) >= 0 else integrate.crossing_time(gap, start, end)
-            found.append((at, name, kind))
+            if departing(end):
+                # A zero margin can hold over a whole plateau before the rate
+                # reverses. Release at its first strictly inward answer.
+                at = start if departing(start) else integrate.first_outside(departing, start, end)
+                found.append((at, self.stores[row], 'release'))
         if self.held_comparisons:
             for at, row in integrate.exits_of_held_comparisons(
                 self.held_comparisons, self.faces.factor, solution, start, end

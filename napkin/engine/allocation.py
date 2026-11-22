@@ -24,11 +24,28 @@ anything, so an `Allocation` serves every evaluation of the network.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 
 import numpy as np
 
-from .continuous import highs
+from .continuous import dense, highs
 from .errors import SimulationError
+
+
+@dataclass(frozen=True)
+class ArmedFaces:
+    """Stock rows and directed levels watched throughout one numerical segment."""
+
+    rows: np.ndarray
+    levels: np.ndarray
+    directions: np.ndarray
+    kinds: tuple[str, ...]
+
+    def crossings(self, output, start, end, accepted_end=None):
+        for at, i in dense.bound_crossings(
+            output, start, end, self.rows, self.levels, self.directions, accepted_end=accepted_end
+        ):
+            yield at, int(self.rows[i]), self.kinds[i]
 
 
 class StockFaces:
@@ -81,6 +98,28 @@ class StockFaces:
             beyond = math.nextafter(target + (-band if lower else band), -math.inf if lower else math.inf)
             distance = (beyond - value) / slope
         return max(math.nextafter(at, math.inf), at + distance)
+
+    def armed(self, low, high, *, releases=None):
+        """Free stocks watch their finite bounds. A coordinate-based release watches
+        an inward displacement from the actual accepted level of its held stock."""
+        free = ~(low | high)
+        watches = [
+            (free & np.isfinite(self.lower), self.lower, -1, 'lower bound'),
+            (free & np.isfinite(self.upper), self.upper, 1, 'upper bound'),
+        ]
+        if releases is not None:
+            held, atol = releases
+            watches.extend(((low, held + atol, 1, 'release'), (high, held - atol, -1, 'release')))
+        rows, levels, directions, kinds = [], [], [], []
+        for mask, limits, direction, kind in watches:
+            selected = np.flatnonzero(mask)
+            rows.append(selected)
+            levels.append(limits[selected])
+            directions.append(np.full(selected.size, direction, dtype=int))
+            kinds.extend([kind] * selected.size)
+        return ArmedFaces(
+            np.concatenate(rows), np.concatenate(levels), np.concatenate(directions), tuple(kinds)
+        )
 
     def flags(self, values, rows=slice(None)):
         magnitude = np.abs(values)

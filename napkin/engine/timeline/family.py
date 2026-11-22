@@ -317,16 +317,12 @@ class Family(Way):
         if rate > 0 and source != sink:
             # The store that reaches its bound first; on a tie, both.
             reach, bounded = math.inf, ()
-            for end, room in (
-                (source, self.y[source] - self.lower[source] if source >= 0 else math.inf),
-                (sink, self.upper[sink] - self.y[sink] if sink >= 0 else math.inf),
-            ):
-                if math.isfinite(room):
-                    at = float(t + room / rate)
-                    if at < reach:
-                        reach, bounded = at, (int(end),)
-                    elif at == reach:
-                        bounded += (int(end),)
+            for end in ends:
+                at = self.faces.contact(end, self.y[end], self.slope[end], t, self.stores[end])
+                if at < reach:
+                    reach, bounded = at, (int(end),)
+                elif at == reach:
+                    bounded += (int(end),)
             if reach <= self.run.clock.apart(self.plan.horizon):
                 heapq.heappush(self.due, (reach, k, int(self.version[k]), bounded))
 

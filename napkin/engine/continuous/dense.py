@@ -37,8 +37,10 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from fractions import Fraction
 
 import numpy as np
+from scipy.optimize import brentq
 
 
 @dataclass(frozen=True)
@@ -98,6 +100,153 @@ def of_step(output, rows, weights, start, end):
         abs(c1) + abs(c2) + abs(c3),
         float(np.abs(weights) @ np.abs(values)),
     )
+
+
+def _turns(c, b, a):
+    """The extrema of c*x + b*x² + a*x³, each with whether it is a minimum."""
+    scale = max(abs(a), abs(b), abs(c))
+    if not scale:
+        return ()
+    # Normalize before forming squares. The q form of the quadratic retains
+    # the finite root when the cubic term approaches zero.
+    aa, bb, cc = 3 * (a / scale), b / scale, c / scale
+    if aa == 0:
+        return ((-cc / (2 * bb), b > 0),) if bb else ()
+    discriminant = bb * bb - aa * cc
+    if abs(discriminant) <= 8 * math.ulp(1.0) * (bb * bb + abs(aa * cc)):
+        # A double root of the derivative is a stationary inflection, not a turn.
+        exact = Fraction(b) ** 2 - 3 * Fraction(a) * Fraction(c)
+        if exact <= 0:
+            return ()
+        discriminant = float(exact / Fraction(scale) ** 2)
+    if discriminant <= 0:
+        return ()
+    q = -bb - math.copysign(math.sqrt(discriminant), bb)
+    left, right = sorted((q / aa, cc / q))
+    return ((left, a < 0), (right, a > 0))
+
+
+def _turn_sign(d, c, b, a, minimum):
+    """Sign of the cubic at the mathematical extremum, even for a double contact.
+
+    Substitution of a derivative root in the cubic gives (B ± 2*D**1.5)/(27*a²),
+    with B and D below. Comparing squares exactly distinguishes a touch from a
+    miss narrower than the error of evaluating the polynomial at a rounded time.
+    """
+    d, c, b, a = map(Fraction, (d, c, b, a))
+    if a == 0:
+        value = d - c * c / (4 * b)
+    else:
+        det = b * b - 3 * a * c
+        base = 27 * a * a * d - 9 * a * b * c + 2 * b**3
+        if minimum:
+            value = base * base - 4 * det**3 if base >= 0 else -1
+        else:
+            value = 4 * det**3 - base * base if base <= 0 else 1
+    return (value > 0) - (value < 0)
+
+
+def _first_arrival(initial, level, sign, c, b, a, start, end, last):
+    """First arrival from the negative side of one signed coordinate cubic."""
+
+    d = (initial - level) * sign
+    exact_d = None
+
+    def gap(x, minimum=None):
+        nonlocal exact_d
+        value = ((a * x + b) * x + c) * x + d
+        size = ((abs(a) * x + abs(b)) * x + abs(c)) * x + abs(d)
+        if abs(value) > 8 * math.ulp(1.0) * size:
+            return value
+        if exact_d is None:
+            # Subtracting a small nonzero bound from a much larger initial
+            # value can lose the bound. Retain both original operands here.
+            exact_d = (Fraction(initial) - Fraction(level)) * int(sign)
+        if minimum is not None:
+            side = _turn_sign(exact_d, c, b, a, minimum)
+            return math.copysign(max(abs(value), math.ulp(0.0)), side) if side else 0.0
+        at = Fraction(x)
+        exact = ((Fraction(a) * at + Fraction(b)) * at + Fraction(c)) * at + exact_d
+        rounded = float(exact)
+        return rounded if rounded or not exact else math.copysign(math.ulp(0.0), 1 if exact > 0 else -1)
+
+    before = start
+    first = d if start == 0 else gap(start)
+    stops = [(x, minimum) for x, minimum in _turns(c, b, a) if start < x < end]
+    stops.append((end, None))
+    for after, minimum in stops:
+        final = last if after == end and last is not None else gap(after, minimum)
+        if before == start and first == 0 and final > 0:
+            return before
+        if first < 0 <= final:
+            if final == 0:
+                return after
+
+            # The stored step endpoints can differ from the collocation curve by
+            # roundoff; preserve their signs at the ends of the monotone bracket.
+            def bracket(x):
+                if x == before:
+                    return first
+                if x == after:
+                    return final
+                return gap(x)
+
+            return brentq(bracket, before, after, xtol=math.ulp(0.0), maxiter=1100)
+        before, first = after, final
+    return None
+
+
+def bound_crossings(output, start, end, rows, levels, directions, *, accepted_end=None):
+    """First outward arrivals at the supplied stock faces in a Radau step or subinterval.
+
+    Return (physical time, position in rows), in chronological order. A repeated
+    row can name both faces. Each candidate cubic is split at its extrema: its
+    endpoints alone can miss a complete excursion. An exact tangency approached
+    from the interior counts. A stationary face or an inward departure does not.
+    When supplied, accepted_end is the accepted full state at end.
+    """
+    if end <= start or not len(rows) or not hasattr(output, 'Q'):
+        return []
+    rows, levels, directions = np.asarray(rows), np.asarray(levels), np.asarray(directions)
+    coefficients = output.Q[rows]
+    offsets = output.y_old[rows] - levels
+    # On x in [0,1], the distance from y_old is at most the sum of the absolute
+    # coefficients. Round the enclosure outward, then inspect just the nearby
+    # moving rows (including ones whose accepted endpoint certifies a contact).
+    reach = np.abs(coefficients).sum(axis=1)
+    nearby = (reach > 0) & (np.abs(offsets) <= np.nextafter(reach * (1 + 4 * math.ulp(1.0)), np.inf))
+    final = None
+    if accepted_end is not None:
+        final = (np.asarray(accepted_end)[rows] - levels) * directions
+        incoming = offsets * directions
+        nearby |= (incoming < 0) & (final >= 0)
+    lo, hi = (start - output.t_old) / output.h, (end - output.t_old) / output.h
+    found = []
+    for k in np.flatnonzero(nearby & np.isfinite(levels)).tolist():
+        c, b, a = coefficients[k].tolist()
+        sign = float(directions[k])
+        at = _first_arrival(
+            float(output.y_old[rows[k]]),
+            float(levels[k]),
+            sign,
+            c * sign,
+            b * sign,
+            a * sign,
+            lo,
+            hi,
+            float(final[k]) if final is not None else None,
+        )
+        if at is not None:
+            if at == lo:
+                time = start
+            elif at == hi:
+                time = end
+            else:
+                # A positive elapsed time can round back to the absolute start
+                # of a late step. Retain forward progress in physical time.
+                time = max(math.nextafter(start, end), min(end, output.t_old + at * output.h))
+            found.append((float(time), k))
+    return sorted(found)
 
 
 def of_exponential(solution, rows, weights, start, end):

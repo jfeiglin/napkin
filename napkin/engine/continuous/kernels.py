@@ -420,12 +420,11 @@ def affine_segment(system, run, classifier, departures, derivative, descriptors,
         if kind == 'bound':
             i, bound = desc
             limit = s.lower[i] if bound == 'min' else s.upper[i]
-            if derivative[i] != 0:
-                crossing = time + (limit - y[i]) / derivative[i]
-                desired_sign = -1 if bound == 'min' else 1
-                if derivative[i] * desired_sign > 0 and crossing > time:
-                    stops.append(crossing)
-                    exact_targets.append((crossing, i, limit))
+            desired_sign = -1 if bound == 'min' else 1
+            if derivative[i] * desired_sign > 0:
+                crossing = s.faces.contact(i, y[i], derivative[i], time, s.state_ids[i])
+                stops.append(crossing)
+                exact_targets.append((crossing, i, limit))
         elif kind == 'event':
             cond = run.guards[desc]
             i = s.index[cond['var']]
@@ -813,11 +812,9 @@ def compartment_solution(system, run, field, classifier, departures, end, descri
             target = lower[i] if bound == 'min' else upper[i]
             toward = -1 if bound == 'min' else 1
             if slope * toward > 0:
-                crossing = start + (target - state[i]) / slope
-                if crossing > start:
-                    exact_targets.append((crossing, i, target))
-                if start < crossing < end:
-                    end = crossing
+                crossing = s.faces.contact(i, state[i], slope, start, s.state_ids[i])
+                exact_targets.append((crossing, i, target))
+                end = min(end, crossing)
         elif kind == 'event':
             # Authored affine thresholds may share a model with compartments.
             cond = run.guards[desc]

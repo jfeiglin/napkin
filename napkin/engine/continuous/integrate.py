@@ -15,6 +15,8 @@ from ...expressions import ExpressionError, compile_program, evaluate, names_in
 from ...program.config import Numerics
 from ..errors import SimulationError
 from ..solvers import radau_rate
+from . import dense
+from .bounds import state_limits
 from .transfers import CollocationRates
 from .walk import walked
 
@@ -518,8 +520,8 @@ def radau(
       solution is too far from the field at one of these times, the step is not used: the
       integration goes on from the start of that step with that shorter limit. With the check
       interval as the limit, the integration is that of a solver that the check interval limits;
-    - at each check time, the roots are read. A root that changes sign between two check times, or
-      between a check time and an end of the step, is located between those two times.
+    - stock bounds are located on the dense polynomial of every accepted step. Other roots are
+      read at each check time and located between the two observations that bracket them.
     """
     t0, tf = map(float, interval)
     solver = Radau(fun, t0, initial, tf, vectorized=False, **options)
@@ -533,6 +535,12 @@ def radau(
         t_events = y_events = None
     status = None
     candidates = []
+    bound_ids = roots.kinds.get('bound') if isinstance(roots, Roots) else None
+    directions = roots.direction if roots is not None else None
+    if bound_ids is not None:
+        # The dense locator owns bound events. Only the remaining roots use endpoint sign changes.
+        directions = directions.copy()
+        directions[bound_ids] = np.nan
     half = None if check is None else check / 2
     halves = 0  # the halves of a check interval before the step, from the start
     # The longest step that the differences of the steps before allow the solver now.
@@ -559,6 +567,26 @@ def radau(
             change = min((at for at, _ in exits), default=None)
             if change is not None:
                 t, y, status = change, sol(change), 0
+        candidates = []
+        if bound_ids is not None:
+            candidates = [
+                (at, int(bound_ids[k]))
+                for at, k in dense.bound_crossings(
+                    sol,
+                    t_old,
+                    t,
+                    roots.bound_rows,
+                    roots.bound_limits,
+                    roots.bound_directions,
+                    accepted_end=y,
+                )
+            ]
+            if candidates:
+                # The scheduler may group a neighboring contact. Search for other roots on the
+                # same incoming trajectory, within its timing window.
+                through = candidates[0][0] + 2 * moment
+                if through < t:
+                    t, y = through, sol(through)
         ended = None  # (the time, the root) of the first root inside the step
         if check is not None and not t - t_old > check:
             # A step of the check interval at most is read at its end, as each step was before.
@@ -587,7 +615,7 @@ def radau(
                 largest = max(largest, far)
                 if roots is not None and count % 2 == 0:
                     g_at = roots.values(at, state)
-                    active = active_roots(g_before, g_at, roots.direction)
+                    active = active_roots(g_before, g_at, directions)
                     if active.size > 0:
                         found = [locate(roots, k, sol, before, at, g_before[k], g_at[k]) for k in active]
                         first = int(np.argmin(found))
@@ -598,7 +626,7 @@ def radau(
                         through = min(t, found[first] + 2 * moment)
                         if at < through:
                             other = roots.values(through, sol(through))
-                            later = np.setdiff1d(active_roots(g_at, other, roots.direction), active)
+                            later = np.setdiff1d(active_roots(g_at, other, directions), active)
                             found.extend(locate(roots, k, sol, at, through, g_at[k], other[k]) for k in later)
                             active = np.concatenate((active, later))
                     before, g_before = at, g_at
@@ -617,7 +645,7 @@ def radau(
             limit.accepted(t_old, t)
             if ended is None and roots is not None:
                 g_new = roots.values(t, y)
-                active = active_roots(g_before, g_new, roots.direction)
+                active = active_roots(g_before, g_new, directions)
                 if active.size > 0:
                     found = np.asarray(
                         [locate(roots, k, sol, before, t, g_before[k], g_new[k]) for k in active]
@@ -626,27 +654,19 @@ def radau(
                     ended = (float(found[first]), int(active[first]))
                 g = g_new
             if ended is not None:
-                candidates = [(float(at), int(k)) for at, k in zip(found, active)]
-                te, k = ended
-                t_events[k].append(te)
-                y_events[k].append(sol(te))
-                status = 1
-                t = te
-                y = sol(t)
+                candidates.extend((float(at), int(k)) for at, k in zip(found, active))
         elif roots is not None:
             g_new = roots.values(t, y)
-            active = active_roots(g, g_new, roots.direction)
+            active = active_roots(g, g_new, directions)
             if active.size > 0:
-                found = np.asarray([locate(roots, k, sol, t_old, t, g[k], g_new[k]) for k in active])
-                candidates = [(float(at), int(k)) for at, k in zip(found, active)]
-                order = np.argsort(found) if t > t_old else np.argsort(-found)
-                k, te = active[order][0], found[order][0]
-                t_events[k].append(te)
-                y_events[k].append(sol(te))
-                status = 1
-                t = te
-                y = sol(t)
+                candidates.extend((locate(roots, k, sol, t_old, t, g[k], g_new[k]), int(k)) for k in active)
             g = g_new
+        if candidates:
+            te, k = min(candidates) if t >= t_old else max(candidates)
+            t_events[k].append(te)
+            y_events[k].append(sol(te))
+            status = 1
+            t, y = te, sol(te)
         interpolants.append(sol)
         if len(ts) > 1 and ts[-1] == t:
             interpolants.pop()
@@ -1340,18 +1360,15 @@ def departing_ledgers(system, run, field, at_switch, env):
 
 
 def hidden_excursion(system, run, environment, start, solution, descriptors):
-    """Audit the dense solution on the capped grid for a bound or threshold crossed and recrossed inside a step."""
+    """Check watched thresholds on the capped grid after integrating the segment."""
     s = system
+    if not any(kind == 'event' for kind, _ in descriptors):
+        return None
     end_time = float(solution.t[-1])
     grid = np.arange(start + s.max_step, end_time, s.max_step)
     if len(grid) == 0:
         return None
     values = solution.sol(grid)
-    low = np.where(s.monotone, -np.inf, s.lower)[:, None] - s.atol[:, None]
-    high = s.upper[:, None] + s.atol[:, None]
-    outside = np.any((values < low) | (values > high), axis=0)
-    if np.any(outside):
-        return float(grid[np.argmax(outside)])
     env = environment(start, solution.y[:, 0])
     for kind, desc in descriptors:
         if kind != 'event':
@@ -1420,6 +1437,25 @@ def chattering(system, field, solution, diagnostics, failed=None):
     return SimulationError(message, [*diagnostics, item])
 
 
+def _outside_held_face(system, active, solution):
+    """A truncated collocation step can carry its trial field across a later switch.
+    Check its accepted prefix against the same physical limits as the published state."""
+    if len(solution.t) < 2:
+        return False
+    step = solution.sol.interpolants[-1]
+    end = solution.t[-1]
+    if end >= step.t:
+        return False
+    low, high = state_limits(system)
+    rows, levels, directions = [], [], []
+    for row, face in active:
+        rows.append(row)
+        lower = face == 'min'
+        directions.append(-1 if lower else 1)
+        levels.append(math.nextafter(low[row], -math.inf) if lower else math.nextafter(high[row], math.inf))
+    return bool(dense.bound_crossings(step, solution.t[-2], end, rows, levels, directions))
+
+
 def numerical_segment(system, run, field, context, roots, descriptors, end, repayment_surfaces):
     """Integrate one segment with Radau, up to `end` or its first terminal root.
 
@@ -1438,7 +1474,7 @@ def numerical_segment(system, run, field, context, roots, descriptors, end, repa
     for name in s.proven_faces:
         i = s.index[name]
         if y[i] > lower[i] and face_rate[i] < 0:
-            crossing = time + (lower[i] - y[i]) / face_rate[i]
+            crossing = s.faces.contact(i, y[i], face_rate[i], time, name)
             if time < crossing <= end:
                 depletion_crossings.append((crossing, i))
     if depletion_crossings:
@@ -1486,7 +1522,7 @@ def numerical_segment(system, run, field, context, roots, descriptors, end, repa
     context.settings['resolution_policy'] = 'physical_resolution_cap'
     context.settings['actual_max_step_h'] = s.max_step
 
-    def integrate():
+    def integrate(until=end):
         # Physical resolution complements adaptive error control.
         armed = roots + [
             root._replace(data=tuple(field.expression(node) for node in root.data))
@@ -1497,7 +1533,7 @@ def numerical_segment(system, run, field, context, roots, descriptors, end, repa
 
         return radau(
             lambda at, state: field.rates(at, state, trial=True),
-            (time, end),
+            (time, until),
             y,
             roots=Roots(s, field.branch_environment, armed, field.values_program) if armed else None,
             leg_rates=field.leg_rates,
@@ -1513,6 +1549,11 @@ def numerical_segment(system, run, field, context, roots, descriptors, end, repa
 
     try:
         solution = integrate()
+        # The first root can truncate a much longer trial. If its collocation
+        # stages crossed the change of regime and polluted an already-held
+        # stock, solve up to the located time before posting any leg integrals.
+        while run.active_bounds and solution.success and _outside_held_face(s, run.active_bounds, solution):
+            solution = integrate(solution.t[-1])
     except ValueError as exc:
         raise SimulationError(
             f'Numerical event location failed at {time:g} h: {exc}', context.diagnostics
@@ -1540,7 +1581,7 @@ def numerical_segment(system, run, field, context, roots, descriptors, end, repa
     flagged = hidden_excursion(s, run, field.environment, start, solution, descriptors)
     if flagged is not None:
         raise SimulationError(
-            f'A hidden excursion inside one solver step at {flagged:g} h crosses a bound or threshold '
+            f'A hidden excursion inside one solver step at {flagged:g} h crosses a threshold '
             'and back; declare a shorter physical time scale',
             context.diagnostics,
         )

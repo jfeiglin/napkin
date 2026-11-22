@@ -1280,6 +1280,9 @@ class Sparse(MovingTransfers, Way):
             self.lower_flags &= ~leaving
             self.upper_flags &= ~leaving
 
+        self.armed_faces = self.faces.armed(
+            self.lower_flags, self.upper_flags, releases=(self.held_levels, self.atol)
+        )
         if self.constant_requests:
             self.amounts.held_solution(self.last_carried, self.t)
             self.held_since = self.t
@@ -1326,10 +1329,6 @@ class Sparse(MovingTransfers, Way):
         """Give the recorder this pending step up to the moment, leaving its state in place."""
         if self.pending is not None:
             self._record(self.pending[2], self.pending[0], t)
-
-    def _crossing(self, solution, start, end, k, level):
-        """Locate the physical level on this step's dense state."""
-        return integrate.crossing_time(lambda at: solution(at)[k] - level, start, end)
 
     def _count(self, start, end):
         """A step of the solver from start to end: after `integrate.STALLED_STEPS` steps in a row
@@ -1445,19 +1444,7 @@ class Sparse(MovingTransfers, Way):
         if self.capture is not None:
             self.capture.finish(solution)
         y = solution(end)
-        free = ~(self.lower_flags | self.upper_flags)
-        events = []
-        initial = solution(start)
-        for k in np.flatnonzero(free & (y <= self.lower) & (initial > self.lower)).tolist():
-            events.append((self._crossing(solution, start, end, k, self.lower[k]), k, 'lower bound'))
-        for k in np.flatnonzero(free & (y >= self.upper) & (initial < self.upper)).tolist():
-            events.append((self._crossing(solution, start, end, k, self.upper[k]), k, 'upper bound'))
-        low_exit = self.held_levels + self.atol
-        high_exit = self.held_levels - self.atol
-        for k in np.flatnonzero(self.lower_flags & (initial <= low_exit) & (y > low_exit)).tolist():
-            events.append((self._crossing(solution, start, end, k, low_exit[k]), k, 'release'))
-        for k in np.flatnonzero(self.upper_flags & (initial >= high_exit) & (y < high_exit)).tolist():
-            events.append((self._crossing(solution, start, end, k, high_exit[k]), k, 'release'))
+        events = list(self.armed_faces.crossings(solution, start, end, y))
         for name, select in self.switching:
             at = self._switch(solution, start, end, name, select)
             if at is not None:
