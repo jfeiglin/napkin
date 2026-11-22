@@ -1,0 +1,13 @@
+scenario "Two bounded tanks"
+    horizon 2 h
+yard:
+    a: L = 1.12060546875 L in [0 L,]
+    b: L = 0.25439453125 L in [0 L,]
+    flow pipe: this.b <-> this.a
+        request = formula(-2.25 L/h + (2.25 L/h/h) * t)
+provider:
+    share = solver:
+        inputs:
+            pipe = yard.pipe
+        solve_for:
+            pipe.actual_rate
