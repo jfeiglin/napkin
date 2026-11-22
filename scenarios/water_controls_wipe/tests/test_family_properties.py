@@ -15,6 +15,10 @@ from tests.helpers import catalogue_model, catalogue_study
 
 RUN = 'delayed_none'
 PLACES = family.places()
+# Full trajectories of the largest network take several minutes. Exercise a single utility
+# and a buyer with two suppliers in regular CI. The deep suite checks every other variant.
+REGULAR_PLACES = {'water_controls_wipe:lumberton', 'water_controls_wipe:jamestown'}
+PORTFOLIO = [pytest.param(sid, marks=[] if sid in REGULAR_PLACES else [pytest.mark.deep]) for sid in PLACES]
 SHAPES = [
     sid
     for sid in (
@@ -54,7 +58,7 @@ def for_systems(sid, **fields):
     return {f'{system}.{name}': value for system in family.systems(sid) for name, value in fields.items()}
 
 
-@pytest.mark.parametrize('sid', PLACES)
+@pytest.mark.parametrize('sid', PORTFOLIO)
 def test_each_resident_is_counted_once_and_the_accounts_are_bounded(sid):
     record = completed(sid)
     horizon = record.end
@@ -76,7 +80,7 @@ def test_each_resident_is_counted_once_and_the_accounts_are_bounded(sid):
         assert 0 <= hospital_hours <= hospitals * hour + 1e-6
 
 
-@pytest.mark.parametrize('sid', PLACES)
+@pytest.mark.parametrize('sid', PORTFOLIO)
 def test_delivered_and_unserved_water_partition_normal_use(sid):
     record = completed(sid)
     for system in family.systems(sid):
@@ -87,7 +91,7 @@ def test_delivered_and_unserved_water_partition_normal_use(sid):
         assert unserved >= 0
 
 
-@pytest.mark.parametrize('sid', PLACES)
+@pytest.mark.parametrize('sid', PORTFOLIO)
 def test_the_person_days_follow_the_unserved_water(sid):
     record = completed(sid)
     expected = 0
@@ -100,7 +104,7 @@ def test_the_person_days_follow_the_unserved_water(sid):
     )
 
 
-@pytest.mark.parametrize('sid', PLACES)
+@pytest.mark.parametrize('sid', PORTFOLIO)
 def test_extra_controls_work_requires_an_observed_service_report(sid):
     record = completed(sid)
     starts = [e.owner for e in record.entries('start') if '.observed_setback#' in e.owner]
@@ -108,7 +112,7 @@ def test_extra_controls_work_requires_an_observed_service_report(sid):
     assert at(sid, record, ['rework_caused'], record.end)['rework_caused'] == 0
 
 
-@pytest.mark.parametrize('sid', PLACES)
+@pytest.mark.parametrize('sid', PORTFOLIO)
 def test_every_advisory_ends_by_the_end_of_the_run(sid):
     for run in catalogue_model(sid).declared.runs:
         record = completed(sid, run=run.name)
