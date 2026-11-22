@@ -71,10 +71,9 @@ which results move.
 
 ## A case that shows itself
 
-![A reader opens the water systems of Washington, DC and drags the time slider: the stored water drains, then fills again](scenarios/water_controls_wipe/ui/media/live-view.gif)
+![The Lumberton recovery dashboard shows water service, storage and advisories at the selected hour](scenarios/water_controls_wipe/ui/media/recovery-dashboard.png)
 
-The water case follows an attack on the water systems of 16 real places. Pick a place and a run, and
-the engine calculates it. Then play the story hour by hour. The view needs Node.js 20 or later:
+The water case follows service and recovery in 16 places after a reported controls outage. Pick a place and a response, then follow the stored water, remaining repair work and service hour by hour. The dashboard requires Node.js 20 or later:
 
 ```sh
 python -B -m scenarios.water_controls_wipe.ui setup
@@ -107,7 +106,7 @@ python3 -m venv .venv
 | [docs/extending.md](docs/extending.md) | What to change for a new feature |
 | [docs/draw.md](docs/draw.md) | The static picture of a model, `napkin draw` |
 | [docs/known-issues.md](docs/known-issues.md) | The known issues, and the features that could come next |
-| [scenarios/README.md](scenarios/README.md) | The briefs of the four cases, with their results and evidence |
+| [scenarios/README.md](scenarios/README.md) | Historical catalogue briefs, results and evidence |
 | [scenarios/docs/catalogue.md](scenarios/docs/catalogue.md) | How the cases are written |
 | [scenarios/docs/evidence/README.md](scenarios/docs/evidence/README.md) | How the evidence is recorded |
 | [scenarios/water_controls_wipe/ui/README.md](scenarios/water_controls_wipe/ui/README.md) | The live view of the water case |

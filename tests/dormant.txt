@@ -7,9 +7,6 @@
 # Stage S0 (2026-11-18): every test that compiles old model text or reads the catalogue.
 scenarios/tests/
 scenarios/cyber_learning_loop/tests/
-scenarios/heat_wave_blackout/tests/
-scenarios/water_controls_wipe/tests/test_ui_server.py
-scenarios/water_controls_wipe/tests/test_ui_view.py
 tests/draw/test_catalogue.py
 tests/publish/
 tests/evidence/test_catalogue.py

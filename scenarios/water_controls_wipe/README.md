@@ -70,4 +70,4 @@ napkin run scenarios/water_controls_wipe/variants/jamestown --run delayed_none -
 
 Each place offers early, standard and delayed response settings. Washington, DC also offers
 `delayed_aqueduct`, which changes the initial exposure. For a package's historical inputs and
-publication, see its variant folder. `ui/` contains the historical dashboard.
+publication, see its variant folder. The [recovery dashboard](ui/README.md) reads service levels and advisories at the selected hour from the run.
