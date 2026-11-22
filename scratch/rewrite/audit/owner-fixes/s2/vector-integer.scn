@@ -1,0 +1,4 @@
+box:
+    water: L = 0 L
+    flow use: SOURCE -> this.water
+        request = formula(18446744073709551616 L/h / 18446744073709551616)

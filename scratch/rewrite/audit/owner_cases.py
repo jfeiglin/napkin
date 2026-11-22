@@ -9,12 +9,14 @@ import time
 import traceback
 from pathlib import Path
 
-from tests.engine import stage_broadcast_cases, stage_read_cases
+from tests.engine import comparison_band_cases, stage_broadcast_cases, stage_read_cases
 
 FAMILIES = {
     's1/scalar': stage_read_cases.check_scalar_stage,
     's1/selection': lambda seed: stage_broadcast_cases.check_broadcast_stage(seed, 'selection'),
     's1/ordering': lambda seed: stage_broadcast_cases.check_broadcast_stage(seed, 'ordering'),
+    's2/gap': lambda seed: comparison_band_cases.check_comparison_band(seed, 'gap'),
+    's2/range': lambda seed: comparison_band_cases.check_comparison_band(seed, 'range'),
 }
 
 
@@ -41,7 +43,7 @@ def run_cases(ids, destination):
     dirty = hashlib.sha256(differences).hexdigest() if differences else None
     generators = {
         module.__name__: hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()
-        for module in (stage_broadcast_cases, stage_read_cases)
+        for module in (stage_broadcast_cases, stage_read_cases, comparison_band_cases)
     }
     failures = 0
     with destination.open('x', encoding='utf-8') as stream:

@@ -14,6 +14,7 @@ from napkin.program.artifact import loads as load_artifact
 from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
 from napkin.program.config import Configuration, Request
 from napkin.program.record import Key, Unavailable
+from tests.engine.comparison_band_cases import check_comparison_band
 from tests.engine.port_cases import HORIZON, Case, Spelling, builder_program, text_program
 from tests.engine.stage_broadcast_cases import check_broadcast_stage
 from tests.engine.stage_read_cases import check_scalar_stage
@@ -36,6 +37,8 @@ TRANSFORMS = (
     'stage_scalar',
     'stage_selection',
     'stage_ordering',
+    'comparison_gap',
+    'comparison_range',
 )
 GUARD = 'plant.observe.step[0]'
 
@@ -302,6 +305,9 @@ def check_transform(seed, name, record_property):
         return
     if name in ('stage_selection', 'stage_ordering'):
         check_broadcast_stage(seed, name.removeprefix('stage_'))
+        return
+    if name in ('comparison_gap', 'comparison_range'):
+        check_comparison_band(seed, name.removeprefix('comparison_'))
         return
     case, original, expected, original_view, base_tie = plant_baseline(seed)
     spelling = Spelling(**{name: True}) if name in Spelling.__dataclass_fields__ else Spelling()
