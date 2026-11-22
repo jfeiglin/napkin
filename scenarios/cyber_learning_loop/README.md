@@ -1,6 +1,10 @@
 # cyber_learning_loop
 
-[Model](model.scn) · [Specification](#specification-when-a-countrys-cyber-attacks-start-to-pay) · [Methods](results/methods.md)
+The current-language entry follows a security team's attention, long-term hardening and remediation pace under externally observed incident volume. [Defensive response model and verified comparisons](defensive_response/README.md)
+
+## Historical full model
+
+The specification, source, evidence and published results below describe the larger historical model. It ran with Napkin at revision `8488047`. [Historical source](model.scn) · [Historical specification](#specification-when-a-countrys-cyber-attacks-start-to-pay) · [Historical methods](results/methods.md)
 
 This folder owns the model, evidence, units, tests and generated results. Shared mathematics and vocabulary remain central.
 

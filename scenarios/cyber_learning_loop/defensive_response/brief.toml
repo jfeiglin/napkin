@@ -1,0 +1,2 @@
+show = ["observations.pressure", "defenders.attention_target", "defender_attention", "defenders.hardening", "defenders.closing"]
+drivers = ["observations.initial", "observations.during", "observations.later", "observations.change_at", "observations.duration", "observations.uptake", "defenders.calm_rate", "defenders.attention_cap"]
