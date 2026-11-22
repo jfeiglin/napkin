@@ -1,6 +1,6 @@
 # Defensive attention and remediation
 
-This standalone entry follows a security team's response to aggregate observed incident volume. A volume of 1 represents its reference period. A workload surge raises the attention level the team can sustain. Actual attention approaches that level over time and recovers when volume falls. The horizon is 25 years.
+The catalogue package and this entry share one model. It follows a security team's response to aggregate observed incident volume. A volume of 1 represents its reference period. A workload surge raises the attention level the team can sustain. Actual attention approaches that level over time and recovers when volume falls. The horizon is 25 years.
 
 The published reference readings show each value at the start and horizon with its unit and supporting records. [Reference readings](results/readings.md)
 
@@ -20,7 +20,7 @@ The reference run holds workload at 1 and attention at 0.05. Use the three input
 | `defenders.hardening` | Index summing a yearly improvement and the contribution from measured defensive tooling adoption |
 | `defenders.closing` | Multiplier for discovery and remediation pace given defensive tooling adoption |
 
-The historical model generated workload, assigned staff across missions and used their results to change later decisions. This entry takes workload and uptake as observations and stops at the defensive readings above. The historical staffing, assessment, mission outcomes and doctrine are outside its scope. Its calibrated attention index and multiplier are model assumptions. The historical package retains the evidence and published results for the larger model. [Original defensive declarations](https://github.com/jfeiglin/napkin/blob/8488047/scenarios/cyber_learning_loop/model.scn#L530-L602) · [Historical package](../README.md)
+The historical model generated workload, assigned staff across missions and used their results to change later decisions. This entry takes workload and uptake as observations and stops at the defensive readings above. The historical staffing, assessment, mission outcomes and doctrine are outside its scope. Its calibrated attention index and multiplier are model assumptions. The historical package retains the evidence and published results for the larger model. [Original defensive declarations](https://github.com/jfeiglin/napkin/blob/8488047/scenarios/cyber_learning_loop/model.scn#L530-L602) · [Historical package](../historical/README.md)
 
 ## Verification
 

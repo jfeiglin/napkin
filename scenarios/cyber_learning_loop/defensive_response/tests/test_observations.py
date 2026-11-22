@@ -9,7 +9,9 @@ import pytest
 
 from napkin.engine import edits_for, read, run
 from napkin.model import load_scenario
+from tools import catalogue
 from tools.publish.brief import brief_of
+from tools.publish.readings import render
 
 FOLDER = Path(__file__).resolve().parents[1]
 BASELINE = json.loads((FOLDER / 'tests/legacy-readings.json').read_text())
@@ -89,3 +91,18 @@ def test_brief_reports_the_defensive_observations_and_the_two_distinct_indices(m
     assert attention.values[0] < attention.values[1] < attention.values[2]
     assert hardening.values == pytest.approx([0.3, 0.55, 1.55])
     assert remediation.values == pytest.approx([2.2] * 3)
+
+
+def test_catalogue_entry_resolves_the_same_defensive_program_brief_and_evidence(model):
+    entry = catalogue.entries()['cyber_learning_loop']
+    assert entry.parent == FOLDER.parent
+    canonical = load_scenario(entry)
+    assert canonical.model_hash == model.model_hash
+    assert not canonical.reports
+    # The entry paths differ. The public inputs and displayed reading selection agree.
+    canonical_brief, nested_brief = brief_of(canonical), brief_of(model)
+    assert canonical_brief.show == nested_brief.show
+    assert canonical_brief.drivers == nested_brief.drivers
+    assert not canonical_brief.sweeps and not canonical_brief.spreads
+    # The publication includes each exercised record and its definition.
+    assert render(canonical) == (FOLDER / 'results/readings.md').read_text()
