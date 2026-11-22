@@ -19,6 +19,8 @@ from tests.engine.comparison_band_cases import check_comparison_band
 from tests.engine.port_cases import HORIZON, Case, Spelling, builder_program, text_program
 from tests.engine.stage_broadcast_cases import check_broadcast_stage
 from tests.engine.stage_read_cases import check_scalar_stage
+from tests.engine.switch_selection_cases import check_switch_selection
+from tests.engine.switch_side_cases import check_switch_side
 from tests.reference.evaluate import label
 from tests.reference.from_program import run_of, scale_at, value_at, values_at
 
@@ -43,6 +45,10 @@ TRANSFORMS = (
     'authored_units',
     'authored_cells',
     'authored_cli',
+    'switch_component',
+    'switch_sparse',
+    'switch_declared',
+    'switch_selection',
 )
 GUARD = 'plant.observe.step[0]'
 
@@ -304,6 +310,12 @@ def plant_baseline(seed):
 
 
 def check_transform(seed, name, record_property):
+    if name == 'switch_selection':
+        check_switch_selection(seed)
+        return
+    if name.startswith('switch_'):
+        check_switch_side(seed, name.removeprefix('switch_'))
+        return
     if name == 'stage_scalar':
         check_scalar_stage(seed)
         return

@@ -1,0 +1,6 @@
+scenario "An in-band clock crossing"
+    horizon 1 h
+box:
+    total: L = 0 L
+    flow add: SOURCE -> this.total
+        request = formula(1 L/h if 9.99999999875 L + t * 1.750000005 L/h > 10 L + t * 1.75 L/h else 0 L/h)

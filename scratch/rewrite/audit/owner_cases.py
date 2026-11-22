@@ -9,7 +9,14 @@ import time
 import traceback
 from pathlib import Path
 
-from tests.engine import authored_number_cases, comparison_band_cases, stage_broadcast_cases, stage_read_cases
+from tests.engine import (
+    authored_number_cases,
+    comparison_band_cases,
+    stage_broadcast_cases,
+    stage_read_cases,
+    switch_selection_cases,
+    switch_side_cases,
+)
 
 FAMILIES = {
     's1/scalar': stage_read_cases.check_scalar_stage,
@@ -20,6 +27,10 @@ FAMILIES = {
     's6/units': lambda seed: authored_number_cases.check_authored_number(seed, 'units'),
     's6/cells': lambda seed: authored_number_cases.check_authored_number(seed, 'cells'),
     's6/cli': lambda seed: authored_number_cases.check_authored_number(seed, 'cli'),
+    's3/component': lambda seed: switch_side_cases.check_switch_side(seed, 'component'),
+    's3/sparse': lambda seed: switch_side_cases.check_switch_side(seed, 'sparse'),
+    's3/declared': lambda seed: switch_side_cases.check_switch_side(seed, 'declared'),
+    's3/selection': switch_selection_cases.check_switch_selection,
 }
 
 
@@ -48,17 +59,25 @@ def run_cases(ids, destination):
         module.__name__: hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()
         for module in (stage_broadcast_cases, stage_read_cases, comparison_band_cases, authored_number_cases)
     }
+    switch_sources = {
+        module: {module.__name__: hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()}
+        for module in (switch_side_cases, switch_selection_cases)
+    }
     failures = 0
     with destination.open('x', encoding='utf-8') as stream:
         for case in ids:
             family, seed = case.rsplit('/', 1)
             check = FAMILIES[family]
+            sources = generators
+            if family.startswith('s3/'):
+                module = switch_selection_cases if family == 's3/selection' else switch_side_cases
+                sources = switch_sources[module]
             start = time.perf_counter()
             result = {
                 'id': case,
                 'revision': revision,
                 'engine_reference_diff_sha256': dirty,
-                'generators_sha256': generators,
+                'generators_sha256': sources,
             }
             try:
                 check(int(seed))
