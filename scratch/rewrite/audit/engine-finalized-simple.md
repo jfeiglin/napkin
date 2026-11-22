@@ -118,6 +118,9 @@ For S5 the previous lines are at `7f308d1` and the replacements at `40a80c3`. En
 
 The two independent reference corrections distinguish a projected member from the owner of an inherited key. A new key on a linked member uses the referenced entity’s creation order. A key set before projecting retains its original tie order. The frozen candidate passed 122 focused tests covering the recorded reproductions and adjacent behavior. Both fresh-process checkpoint resumes passed after the source was frozen. Development JUnit reports and the case shards are retained in the S5 run directory.
 
+The authoring parity follow-up traced a text-only choice at `model/semantic.py:2412` and the unchecked fixed lookup in `program/build.py:1005` at `bdf91d7`. In `f465679`, both authors use `program/refs.py:107` for natural creation numbers. `program/check.py:1143` validates the key before `program/build.py:1279` records the named path. `program/check.py:1487` applies the same selection to member link overrides. All 10,205 program pairs across 900 seed IDs agree byte for byte. [Red cases, supplemental link and verified output](owner-fixes/s5/collection-parity.md).
+
+
 For S7 the previous lines are at `97a7b3e` and the replacements at `47852cb`. Paths are under `napkin/engine/solve/`.
 
 | Earlier copy | Owner and rerouted readers |
