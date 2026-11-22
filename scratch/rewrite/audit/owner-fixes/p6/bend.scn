@@ -1,0 +1,8 @@
+scenario "A narrow bend"
+    horizon 1 h
+yard:
+    x: L = 0 L
+    flow fill: SOURCE -> this.x
+        request = 1 L/h
+    credit = formula(max(this.x, min(2 * this.x - 0.51 L, 0.53 L)))
+    plain = formula(this.x)

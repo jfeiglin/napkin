@@ -16,6 +16,7 @@ from tests.engine import (
     collection_scope_cases,
     comparison_band_cases,
     cross_rate_cases,
+    lag_bend_cases,
     lag_monotonicity_cases,
     path_selection_cases,
     proof_event_cases,
@@ -72,6 +73,7 @@ FAMILIES = {
     's10/arguments': proof_event_cases.check_proof_arguments,
     's10/reach': proof_event_cases.check_proof_reach,
     'p4/monotonicity': lag_monotonicity_cases.check_lag_monotonicity,
+    'p6/bends': lag_bend_cases.check_lag_bends,
 }
 
 
@@ -127,6 +129,7 @@ def run_cases(ids, destination):
         's10/arguments': proof_event_cases,
         's10/reach': proof_event_cases,
         'p4/monotonicity': lag_monotonicity_cases,
+        'p6/bends': lag_bend_cases,
     }
     sources_by_module = {
         module: {module.__name__: hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()}
