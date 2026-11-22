@@ -88,6 +88,62 @@
     }
   ],
   "units": {
+    "yr": {
+      "dimensions": {
+        "time": 1
+      },
+      "scale": 8760,
+      "description": "One model year of 365 days."
+    },
+    "case": {
+      "dimensions": {
+        "cases": 1
+      },
+      "scale": 1,
+      "description": "One case in a count."
+    },
+    "USD": {
+      "dimensions": {
+        "USD": 1
+      },
+      "scale": 1,
+      "description": "One US dollar without a specified price year."
+    },
+    "USD2005": {
+      "dimensions": {
+        "USD2005": 1
+      },
+      "scale": 1,
+      "description": "One US dollar at 2005 prices."
+    },
+    "USD2020": {
+      "dimensions": {
+        "USD2020": 1
+      },
+      "scale": 1,
+      "description": "One US dollar at 2020 prices."
+    },
+    "USD_bn": {
+      "dimensions": {
+        "USD": 1
+      },
+      "scale": 1000000000,
+      "description": "One billion US dollars without a specified price year."
+    },
+    "USD2024_bn": {
+      "dimensions": {
+        "USD2024": 1
+      },
+      "scale": 1000000000,
+      "description": "One billion US dollars at 2024 prices."
+    },
+    "metres_per_second": {
+      "dimensions": {
+        "speed": 1
+      },
+      "scale": 1,
+      "description": "One metre per second in the catalogue's speed dimension."
+    },
     "people/h": {
       "kind": "rate",
       "dimensions": {
