@@ -2,6 +2,8 @@
 
 The generator recorded 135 Component stock-bound failures and 11 MovingDeclared trial-budget stops on macOS at ca5a674. Each of the 146 minimized models reproduced the original outcome. Each ran to its horizon at ee36192. Models from 26 pairs or variants reduce to identical source text, leaving 120 distinct model texts. Every seed and variant retains its own file in the archive.
 
+The 2,000-seed deep tier added two reversible-tank variants, giving 148 stopped variants across the two collections. Both additional runs had an upper-bound contact at the start of an inward step. The corrected engine completed both runs and matched their analytic terminal inventories. [Deep seeds 437 and 1553, minimized models and outcomes](../final/deep-bounds/stops.md).
+
 The simultaneous-bound family itself completed every run. The cases below arose in the reversible-tank family. Reducing some of them to a single stock shows that a second simultaneous contact was unnecessary for those stops. The 11 solver cases reached the generator’s 1,500-evaluation cap. [Minimized models and machine-readable index](minimized-stops.zip) · [Original observations and full models](stopped-models.jsonl.gz)
 
 | Seed | Variant | Minimized model in the archive | Baseline observation |
