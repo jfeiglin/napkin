@@ -3,7 +3,7 @@ sets."""
 
 import json
 
-from scenarios.tests.test_scenario_files import source_contract_files
+from scenarios.tests.source_files import source_contract_files
 from tests import helpers
 
 

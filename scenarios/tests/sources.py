@@ -1,32 +1,11 @@
-"""Authored catalogue files for tests that read or edit them (one model file per scenario), the
-edits of an edit body that reach a run, and the names under which the independent oracles read a
-run's inputs."""
+"""Authored edit overrides and input names for independent catalogue oracles."""
 
 import json
 from functools import cache
 
-from napkin.model.ir import thaw
+from napkin.model.runs import options_of
 from tests.helpers import ROOT
 from tools import catalogue
-from tools.publish.brief import brief_of
-
-
-def source(scenario_id):
-    """A catalogue scenario's model file, as authored, and its name."""
-    path = catalogue.scenario_path(ROOT, scenario_id)
-    return path.read_text(encoding='utf-8'), str(path)
-
-
-def written_type(model, name):
-    """The type that the file writes for the value `entity.member`: its unit, `duration`, …"""
-    entity, _, member = name.rpartition('.')
-    return thaw(model.scenario.entity(entity).value(member).type)
-
-
-def response_of(model, run):
-    """The run's option of the group that `choice_group` names in brief.toml: its defender response."""
-    (option,) = (p for p in model.runs[run]['options'] if p in model.menu[brief_of(model).choice_group])
-    return option
 
 
 def reaching(model, edits, run):
@@ -34,15 +13,10 @@ def reaching(model, edits, run):
     every run, then the run's options, then the run itself; a narrower level wins
     (napkin/schema/edits.schema.json)."""
     values = dict(edits.get('set') or {})
-    for option in model.runs[run]['options']:
+    for option in options_of(model.declared, run):
         values.update((edits.get('options') or {}).get(option) or {})
     values.update((edits.get('runs') or {}).get(run) or {})
     return values
-
-
-def numbers(values):
-    """Input values as an expression reads them: a bool value is 1 or 0."""
-    return {name: int(value) if isinstance(value, bool) else value for name, value in values.items()}
 
 
 @cache
