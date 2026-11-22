@@ -186,6 +186,14 @@ def test_a_node_that_reads_no_array_has_one_value():
     assert arrays.values(expr.read('x > 1'), {'x': 3}, UNITS, 5) is True
 
 
+@pytest.mark.parametrize(
+    'number', [2**64, -(2**64), 10**400], ids=['uint64-edge', 'negative', 'beyond-float']
+)
+def test_finite_shared_integers_can_cancel_before_conversion_to_float(number):
+    node = expr.binary('div', expr.const(number), expr.const(number))
+    assert arrays.values(node, {}, UNITS, COUNT) == 1
+
+
 def test_this_consumer_has_a_handler_for_each_operation():
     assert set(arrays.TABLE) == set(ops.OPERATIONS)
 

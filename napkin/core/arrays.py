@@ -54,9 +54,7 @@ def _checked(value):
         elif value.dtype.kind == 'c':
             raise ExpressionError(NOT_FINITE)
         return value
-    if isinstance(value, complex) or (
-        isinstance(value, (float, int)) and not isinstance(value, bool) and not np.isfinite(value)
-    ):
+    if isinstance(value, complex) or (isinstance(value, float) and not np.isfinite(value)):
         raise ExpressionError(NOT_FINITE)
     return value
 
