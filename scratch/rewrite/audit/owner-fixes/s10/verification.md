@@ -1,0 +1,12 @@
+# S10 citation and reachability verification
+
+At 7a37ffc all 1,200 original case IDs passed, with identical generator digests to the baseline and clean engine and reference sources. The four groups cover network fields, solver writes, event arguments, and event reachability. The full ledgers preserve each seed and result. [Baseline](baseline.jsonl.gz) · [First verification](first-verification.jsonl.gz) · [Final verification](verified.jsonl.gz)
+
+| Ownership on the baseline | Replacement in 826f39b |
+|---|---|
+| Route legs collapsed into their route and endpoint projections fell through at proofs.py:524 and 556. A flow prefix matched every setting at report.py:739. | Proofs._step and _point_parts preserve each projected field, its declaration and its upstream operands. Report._Trail.names_of matches those fields separately. An authored citation on a declaration remains visible on its settings. |
+| Solver writes resolved aliases in the wrong scope at proofs.py:780. Reports lacked the operands of conditional constraints. | The writer index binds solve targets in the solver scope. Proofs._edges follows constraint, objective and bound expressions. DeclaredWay._trace_answer retains conditional reads, including the case where the numeric answer is reused. _Trail.solver_inputs looks up each answer at the requested trace position. |
+| The possible starters indexed at proofs.py:1338 did not identify the source read for an individual argument. A never-started occurrence could credit its input at report.py:563. | Moment reads each argument once. Occurrences records the capture in the start entry. Reader.evidence_pair follows it to a subsequent write or its frozen value. _Trail.reached follows the evaluation at the queried time. |
+| The categorical read at reach.py:283 used only the original support. | Reachability collects support from member, stage and configuration overrides. The lag proof and report use the resulting event reachability. |
+
+The first verification found 300 remaining mismatches on the flow request's declared origin. Both recording modes also lost the source attached directly to a flow when reading its request or capacity. Separating the declared origin from the field path in 826f39b repaired both. Direct tests also distinguish two equal-valued sources when a trigger captures a value, when a stage overwrites a parameter, and when a solver reuses an answer. Commit 6121149 contains the first structural change. Historical start and solve entries without recorded branch evidence can retain uncertain citations.

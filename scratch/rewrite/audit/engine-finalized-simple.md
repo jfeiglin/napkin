@@ -224,3 +224,5 @@ Exercise empty event, naming/inlining, scale-preserving units, split move in an 
 Use one four-worker pytest invocation for the complete regular run, retaining `--junitxml=regular.xml -o junit_family=xunit1`. Run `python scratch/rewrite/audit/port_corpus_results.py regular regular.xml --full-suite` to check elapsed suite time, failures, seed coverage and truncated comparisons. Use `deep deep.xml` for the deep corpus.
 
 The owner waived the independent rerun of the 44 auditor-held cases. [Historical evidence and expectation inventory](comparison-expectations-0.2.3.md)
+
+| S10, citations and reachability | Program proofs retain a network field's authoring origin and field path, resolve solver targets in their input scope, and use possible categorical overrides. Reports follow committed start and solve reads at their trace positions. | All four families passed all 300 original seeds at 7a37ffc. [Owner map, revisions and verification](owner-fixes/s10/verification.md) |
