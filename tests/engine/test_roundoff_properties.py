@@ -3,7 +3,7 @@
 Each test here gives one argument many cases from a seeded generator. The numbers are not dyadic
 (thirds, sevenths, tenths and their products) and their sizes go from 1e-3 to 1e7, so the arithmetic
 of doubles leaves roundoff. The oracles are independent of the engine: exact fractions of the doubles
-that the file writes, and conservation applied to its physical rates. The tallies and the stock
+in the rates, exact written decimals in the moves, and conservation. The tallies and the stock
 together hold what came in.
 
 1. A stock on a bound retains its exact balance when its legs can put it there. A saturated
@@ -237,7 +237,7 @@ def test_a_store_on_its_bound_with_rising_rates_moves_each_tally_its_exact_share
 
 # ---- 4. Moves and the times of events ---------------------------------------------------------------------
 
-# How a whole is cut into the parts that a series of moves takes: (the number of moves, the part).
+# Repeated authored moves, with the coefficient in the last variant calculated by Python.
 PARTS = {
     '/ 7': (7, lambda whole: whole / 7),
     '/ 21': (21, lambda whole: whole / 21),
@@ -257,8 +257,8 @@ def clock(name, at, *body):
 
 
 def emptied(wholes, parts, begin):
-    """Tanks that a series of moves empties into their sinks: tank i holds `wholes[i]`, and at
-    `begin + k / 3` h the k-th move takes its part of the whole (`whole / 7`, for example)."""
+    """Move each part at `begin + k / 3` h. After the three precomputed thirds, move the
+    remaining stock explicitly."""
     members, moves = [], {}
     for i, (whole, part) in enumerate(zip(wholes, parts)):
         members += [
@@ -266,9 +266,13 @@ def emptied(wholes, parts, begin):
             value(f'tank{i}', 'people', whole, lower=0, scale=whole),
             value(f'sink{i}', 'people', 0, lower=0, scale=whole),
         ]
-        piece = PARTS[part][1](getattr(this, f'whole{i}'))
-        for k in range(PARTS[part][0]):
-            moves.setdefault(k, []).append(move(piece, getattr(this, f'tank{i}'), getattr(this, f'sink{i}')))
+        tank, sink = getattr(this, f'tank{i}'), getattr(this, f'sink{i}')
+        count, split = PARTS[part]
+        piece = split(getattr(this, f'whole{i}'))
+        for k in range(count):
+            moves.setdefault(k, []).append(move(piece, tank, sink))
+        if part == '* (1 / 3)':
+            moves.setdefault(count, []).append(move(tank, tank, sink))
     events = [clock(f'move{k}', begin + k / 3, *rows) for k, rows in sorted(moves.items())]
     b = Builder(UNITS)
     b.entity('s', *members, *events)
@@ -277,11 +281,9 @@ def emptied(wholes, parts, begin):
 
 @pytest.mark.parametrize('seed', [1, 2])
 def test_a_series_of_moves_that_takes_the_whole_leaves_a_store_exactly_empty(seed):
-    """The parts of each whole add up to the whole in exact arithmetic, so the tank is empty after
-    the last move. In doubles the parts leave a residue of a few units in the last place in most
-    tanks (the generator checks it), always below the tank's absolute tolerance, 1e-10 times its
-    size. The last move takes the residue too (`moment.py`): the tank is exactly zero, it never falls
-    below zero, and the sink holds the whole within one rounding for each move."""
+    """Each posting debits and credits its written amount. Sevenths, twenty-firsts and tenths
+    partition the opening balance exactly. Three coefficients of 0.3333333333333333 leave a
+    positive remainder for a fourth move of the stock itself."""
     rng = np.random.default_rng(seed)
     left, count = 0, 0
     for _ in range(4):
@@ -291,7 +293,7 @@ def test_a_series_of_moves_that_takes_the_whole_leaves_a_store_exactly_empty(see
         for whole, part in zip(wholes, parts):
             moves, one = PARTS[part]
             residue = exact(whole) - moves * exact(one(whole))
-            # The argument applies: the residue is below the tolerance of the tank.
+            # These cases exercise double arithmetic even when the written parts sum exactly.
             assert abs(residue) < Fraction(1, 10**10) * exact(whole)
             left += residue != 0
         count += TANKS
@@ -299,14 +301,31 @@ def test_a_series_of_moves_that_takes_the_whole_leaves_a_store_exactly_empty(see
         horizon = begin + 12
         names = [name for i in range(TANKS) for name in (f'tank{i}', f'sink{i}')]
         times = [begin + k / 3 + 1 / 6 for k in range(21)]
-        found = values(program, horizon, names, times)
+        record = run(program, Configuration(Request(horizon)))
+        assert record.failure is None
+        found = read(record, program, [Key('s', (name,)) for name in names], times)
+        postings = record.entries('move')
         for i, (whole, part) in enumerate(zip(wholes, parts)):
-            moves = PARTS[part][0]
+            opening = written(whole)
+            count_parts = PARTS[part][0]
+            share = Fraction('0.3333333333333333') if part == '* (1 / 3)' else Fraction(1, count_parts)
+            amounts = [opening * share] * count_parts
+            if part == '* (1 / 3)':
+                remainder = opening - sum(amounts)
+                assert remainder > 0
+                amounts.append(remainder)
+            assert [
+                (entry.detail('destination'), entry.detail('amount'))
+                for entry in postings
+                if entry.detail('source') == f's.tank{i}'
+            ] == [(f's.sink{i}', float(amount)) for amount in amounts]
             tank, sink = found[2 * i], found[2 * i + 1]
-            assert min(tank) >= 0
-            assert tank[moves - 1] == 0.0
-            bound = moves * EPS * exact(whole)
-            assert abs(exact(sink[moves - 1]) - exact(whole)) <= bound
+            sent = 0
+            for k, (remaining, received) in enumerate(zip(tank.values, sink.values, strict=True)):
+                if k < len(amounts):
+                    sent += amounts[k]
+                assert (remaining, received) == (float(opening - sent), float(sent))
+            assert sent == opening
     assert left > count / 2
 
 
