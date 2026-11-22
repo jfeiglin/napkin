@@ -1,5 +1,6 @@
 """Whole-balance precision through adjustments, checkpoint edits and recorded cutoffs."""
 
+from dataclasses import replace
 from fractions import Fraction
 
 import pytest
@@ -84,3 +85,64 @@ plant:
         assert machine.stock_balance(name, 1) == balance
         assert read(record, model.program, [name], [1])[0].values == (float(balance),)
     assert record.history(Key('plant', ('reported_pool',))).at(1) == float(10_000_000 + delivered)
+
+
+def test_two_external_edits_keep_their_small_net_transfer_after_a_restore():
+    model = compile_text(
+        """scenario "Two external transfers"
+    horizon 1 h
+yard:
+    tank: L = 0 L
+    got: L = 0 L
+    mark = event():
+        after 0.25 h
+        after 0.5 h:
+            move 1 L from this.tank to this.got
+yard.mark.start()
+""",
+        UNITS,
+    )
+    stops = tuple(Breakpoint(f'yard.mark.step[{k}]') for k in range(2))
+    machine = Run(Plan.of(model.program, model.configuration), stops)
+    machine.run()
+    machine.edit('yard.tank', Fraction(10**16 + 1))
+    machine.resume()
+    saved = machine.edit('yard.tank', 1)
+    for record in (machine.resume(), resume(model.program, loads(dumps(saved)))):
+        assert record.failure is None
+        ledger = read(record, model.program, ['yard.tank.external'], [0, 0.5, 1])[0]
+        assert ledger.values == (0, 1e16, 1)
+
+
+def test_restore_of_an_unposted_legacy_stock_keeps_its_opening_and_incoming_incidence():
+    model = compile_text(
+        """scenario "Old posting cursors"
+    horizon 1 h
+yard:
+    tank: L = 3 L
+    reserve: L = 4000000.0000000001 L
+    got: L = 0 L
+    flow fill: SOURCE -> this.tank
+        request = 2 L/h
+    mark = event():
+        after 0.5 h:
+            move 4000000 L from this.reserve to this.got
+yard.mark.start()
+""",
+        UNITS,
+    )
+    machine = Run(Plan.of(model.program, model.configuration), (Breakpoint('yard.mark.step[0]'),))
+    checkpoint = machine.run()
+    parts = dict(checkpoint.saved)
+    state = dict(parts['run'])
+    state.pop('stock_ranges')
+    state['stocks'] = tuple(
+        (name, entry) for name, entry in state['stocks'] if name not in ('yard.tank', 'yard.reserve')
+    )
+    parts['run'] = tuple(state.items())
+    legacy = loads(dumps(replace(checkpoint, saved=tuple(parts.items()))))
+    restored = Run.restored(Plan.of(model.program, model.configuration), legacy)
+    record = restored.resume()
+    assert record.failure is None
+    assert restored.stock_balance('yard.tank', 1) == 5
+    assert restored.stock_balance('yard.reserve', 1) == Fraction(1, 10**10)

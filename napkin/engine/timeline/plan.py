@@ -608,6 +608,7 @@ class Plan:
             for flow in scope[0].flows:
                 self._declare_flow(flow, scope)
         self._declare_ends(members)
+        self._stock_targets(members)
         for scope in members:
             for solver in scope[0].solvers:
                 self._declare_solver(solver, scope)
@@ -1184,6 +1185,7 @@ class Plan:
             for point in self._reached(end, scope, event, flow.origin)
             if point[0] == 'value'
         }
+        self.stocks = {store for store, _ in met}
         scopes = [(value, None) for value in self.program.root]
         scopes += [(value, scope) for scope in members for value in scope[0].values]
         for value, scope in scopes:
@@ -1196,6 +1198,63 @@ class Plan:
         for template in self.program.templates:
             for event in template.events:
                 self._name_ends(event, [scope for scope in members if scope[0] is template], local=False)
+
+    def _stock_targets(self, members):
+        """A stock is an endpoint of a flow or a move anywhere in the program. Occurrence names
+        do not yet exist: retain the slot's role and instantiate it along with each occurrence."""
+        self._stock_locals = set()
+        resolver = Resolver(self.program)
+        by_template = {}
+        for scope in members:
+            by_template.setdefault(scope[0].name, []).append(scope)
+
+        def target(path, context, scopes, origin):
+            if not isinstance(path, Path):
+                return
+            found = resolver.resolve(path, context, origin)
+            if (
+                found is None
+                or found.kind != 'value'
+                or found.part.kind != p.STATE
+                or not isinstance(found.part.type, p.Number)
+            ):
+                return
+            if isinstance(found.owner, p.Event):
+                self._stock_locals.add(id(found.part))
+                return
+            # Resolve fixed member paths and entity parameters, following their actual links.
+            reached = False
+            for scope in scopes if _uses(path, This) else (None,):
+                for point in self._reached(path, scope, context.event, origin):
+                    points = point[1].points if point[0] == 'many' else (point,)
+                    if point[0] in ('value', 'many'):
+                        reached = True
+                        self.stocks.update(each[1] for each in points if each[0] == 'value')
+            if not reached and isinstance(found.owner, p.Template):
+                # A runtime selection from a template can choose any instance of its declaration.
+                for member in found.owner.members:
+                    self.stocks.add(name_of(Key(member.id, (found.part.name,))))
+
+        for statements, context in _statement_bodies(self.program):
+            scopes = by_template.get(context.template.name, ()) if context.template is not None else (None,)
+            for statement in _statements(statements):
+                if isinstance(statement, p.Move):
+                    for path in (statement.source, statement.destination):
+                        target(path, context, scopes, statement.origin)
+
+        for template in self.program.templates:
+            scopes = by_template.get(template.name, ())
+            for event in template.events:
+                context = Scope(template, event)
+                for part in event.locals:
+                    if isinstance(part, p.Flow):
+                        for leg in part.legs or (part,):
+                            for path in (leg.source, leg.sink):
+                                target(path, context, scopes, part.origin)
+
+    def is_stock(self, key, part):
+        """Whether a declared value has a stock ledger, including an occurrence yet to start."""
+        return name_of(key) in self.stocks or ('#' in key.owner and id(part) in self._stock_locals)
 
     def _name_ends(self, part, scopes, local):
         """Declare the endpoints that the statements and the conditions of `part` (the setup's
@@ -1276,8 +1335,20 @@ class Plan:
         a store of an occurrence, which the occurrence makes (`occurrence`)."""
         if not isinstance(end, Path):
             return []  # SOURCE or SINK
-        if isinstance(end.start, (This, Named, Root)):
+        # A filter, a sort or a lookup can select only members of its source. Membership of
+        # their stock slots is defined before the runtime selector has a value.
+        while isinstance(end.start, (Where, By, Lookup)):
+            end = end.start.source.then(*end.steps)
+        if isinstance(end.start, Literal):
+            return [
+                point
+                for item in end.start.items
+                for point in self._reached(item.then(*end.steps), scope, event, origin)
+            ]
+        if isinstance(end.start, (This, Named, Root, Instances)):
             return [self.resolve(end, scope, origin)]
+        if event is None:
+            return []
         entities = {each.name: each.type for each in event.params if isinstance(each.type, p.EntityType)}
         found = entities.get(end.start.name) if isinstance(end.start, Local) else None
         if found is None:
@@ -1729,6 +1800,8 @@ class Plan:
                 if value.kind == STATE and isinstance(part.type, p.Number):
                     stores.append(name)
                     self._stores[name] = (part, scope)
+                    if id(part) in self._stock_locals:
+                        self.stocks.add(name)
                 elif value.kind == FORMULA:
                     formulas.append(name)
                 continue
@@ -3001,14 +3074,21 @@ def _statements(statements):
             yield from _statements(statement.orelse)
 
 
-def _program_statements(program):
-    """(origin, statement) of each statement of the setup, of the stages and of the triggers."""
-    bodies = [program.setup]
+def _statement_bodies(program):
+    """The setup, stage and trigger bodies with their declaration scopes."""
+    yield program.setup, Scope()
     for template in program.templates:
         for event in template.events:
-            bodies += [step.body for step in event.steps if isinstance(step, p.After)]
-            bodies += [trigger.body for trigger in event.triggers]
-    for body in bodies:
+            for step in event.steps:
+                if isinstance(step, p.After):
+                    yield step.body, Scope(template, event)
+            for trigger in event.triggers:
+                yield trigger.body, Scope(template, trigger=trigger)
+
+
+def _program_statements(program):
+    """(origin, statement) of each statement of the setup, of the stages and of the triggers."""
+    for body, _ in _statement_bodies(program):
         for statement in _statements(body):
             yield statement.origin, statement
 
@@ -3017,14 +3097,7 @@ def _occurrence_settings(program):
     """Settings written through occurrence references. Declare a slot before installing the
     owner's flows. Each executing statement chooses which instance to write."""
     found, resolver = {}, None
-    bodies = [(program.setup, Scope())]
-    for template in program.templates:
-        for event in template.events:
-            bodies.extend(
-                (step.body, Scope(template, event)) for step in event.steps if isinstance(step, p.After)
-            )
-            bodies.extend((trigger.body, Scope(template, trigger=trigger)) for trigger in event.triggers)
-    for body, scope in bodies:
+    for body, scope in _statement_bodies(program):
         for statement in _statements(body):
             if not isinstance(statement, p.Assign):
                 continue

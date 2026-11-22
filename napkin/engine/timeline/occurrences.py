@@ -169,6 +169,9 @@ class Occurrences:
         found.append(live)
         for name in made.initial:
             self._enter(name, made, early)
+        for name in made.stores:
+            if name in plan.stocks:
+                run.stock_state.open(name, run.env[name], node=plan.values[name].node)
         for flow in made.flows:
             for connection in plan.flows[flow].connections:
                 for end in (connection.source, connection.sink):
@@ -381,6 +384,8 @@ class Occurrences:
 
     def met(self, store):
         """A move or a flow meets a store: one of an occurrence must be empty when it finishes."""
+        if store not in self.plan.stocks:
+            return
         found = self.plan.values.get(store)
         owner = found.key.owner if found is not None and found.key is not None else ''
         if owner in self.live:
@@ -409,9 +414,7 @@ class Occurrences:
         finish and flows join (`complete`, `register`), and found once from the finished occurrences
         by a run that a checkpoint restored, which keeps no more than its occurrences (`saved.py`)."""
         if self._watched is None:
-            self._watched = {
-                store for live in self.live.values() if not live.active for store in live.plan.stores
-            }
+            self._watched = {store for live in self.live.values() if not live.active for store in live.met}
         return self._watched
 
     def carried(self, start, end):

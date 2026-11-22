@@ -36,6 +36,7 @@ from fractions import Fraction
 from pathlib import Path
 
 from ...core import expr as nodes
+from ...core.units import rational
 from ...program import parts as p
 from ...program.artifact import Artifact
 from ...program.checkpoint import (
@@ -219,23 +220,29 @@ class Breaks:
         run = self.run
         name, value = self.checked(edit)
         old = run.value(name, tx=tx)
+        balance = value if name in run.plan.stocks else None
         delta = run.stock_state.external(name, value, tx)
+        if balance is not None:
+            value = float(balance)
         details = {'breakpoint': stop.breakpoint.at, 'target': name, 'old': old, 'new': value}
         if tx is not None:
             tx.writes[name] = value
-            tx.balances.pop(name, None)
+            if balance is not None:
+                tx.balances[name] = balance
+            else:
+                tx.balances.pop(name, None)
             tx.edits.append((stop.at, stop.owner, details, delta))
             return
         run.recorder.entry(run.now, 'edit', stop.at, stop.owner, **details)
         self.transferred(name, delta)
-        run.write(name, value)
+        run.write(name, value, balance)
         run.occurrences.met(name)
 
     def transferred(self, name, delta):
         """Record the committed difference from the physical balance immediately before the edit."""
         if delta:
             run = self.run
-            run.recorder.external(name, run.now, float(delta), run.changed_start(name))
+            run.recorder.external(name, run.now, delta, run.changed_start(name))
 
     def checked(self, edit):
         """(the engine name, the new value in canonical units) of an edit, once the engine's rules
@@ -256,7 +263,10 @@ class Breaks:
                 and not isinstance(value, bool)
             ):
                 _, scale = declared(plan.program, key)
-                value *= scale if isinstance(value, Fraction) else float(scale)
+                if name in plan.stocks:
+                    value = rational(value) * scale
+                else:
+                    value *= scale if isinstance(value, Fraction) else float(scale)
         found = plan.values.get(name)
         if found is None or found.kind != STATE:
             what = 'no value of the run' if found is None else f'a value of kind {found.kind}'
@@ -287,7 +297,10 @@ class Breaks:
         ):
             raise CheckpointError(f'{name} takes a finite number, not {value!r}')
         lower, upper = run.bounds.get(name, (-math.inf, math.inf))
-        if isinstance(value, Fraction):
+        if name in plan.stocks:
+            value = rational(value)
+            lower, upper = run.stock_state.bounds(name)
+        elif isinstance(value, Fraction):
             # Authored literal endpoints retain their exact values. A bound that read the
             # initial state, or a reversed interval collapsed at setup, keeps the run's snapshot.
             def endpoint(node, snapshot):
@@ -313,7 +326,8 @@ class Breaks:
                 f'{name} = {shown} is outside its range {span(plan, name, float(lower), float(upper))}'
             )
         try:
-            return name, float(value)
+            number = float(value)
+            return name, value if name in plan.stocks else number
         except OverflowError:
             raise CheckpointError(f'{name} takes a finite number') from None
 

@@ -441,6 +441,8 @@ class Run:
                     )
         finally:
             comparisons.named = declared
+        for name in sorted(plan.stocks):
+            self.stock_state.open(name, self.env[name], node=plan.values[name].node)
         return {name: found for name, found in self.env.items() if name != 't'}
 
     def check(self):
@@ -784,7 +786,7 @@ class Run:
         """The published value of a stage or checkpoint, including a stock's accepted prefix."""
         if name in self.written:
             return self.written[name]
-        if name in self.ways.set_of or name in self.stock_state.balances:
+        if name in self.plan.stocks:
             return float(self.stock_balance(name, self.now))
         return self.env.get(name)
 
@@ -798,7 +800,7 @@ class Run:
             self.define(name, value.node if isinstance(value, Defined) else None)
             if isinstance(value, Defined):
                 return
-        if name in self.ways.set_of or name in self.stock_state.balances or balance is not None:
+        if name in plan.stocks:
             old_balance = self.stock_state.replace(name, value, balance)
         if name in self.ways.set_of:
             old = float(old_balance)

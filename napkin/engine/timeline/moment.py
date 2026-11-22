@@ -101,16 +101,15 @@ from fractions import Fraction
 from ...core import expr as nodes
 from ...core.comparisons import against, recorded_number
 from ...core.errors import ExpressionError
-from ...core.literals import Literals, node_parts
-from ...core.units import rational
-from ...expressions import UnitSystem, evaluate
+from ...core.units import finite_number, rational
+from ...expressions import UnitSystem
 from ...program import parts as p
 from ...program.refs import Distribution, Formula, Lookup, spelled
 from ..continuous.walk import walked
 from ..errors import SimulationError
 from .collections import kept, occurrence_at
-from .plan import BACKWARD, FORMULA, FORWARD, STATE
-from .reads import Reads, lazily
+from .plan import BACKWARD, FORMULA, FORWARD
+from .reads import lazily
 
 _SETUP = 'setup'  # what a stop in the setup holds
 
@@ -118,6 +117,12 @@ _SETUP = 'setup'  # what a stop in the setup holds
 def in_unit(units, number, unit):
     """A number of a unit as a message writes it: `5000 mL`, `3 day`; a number with no unit, or one
     that is not finite, as it is (`inf`)."""
+    if isinstance(number, Fraction):
+        value = number / units.exact_scale(unit) if unit else number
+        shown = str(value)
+        if value.denominator != 1 and finite_number(value) and rational(float(value)) == value:
+            shown = str(float(value))
+        return f'{shown} {unit}' if unit else shown
     if isinstance(number, bool) or not isinstance(number, int | float):
         return repr(number)
     if not unit or not math.isfinite(number):
@@ -224,7 +229,7 @@ class Tx:
         self.origin = ''
         self.writes = {}
         self.moves = []  # (source, destination, amount, origin)
-        self.balances = {}  # exact physical balances written by moves in this stage
+        self.balances = {}  # exact physical balances written by this stage
         self.starts = []  # (member, event, arguments)
         self.allocations = []  # concrete (store, side, priority items), None for proportional()
         # A value that the stage gives a definition -> the statement that gives it its last: a
@@ -613,25 +618,26 @@ class Moment:
     def checked(self, name, value, origin):
         """A value that a write gives a value with bounds: on its bound when it misses it by less
         than its tolerance, a failure when it misses it by more."""
-        bounds = self.run.bounds.get(name)
-        if bounds is None or isinstance(value, bool) or not isinstance(value, int | float):
+        exact = isinstance(value, Fraction)
+        bounds = self.run.stock_state.bounds(name) if exact else self.run.bounds.get(name)
+        if bounds is None or isinstance(value, bool) or not isinstance(value, int | float | Fraction):
             return value
-        value = float(value)
-        if not math.isfinite(value):
+        if not finite_number(value):
             raise SimulationError(f'{origin}: {name} would take the value {value!r}')
+        if not exact:
+            value = float(value)
         lower, upper = bounds
-        slack = self.run.amount_tolerance(name, value)
-        if lower - slack <= value < lower:
-            return float(lower)
-        if upper < value <= upper + slack:
-            return float(upper)
-        if not lower <= value <= upper:
-            plan = self.plan
-            raise SimulationError(
-                f'{name} = {quantity(plan, name, value)} is outside its range '
-                f'{span(plan, name, lower, upper)} at t = {self.run.now:g} h'
-            )
-        return value
+        if lower <= value <= upper:
+            return value
+        nearest = lower if value < lower else upper
+        slack = self.run.amount_tolerance(name, float(value))
+        if abs(value - nearest) <= (rational(slack) if exact else slack):
+            return nearest
+        plan = self.plan
+        raise SimulationError(
+            f'{name} = {quantity(plan, name, value)} is outside its range '
+            f'{span(plan, name, lower, upper)} at t = {self.run.now:g} h'
+        )
 
     def assign(self, statement, tx, scope):
         """`=`, `+=` or `-=`."""
@@ -652,8 +658,6 @@ class Moment:
             return
         name = self.target(statement.target, scope, statement.origin, tx)
         run.occurrences.writable(name, statement.origin)  # an assignment always writes
-        if statement.op == '=':
-            tx.balances.pop(name, None)
         if isinstance(statement.value, Distribution):
             # A new distribution for the draws to come; what was drawn stays as it is.
             tx.writes[name] = statement.value
@@ -664,19 +668,24 @@ class Moment:
             tx.writes[name] = Defined(node)
             tx.define(name, statement.origin)
             return
-        value = self.truth(statement.value, scope, statement.origin, tx)
-        if statement.op != '=':
-            if name in run.plan.moving or name in run.stock_state.balances or name in tx.balances:
-                amount = rational(value)
-                total = self.stage_balance(name, tx) + (amount if statement.op == '+=' else -amount)
-                value = float(total)
-                tx.balances[name] = total
-            else:
+        if name in self.plan.stocks:
+            node = run.occurrences.node(statement.value, scope, statement.origin)
+            amount = self.amount(node, tx, exact_stocks=True)
+            if not finite_number(amount):
+                raise SimulationError(f'{statement.origin}: {name} would take the value {amount!r}')
+            value = rational(amount)
+            if statement.op != '=':
+                current = self.stage_balance(name, tx)
+                value = current + value if statement.op == '+=' else current - value
+            balance = self.checked(name, value, statement.origin)
+            tx.balances[name] = balance
+            tx.writes[name] = float(balance)
+        else:
+            value = self.truth(statement.value, scope, statement.origin, tx)
+            if statement.op != '=':
                 current = run.value(name, tx=tx)
                 value = current + value if statement.op == '+=' else current - value
-        tx.writes[name] = self.checked(name, value, statement.origin)
-        if name in tx.balances and tx.writes[name] != value:
-            tx.balances[name] = rational(tx.writes[name])
+            tx.writes[name] = self.checked(name, value, statement.origin)
         found = self.plan.values.get(name)  # none for a distribution-valued value
         if name in tx.defined or (found is not None and found.kind == FORMULA):
             # A request or a capacity that was a formula now holds the number (spec: "A scalar
@@ -685,7 +694,7 @@ class Moment:
 
     def move(self, statement, tx, scope):
         """`move amount from source to destination`: both inventories are checked before anything
-        changes, and a move that would leave less than the tolerance of its source moves all. Two ends
+        changes, and the exact requested amount is debited and credited together. Two ends
         that name one store (two arguments of an event that name one member) give and take the same
         amount together: the debit and the credit cancel, and its inventory stays as it is. A move of
         an amount at a store of a finished occurrence writes it, and fails; a move of nothing goes on
@@ -697,17 +706,11 @@ class Moment:
         amount = (
             self.stage_balance(source, tx)
             if self.stock_read(node, tx) == source
-            else self.move_amount(node, tx)
+            else self.amount(node, tx, exact_stocks=False)
         )
-        if (
-            isinstance(amount, bool)
-            or not isinstance(amount, int | float | Fraction)
-            or not math.isfinite(amount)
-            or amount < 0
-        ):
-            shown = float(amount) if isinstance(amount, Fraction) else amount
+        if not finite_number(amount) or amount < 0:
             raise SimulationError(
-                f'{origin}: a move takes a finite amount from 0, not {quantity(plan, source, shown)}'
+                f'{origin}: a move takes a finite amount from 0, not {quantity(plan, source, amount)}'
             )
         requested = rational(amount)
         amount = float(amount)
@@ -716,42 +719,22 @@ class Moment:
         if source == destination or requested == 0:
             tx.moves.append((source, destination, amount, origin))
             return
-        supply = self.stage_balance(source, tx)
-        receiving = self.stage_balance(destination, tx)
-        lower = run.bounds.get(source, (-math.inf, math.inf))[0]
-        upper = run.bounds.get(destination, (-math.inf, math.inf))[1]
-        applied = requested
-        endpoints = []
-        for name, initial, edge, sign in ((source, supply, lower, -1), (destination, receiving, upper, 1)):
-            balance = initial
-            space = sign * (rational(edge) - balance) if math.isfinite(edge) else math.inf
-            endpoints.append((name, balance, space, sign))
-            low, high = run.bounds.get(name, (-math.inf, math.inf))
-            after = float(balance + sign * requested)
-            # Subtraction may lose digits in positive room between nearly equal inventories.
-            # At the bound itself there is exactly no room, even for an amount smaller than an ulp.
-            subtraction = max(math.ulp(initial), math.ulp(edge), math.ulp(amount))
-            short = space < requested and (space <= 0 or requested - space > subtraction)
-            if short or (sign > 0 and after < low) or (sign < 0 and after > high):
+        endpoints = (
+            (source, self.stage_balance(source, tx) - requested),
+            (destination, self.stage_balance(destination, tx) + requested),
+        )
+        for name, after in endpoints:
+            low, high = run.stock_state.bounds(name)
+            if not low <= after <= high or not finite_number(after):
                 raise SimulationError(
-                    f'{origin}: the move of {quantity(plan, source, amount)} from {source} to {destination} '
+                    f'{origin}: the move of {quantity(plan, source, requested)} from {source} to {destination} '
                     f'fails: {name} would hold {quantity(plan, name, after)}, outside its range '
                     f'{span(plan, name, low, high)}; nothing is moved'
                 )
-            applied = min(applied, space)
-
-        # The source's near-zero remainder can join the transfer only if the destination fits it.
-        available, room = (space for _, _, space, _ in endpoints)
-        left = available - applied
-        if math.isfinite(available) and 0 < left <= run.amount_tolerance(source, left) and available <= room:
-            applied = available
-        for name, balance, _, sign in endpoints:
-            new_balance = balance + sign * applied
-            inventory = float(new_balance)
-            tx.writes[name] = inventory
-            tx.balances[name] = new_balance
-
-        tx.moves.append((source, destination, float(applied), origin))
+        for name, after in endpoints:
+            tx.balances[name] = after
+            tx.writes[name] = float(after)
+        tx.moves.append((source, destination, amount, origin))
 
     def stage_balance(self, store, tx):
         if store in tx.writes:
@@ -764,51 +747,45 @@ class Moment:
         while isinstance(node, nodes.Ref) and node.name not in visited:
             name = node.name
             visited.add(name)
-            found = self.run.definition(name, tx)
-            if found is None:
-                break
-            if found.kind == STATE:
+            if name in self.plan.stocks:
                 return name
-            if found.kind == FORMULA and name not in self.run.frozen:
-                node = found.node
-            elif name in self.plan.dynamic and self.plan.dynamic[name].op == 'at':
-                dynamic = self.plan.dynamic[name]
-                point = occurrence_at(
-                    self.plan.members(dynamic.source),
-                    dynamic.key,
-                    lambda n: self.run.value(n, tx=tx),
-                    self.run.units_for(tx),
-                    self.run.now,
-                    dynamic.spelled,
-                )
-                node = nodes.ref(self.plan.project(point, dynamic.steps))
-            else:
-                break
+            node = self.stock_definition(name, tx)
         return None
 
-    def move_amount(self, node, tx):
-        """Take a rational share of the authored quantities before booking it to either store.
-        Reads and comparisons use the stage's usual values, including its selected branches.
-        An irrational result uses the ordinary numerical evaluator with the same cached reads."""
+    def stock_definition(self, name, tx):
+        """The live definition behind an amount, including its stage-selected occurrence."""
         run = self.run
-        units = run.units_for(tx)
-        reads = Reads(nodes.names(node), lambda name: run.value(name, tx=tx), run.now)
+        found = run.definition(name, tx)
+        if found is not None and found.kind == FORMULA and name not in run.frozen:
+            return found.node
+        dynamic = self.plan.dynamic.get(name)
+        if dynamic is not None and dynamic.op == 'at':
+            point = occurrence_at(
+                self.plan.members(dynamic.source),
+                dynamic.key,
+                lambda n: run.value(n, tx=tx),
+                run.units_for(tx),
+                run.now,
+                dynamic.spelled,
+            )
+            return nodes.ref(self.plan.project(point, dynamic.steps))
+        return None
 
-        def parts(part):
-            op, args, data = node_parts(part)
-            if isinstance(part, nodes.Ref):
-                authored = units.comparisons.literal_value(part)
-                if isinstance(authored, Fraction):
-                    return 'number', (), (authored, '')
-            if isinstance(part, nodes.Ref) or op in ('compare', 'within', 'not', 'and', 'or'):
-                found = evaluate(part, reads, units)
-                if isinstance(found, int | float) and not isinstance(found, bool):
-                    return 'number', (), (found, '')
-                return 'literal', (), found
-            return op, args, data
+    def amount(self, node, tx, *, exact_stocks):
+        """Stock assignments use physical balances throughout their arithmetic. An ordinary
+        move expression uses the evaluated stock reading; an identity move spends the balance."""
+        run = self.run
 
-        exact = Literals(parts, units.exact_scale, units.comparisons.factor).value(node)
-        return evaluate(node, reads, units) if exact is None else exact
+        def balance_of(name):
+            if exact_stocks:
+                if name in self.plan.stocks:
+                    return self.stage_balance(name, tx)
+                return self.stock_definition(name, tx)
+            return None
+
+        return run.stock_state.amount(
+            node, run.units_for(tx), lambda name: run.value(name, tx=tx), balance_of
+        )
 
     def queue(self, statement, tx, scope):
         """`.start(...)`: the arguments are evaluated at the caller, left to right, once; on a

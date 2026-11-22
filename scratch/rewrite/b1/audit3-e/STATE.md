@@ -36,8 +36,8 @@ and a component built at a moment read its rates before finding its bounds (`act
   no limit 30 s). ways `level_of` on the driver. B's docstring (`walk.walked`).
 
 ## Decisions
-- "Nonzero" is beyond the store's tolerance, for a move's amount (after the rule that a move leaving
-  less than its tolerance moves all) and a flow's rate (per hour, as `Run.tolerate`). Oracle exact.
+- A move transfers the exact requested amount. A positive remainder stays in its source.
+  The per-hour tolerance for a flow's rate is given by `Run.tolerate`.
 - A rate that rises from zero fails at the first time beyond its tolerance (within the crossing
   tolerance of the moment); the oracle fails at the moment, but not at the horizon.
 - At a horizon that is no other moment, sets hold their segments' values (a longer run's segments

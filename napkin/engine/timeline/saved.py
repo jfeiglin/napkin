@@ -191,6 +191,7 @@ def at_stop(run):
     projected.stock_state = copy(run.stock_state)
     projected.stock_state.run = projected
     projected.stock_state.balances = dict(run.stock_state.balances)
+    projected.stock_state.ranges = dict(run.stock_state.ranges)
     projected.stock_state.ends = dict(run.stock_state.ends)
     projected.recorder = recorder = copy(run.recorder)
     recorder.run = projected
@@ -275,6 +276,7 @@ def save(run, recorder, arrival):
                 ('changes', tuple((name, tuple(times)) for name, times in run.changes.items())),
                 ('written', _pairs(run.written)),
                 ('stocks', _pairs(run.stock_state.balances)),
+                ('stock_ranges', _pairs(run.stock_state.ranges)),
                 ('incoming_ends', _pairs(run.stock_state.ends)),
                 ('published', _pairs(run.published)),
                 ('arrival', arrival),
@@ -752,6 +754,7 @@ def restore(run, data):
         held = ([run.occurrences.live[name] for name in held[0]], held[1])
     moment.held = held
     _restore_ways(run, dict(parts['ways']))
+    run.stock_state.restore_missing()
 
 
 def _run(run, found):
@@ -767,6 +770,7 @@ def _run(run, found):
     run.changes = {name: list(times) for name, times in found['changes']}
     run.written = dict(found['written'])
     run.stock_state.balances = dict(found['stocks'])
+    run.stock_state.ranges = dict(found.get('stock_ranges', ()))
     run.stock_state.ends = dict(found['incoming_ends'])
     run.published = dict(found['published'])
     run.saved_arrival = found['arrival']
@@ -800,7 +804,7 @@ def _occurrences(run, found, made):
     occurrences.live = {}
     for name, number, started, step, due, version, waiting, active, met in found['live']:
         occurrences.live[name] = Live(
-            made[name], number, started, step, due, version, waiting, active, set(met)
+            made[name], number, started, step, due, version, waiting, active, set(met) & run.plan.stocks
         )
     occurrences.schedule = [tuple(entry) for entry in found['schedule']]
     heapq.heapify(occurrences.schedule)

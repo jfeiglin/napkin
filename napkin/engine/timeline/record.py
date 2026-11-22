@@ -100,6 +100,7 @@ from numpy.polynomial import chebyshev
 from ...core import expr as nodes
 from ...core.comparisons import Comparisons
 from ...core.errors import ExpressionError
+from ...core.units import rational
 from ...expressions import evaluate
 from ...program import parts as p
 from ...program.config import Configuration, Request
@@ -638,11 +639,11 @@ class Recorder:
             ledger_name = f'{name}.external'
             if self._names(ledger):
                 self._counted.setdefault(ledger_name, 0)
-            total, pieces = 0.0, []
+            total, pieces = 0, []
             for at, amount in self.transfers[name][1]:
                 if at <= end:
-                    total += amount
-                    pieces.append((at, total, 0.0))
+                    total += rational(amount)
+                    pieces.append((at, float(total), 0.0))
             self._put(ledger_name, self._history(ledger, pieces))
         self._as_of = end
 
@@ -763,10 +764,11 @@ class Recorder:
         made = Record(manifest, tuple(held), trace, failure)
         if not ongoing:
             rejected = failure is not None and (failure.detail('attempts') or failure.detail('placements'))
-            if self.run is not None and (
-                pause is not None or rejected or (failure is None and end == self.plan.horizon)
-            ):
-                made = self.run.stock_state.project(made)
+            if self.run is not None:
+                # A failed numerical segment has no accepted trajectory past its incoming
+                # cutoff. A held stock still has its last committed posting at every stop.
+                accepted = pause is not None or rejected or (failure is None and end == self.plan.horizon)
+                made = self.run.stock_state.project(made, held_only=not accepted)
             made = _finished(made)
         # At a provisional end the recorded outgoing slopes still count. At a true end
         # they become held points, as do the retained pieces when the budget ends a run.
@@ -1407,7 +1409,7 @@ def named(program, key, plan=None):
     whose read gives the reason (`absent`). Any other key is a KeyError that says why. A key of an
     occurrence is checked against its event, since only a run makes its occurrences."""
     found = declaration(program, key)
-    if '#' not in key.owner:
+    if '#' not in key.owner or found.what == 'ledger':
         _checked(_plan_of(program) if plan is None else plan, key, found)
     return found.unit, found.scale
 
@@ -1416,8 +1418,12 @@ def _checked(plan, key, found):
     """KeyError, which says why, for a key that a declaration names and that a plan holds no value
     of: an endpoint of a store that no flow meets on that side (spec: a stored quantity "gains an
     `outflow` scope when it supplies a flow and an `inflow` scope when it receives one"), or a value
-    that the plan does not make. A ledger names a store, which the reader checks."""
+    that the plan does not make. A stock has a ledger from its opening."""
     if found.what == 'ledger':
+        if not plan.is_stock(key.store, found.part):
+            raise KeyError(
+                f'{key}: {key.store} is no store, and only a store has a ledger of what came from outside'
+            )
         return
     if found.what == 'distribution':
         if isinstance(found.part.type.of, p.Number):
@@ -1472,6 +1478,16 @@ def _plan_of(program, record=None):
     return plan
 
 
+def stock_ledgers(program, record):
+    """Keys of the planned stocks' ledgers that this record's manifest offers, including zeroes."""
+    plan = _plan_of(program, record)
+    for store in sorted(plan.stocks):
+        key = plan.values[store].key
+        ledger = Key(key.owner, (*key.steps, 'external'))
+        if record.manifest.names(ledger):
+            yield ledger
+
+
 class _Pending(Exception):
     """Reads that an evaluation of the reader asks for before the reader has their values: the reader
     finds those values first and evaluates again, so a long chain of formulas needs no recursion."""
@@ -1517,7 +1533,6 @@ class Reader:
             for name, reads in entry.detail('reads') or ():
                 self.read[name, entry.owner] = reads
         self.kept = {}
-        self._stores = None
         self._always = {}  # the id of a node -> what every evaluation of it reads (`proofs.always`)
         self._checked = {}  # a key that names a value -> its `Declaration` (`checked`)
 
@@ -1543,11 +1558,7 @@ class Reader:
         found = self._checked.get(key)
         if found is None:
             found = declaration(self.program, key)
-            if key.store is not None and name_of(key.store) not in self.stores():
-                raise KeyError(
-                    f'{key}: {key.store} is no store, and only a store has a ledger of what came from outside'
-                )
-            if '#' not in key.owner or key.owner in self.starts:
+            if '#' not in key.owner or key.owner in self.starts or found.what == 'ledger':
                 _checked(self.plan, key, found)
             self._checked[key] = found
         return found.unit, found.scale
@@ -1614,17 +1625,6 @@ class Reader:
         except KeyError:
             return 0.0
         return history.at(t) if history.pieces[0].t <= t else 0.0
-
-    def stores(self):
-        """The engine names of the stores of the run: the stored numbers that its flows meet."""
-        if self._stores is None:
-            self._stores = {
-                end
-                for connection in self.plan.connections.values()
-                for end in (connection.source, connection.sink)
-                if end is not None
-            }
-        return self._stores
 
     def started(self, owner, t):
         """Whether an occurrence has started at time t: its start is in the trace, at or before t."""

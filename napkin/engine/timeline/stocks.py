@@ -8,10 +8,13 @@ A query computes the same balance without advancing a cursor.
 
 import math
 from dataclasses import replace
+from fractions import Fraction
 from functools import cached_property
 
 from ...core import expr as nodes
+from ...core.literals import Literals, node_parts
 from ...core.units import rational
+from ...expressions import evaluate
 from ...program.record import History, Piece
 from ..continuous.transfers import (
     ZERO_AMOUNT,
@@ -22,7 +25,8 @@ from ..continuous.transfers import (
 )
 from ..errors import SimulationError
 from .moment import quantity, span
-from .plan import DIRECT, FORMULA, LEG, name_of
+from .plan import DIRECT, FORMULA, INPUT, LEG, name_of
+from .reads import Reads
 
 # Test-only: a whole number of units in the last place added to a ledger balance where a
 # decision reads it (`Run.value`) and where a rebuilt method starts from it (`release_stock`).
@@ -103,7 +107,111 @@ class Stocks:
     def __init__(self, run):
         self.run = run
         self.balances = {}  # name -> (exact balance, signed incidence already posted, time)
+        self.ranges = {}  # exact captured bounds when their float snapshots lose a written digit
         self.ends = {}  # incoming generation membership during a stage's membership edits
+
+    def amount(self, node, units, read, balance_of):
+        """Evaluate one authored amount. Keep exact arithmetic and the usual branch/draw selection."""
+        reads = Reads(nodes.names(node), read, self.run.now)
+
+        def parts(part):
+            op, args, data = node_parts(part)
+            if isinstance(part, nodes.Ref):
+                value = balance_of(part.name)
+                if isinstance(value, nodes.Node):
+                    return 'pos', (value,), None
+                if value is None:
+                    value = units.comparisons.literal_value(part)
+                if isinstance(value, Fraction):
+                    return 'number', (), (value, '')
+            if isinstance(part, nodes.Ref) or op in ('compare', 'within', 'not', 'and', 'or'):
+                value = evaluate(part, reads.for_scale(part), units)
+                if isinstance(value, int | float | Fraction) and not isinstance(value, bool):
+                    return 'number', (), (value, '')
+                return 'literal', (), value
+            return op, args, data
+
+        exact = Literals(parts, units.exact_scale, units.comparisons.factor).value(node)
+        return evaluate(node, reads, units) if exact is None else exact
+
+    def _opening_operand(self, name):
+        run = self.run
+        if name in self.balances:
+            return self.stock_balance(name, run.now)
+        value = run.plan.values.get(name)
+        if name in run.frozen:
+            return None
+        if value is not None and (name in run.plan.stocks or value.kind in (FORMULA, INPUT)):
+            return value.node
+        return None
+
+    def _bounds(self, store, read, *, historical=False):
+        run = self.run
+        value = run.plan.values[store]
+        snapshot = run.bounds.get(store, (-math.inf, math.inf))
+        limits = []
+        for source, rounded in zip((value.lower, value.upper), snapshot, strict=True):
+            if source is None or not math.isfinite(rounded):
+                limits.append(rounded)
+            elif historical and nodes.names(source):
+                limits.append(rational(rounded))
+            else:
+                limits.append(rational(self.amount(source, run.plan.units, read, self._opening_operand)))
+        if limits[0] > limits[1]:
+            # Setup already gave a slightly inverted interval its accepted common point.
+            limits = [rational(edge) for edge in snapshot]
+        return tuple(limits)
+
+    def bounds(self, store):
+        retained = self.ranges.get(store)
+        if retained is not None:
+            return retained
+        return tuple(
+            rational(edge) if math.isfinite(edge) else edge
+            for edge in self.run.bounds.get(store, (-math.inf, math.inf))
+        )
+
+    def open(self, store, rounded, *, node=None):
+        """Open the exact posting cursor when this concrete stock comes into existence."""
+        if store in self.balances:
+            return
+        run = self.run
+        units = run.plan.units
+        read = run.value_of
+        limits = self._bounds(store, read)
+        if limits != self.bounds(store):
+            self.ranges[store] = limits
+        value = rounded
+        if node is not None and not (nodes.names(node) & run.plan.draws.keys()):
+            value = self.amount(node, units, read, self._opening_operand)
+        balance = rational(value)
+        if limits[0] == limits[1] and float(limits[0]) == rounded:
+            balance = limits[0]
+        self.balances[store] = balance, 0, run.now
+        # Numerical trajectories and ordinary reads start from the once-rounded opening.
+        run.env[store] = float(balance)
+
+    def restore_missing(self):
+        """Older checkpoints posted some stocks lazily. Preserve each saved cursor and its prefix."""
+        run = self.run
+        for store in sorted(run.plan.stocks):
+            if store not in run.env:
+                continue
+            if store not in self.ranges:
+                limits = self._bounds(store, run.value_of, historical=True)
+                if limits != self.bounds(store):
+                    self.ranges[store] = limits
+            if store in self.balances:
+                continue
+            opening = run.env[store]
+            node = run.plan.values[store].node
+            # Recover a known written opening when the old checkpoint still contains it.
+            # Other snapshots carry their saved value, including changes made before this version.
+            if node is not None and not nodes.names(node) and not run.changes.get(store):
+                exact = run.plan.units.comparisons.literal_value(node)
+                if isinstance(exact, Fraction) and float(exact) == opening:
+                    opening = exact
+            self.balances[store] = rational(opening), 0, run.changed_start(store)
 
     def incident(self, store, side):
         """The concrete legs of the incoming installation until its last stock is released."""
@@ -113,14 +221,9 @@ class Stocks:
     def point(self, store, t, amounts=None):
         """The physical balance and cumulative signed incidence of its installed generation.
         Read both directions from that generation even if a stage already changed membership."""
-        entry = self.balances.get(store)
-        if entry is not None:
-            balance, cursor, at = entry
-            if t == at:
-                return balance, cursor
-        else:
-            opening = self.run.env[store]
-            balance, cursor = rational(opening) if opening else ZERO_AMOUNT, 0
+        balance, cursor, at = self.balances[store]
+        if t == at:
+            return balance, cursor
         way = self.run.ways.instance_of(store)
         if way is None:
             return balance, cursor
@@ -588,14 +691,14 @@ class Stocks:
 
     def external(self, name, value, tx):
         run = self.run
-        if isinstance(value, bool) or not isinstance(value, int | float):
+        if isinstance(value, bool) or not isinstance(value, int | float | Fraction):
             return 0
-        if name not in run.plan.moving and name not in self.balances:
+        if name not in run.plan.stocks:
             return 0
         previous = run.moment.stage_balance(name, tx) if tx is not None else self.stock_balance(name, run.now)
         return rational(value) - previous
 
-    def project(self, record):
+    def project(self, record, *, held_only=False):
         """Project rounded physical balances at the cutoff into the requested stock histories.
         The saved recorder and all posting cursors remain suitable for a continuing run."""
         end = record.end
@@ -603,7 +706,7 @@ class Stocks:
         corrected, amounts = {}, {}
         for history in record.histories:
             name = name_of(history.key)
-            if history.pieces and name in run.ways.set_of:
+            if history.pieces and name in self.balances and not (held_only and name in run.ways.set_of):
                 actual = float(self.point(name, end, amounts)[0])
                 if history.at(end) != actual:
                     corrected[name] = actual

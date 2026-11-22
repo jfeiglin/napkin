@@ -178,14 +178,17 @@ def recorded(program, configuration, entry):
         raise common.Failed([common.problem('configuration', error, entry)]) from None
 
 
-def held(record):
-    """The path of every value that a record holds, an occurrence's included, in its order: each of its
-    histories whose key its manifest names (`Manifest.names`, the rule of `Record.unavailable`). A
-    history that the run keeps for its books alone, as the ledger of an edited store that the request
-    does not name, is not offered, since a read of it is unavailable."""
+def held(record, program=None):
+    """The named histories of the record, plus each planned stock's implicit zero ledger when
+    the program is known. Both obey the manifest's recording request."""
     from ..engine.timeline.plan import name_of
 
-    return [name_of(history.key) for history in record.histories if record.manifest.names(history.key)]
+    keys = dict.fromkeys(history.key for history in record.histories if record.manifest.names(history.key))
+    if program is not None:
+        from ..engine.timeline.record import stock_ledgers
+
+        keys.update(dict.fromkeys(stock_ledgers(program, record)))
+    return [name_of(key) for key in keys]
 
 
 class Offered:
@@ -193,7 +196,7 @@ class Offered:
     holds (`held`, in its order), and the properties that its program leaves out."""
 
     def __init__(self, record, program):
-        self.record, self.program, self.held = record, program, held(record)
+        self.record, self.program, self.held = record, program, held(record, program)
         self._reader = None
 
     def refused(self, path):
@@ -217,7 +220,11 @@ class Offered:
             reason = str(error.args[0]).removeprefix(f'{path}: ')
             if not reason.startswith('no value of'):
                 return reason
-        return 'no named value of the model' + common.close(path, self.held)
+        # Suggest a ledger for a misspelled ledger, not for a misspelling of its stock.
+        candidates = (
+            name for name in self.held if not name.endswith('.external') or name.count('.') == path.count('.')
+        )
+        return 'no named value of the model' + common.close(path, candidates)
 
 
 def named(model, record):

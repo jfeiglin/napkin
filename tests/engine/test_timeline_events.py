@@ -19,6 +19,7 @@ from napkin.program.build import (
     assign,
     event,
     flow,
+    formula,
     input_,
     local,
     move,
@@ -125,15 +126,43 @@ def yard(taken):
     return program, run(program, configuration)
 
 
-def test_a_write_or_a_move_that_misses_a_bound_by_roundoff_lands_on_the_bound():
-    # A move of all of a store but 1e-12 of it, less than the store's tolerance (1e-10), moves all.
+def test_a_write_can_land_on_its_bound_and_a_move_preserves_the_authored_remainder():
     assert 0.3 - 0.1 - 0.2 < 0
     program, record = yard(1 - 1e-12)
     assert record.failure is None, record.failure
     left, full, got = read(record, program, ['yard.left', 'yard.full', 'yard.got'], [1.0])
-    assert (left.values, full.values, got.values) == ((0.0,), (0.0,), (1.0,))
+    assert (left.values, full.values, got.values) == ((0.0,), (1e-12,), (0.999999999999,))
 
 
 def test_a_move_of_more_than_a_store_holds_fails():
     _, record = yard(1.5)
     assert 'fails' in record.failure.detail('message') and record.failure.t == 0
+
+
+def test_stock_assignment_reads_the_prior_move_through_the_stages_live_formula():
+    b = Builder(UNITS)
+    yard = b.entity(
+        'yard',
+        value('tank', 'L', 10**16, lower=0),
+        value('litre', 'L', 1, lower=0),
+        value('bulk', 'L', 0, lower=0),
+        value('receipt', 'L', 0, lower=0),
+        value('live', 'L', formula(this.litre)),
+        event(
+            'transfer',
+            after(
+                q(1, 'h'),
+                move(q(1, 'L'), this.litre, this.tank),
+                assign(this.live, formula(this.tank + q(1, 'L'))),
+                assign(this.tank, this.live + q(1, 'L')),
+                move(q(10**16, 'L'), this.tank, this.bulk),
+                move(q(3, 'L'), this.tank, this.receipt),
+            ),
+        ),
+    )
+    b.setup(start(yard.transfer))
+    program = b.finish()
+    record = run(program, Configuration(Request(1)))
+    assert record.failure is None, record.failure
+    tank, receipt = read(record, program, ['yard.tank', 'yard.receipt'], [1])
+    assert (tank.values, receipt.values) == ((0,), (3,))
