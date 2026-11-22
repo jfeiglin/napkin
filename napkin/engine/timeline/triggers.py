@@ -251,6 +251,20 @@ class Triggers:
         (`reads.py`)."""
         return lazily(node, lambda name: self.run.value(name, t), self.plan.units, t)
 
+    def path_side(self, node, t):
+        """A side read on the installed trajectories, also at the present time. At the present the
+        run reads a stock's accepted ledger balance, which can differ from its trajectory in the
+        last places. A contact search follows the trajectory, so it starts from the trajectory:
+        otherwise a sign that differs only in roundoff is a crossing that never happens."""
+        run = self.run
+
+        def read(name):
+            if t == run.now and name in run.ways.set_of and name not in run.written:
+                return run.ways.value(name, t)
+            return run.value(name, t)
+
+        return lazily(node, read, self.plan.units, t)
+
     def near(self, node, origin, t):
         """The near-ties of a condition that holds at time t (see the module): sides within the
         tolerance of what they read, now and an instant later."""
@@ -561,7 +575,7 @@ class Triggers:
             if until <= now:
                 continue
             try:
-                start = self.side(left, now) - self.side(right, now)
+                start = self.path_side(left, now) - self.path_side(right, now)
                 linear = (
                     self._linear(moving)
                     and _affine(left, moving, self.plan)
