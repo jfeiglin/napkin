@@ -1132,12 +1132,14 @@ class Sparse(MovingTransfers, Way):
         the whole step: the start plus the gap over that rate. A root search on the dense output
         lands a place or two to either side of it, and which side depends on the platform's
         arithmetic. None unless the rate is the same at both ends and the root is in the band."""
-        for node, other, direction in ((pair[0], pair[1], 1), (pair[1], pair[0], -1)):
-            if isinstance(node, nodes.Ref) and node.name in self.place and not self.moves(other):
-                k = self.place[node.name]
-                break
-        else:
+        sides = [
+            (self.place[node.name], direction)
+            for node, other, direction in ((pair[0], pair[1], 1), (pair[1], pair[0], -1))
+            if isinstance(node, nodes.Ref) and node.name in self.place and not self.moves(other)
+        ]
+        if not sides:
             return None
+        k, direction = sides[0]
         if not ends:
             evaluations = self.evaluations
             try:
