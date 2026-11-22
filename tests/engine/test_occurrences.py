@@ -26,8 +26,7 @@ from fractions import Fraction
 import pytest
 
 from napkin.engine import read, run
-from napkin.engine.timeline import Plan
-from napkin.engine.timeline.record import remember
+from napkin.program.artifact import Artifact, loads
 from napkin.program.build import (
     BOOL,
     SINK,
@@ -58,6 +57,7 @@ from napkin.program.build import (
     value,
     when,
 )
+from napkin.program.checkpoint import decode, encode
 from napkin.program.config import Configuration, Limits, Request
 from napkin.program.record import Key
 from tests.program.examples import EXAMPLES, At
@@ -232,9 +232,9 @@ def test_a_record_read_without_its_run_makes_its_occurrences_again_from_its_trac
     keys = [item.key for item in example.expected if isinstance(item, At)]
     times = sorted({float(item.t) for item in example.expected if isinstance(item, At)})
     first = [reading.values for reading in read(record, example.program, keys, times)]
-    # The reader keeps the plan of the last run: a plan of the program alone takes its place.
-    remember(Plan.of(example.program, Configuration(Request(0))))
-    again = [reading.values for reading in read(record, example.program, keys, times)]
+    saved = decode(encode(record))
+    program = loads(Artifact(example.program).data()).program
+    again = [reading.values for reading in read(saved, program, keys, times)]
     assert again == first
 
 

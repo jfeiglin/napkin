@@ -260,6 +260,7 @@ RECORDS = {
         record.Curve,
         record.Piece,
         record.History,
+        record.ChangeHistory,
         record.Entry,
         record.Manifest,
         record.Record,

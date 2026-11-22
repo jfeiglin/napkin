@@ -91,7 +91,7 @@ from .plan import (
     Pending,
 )
 from .reads import lazily
-from .record import HistoryFull, Recorder, remember
+from .record import HistoryFull, Recorder
 from .saved import restore
 from .stocks import Stocks, probed
 from .triggers import Triggers
@@ -151,7 +151,6 @@ class Run:
         self.settings = run_settings(plan.numerics, self.cap)
         self.recorder = Recorder(plan, {}, {})
         self.recorder.run = self
-        remember(plan)
         self.now = 0.0  # also carries the time of a numerical trial for diagnostics
         self.accepted = 0.0  # the physical cutoff chosen by the timeline
         self.env = {'t': 0.0}  # the values of the start, and later each value held between moments
@@ -764,8 +763,13 @@ class Run:
         """The time at which a stored value last changed at a commit: of a write of this stage that
         differs from the committed value, now (R-A2-08); else of its last change, or its start."""
         stored = self.plan.changed[name]
-        if tx is not None and stored in tx.writes and tx.writes[stored] != self.value(stored):
-            return float(self.now)
+        if tx is not None and stored in tx.writes:
+            if stored in self.plan.stocks:
+                changed = self.moment.stage_balance(stored, tx) != self.stock_balance(stored, self.now)
+            else:
+                changed = tx.writes[stored] != self.value(stored)
+            if changed:
+                return float(self.now)
         found = self.changes.get(stored)
         return found[-1] if found else self.changed_start(stored)
 
@@ -801,12 +805,12 @@ class Run:
             if isinstance(value, Defined):
                 return
         if name in plan.stocks:
-            old_balance = self.stock_state.replace(name, value, balance)
+            changed = self.stock_state.replace(name, value, balance)
+        else:
+            changed = self.env.get(name, _MISSING) != value
         if name in self.ways.set_of:
-            old = float(old_balance)
             self.written[name] = value
         else:
-            old = self.env.get(name, _MISSING)
             self.env[name] = value
             self.recorder.add(name, self.now, value, 0.0)
         self.changed.add(name)
@@ -814,7 +818,7 @@ class Run:
             # A distribution that a stage replaced has a new mean and standard deviation.
             self.recorder.add(described, self.now, self.chance.described(described), 0.0)
             self.changed.add(described)
-        if old != value:
+        if changed:
             # `elapsed` restarts at a commit that changes the value.
             self.changes.setdefault(name, []).append(self.now)
             if name in plan.changed_of:

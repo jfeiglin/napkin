@@ -65,9 +65,12 @@ manifest of what it holds (R-A4a-07, R-A4a-08).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from bisect import bisect_left
+from dataclasses import dataclass, replace
+from fractions import Fraction
 from typing import Any
 
+from ..core.units import rational
 from .refs import Number
 
 KINDS = (
@@ -155,6 +158,15 @@ class Piece:
         """The value of the piece at a time at or after its own."""
         if isinstance(self.value, (bool, str, Unavailable)):
             return self.value
+        if isinstance(self.value, Fraction):
+            # Keep a posted remainder until the public value at the requested time is rounded.
+            if self.curve is not None:
+                increase = rational(self.curve.increase(time - self.t))
+            elif self.rate:
+                increase = rational(self.rate) * (rational(time) - rational(self.t))
+            else:
+                increase = 0
+            return float(self.value + increase)
         if self.curve is not None:
             return self.value + self.curve.increase(time - self.t)
         return self.value if self.rate == 0 else self.value + self.rate * (time - self.t)
@@ -178,6 +190,14 @@ class History:
         if found is None:
             raise LookupError(f'{self.key} has no value at {time} h')
         return found.at(time)
+
+
+@dataclass(frozen=True)
+class ChangeHistory(History):
+    """A stored value read by elapsed: its creation time, then the times of the commits that
+    changed it. Two commits at one time can restore the original balance or displayed value."""
+
+    changes: tuple[Number, ...]
 
 
 @dataclass(frozen=True)
@@ -329,7 +349,11 @@ class Record:
         for history in self.histories:
             kept = tuple(piece for piece in history.pieces if piece.t < end)
             if kept:
-                histories.append(History(history.key, kept))
+                if isinstance(history, ChangeHistory):
+                    changes = history.changes[: bisect_left(history.changes, end)]
+                    histories.append(replace(history, pieces=kept, changes=changes))
+                else:
+                    histories.append(replace(history, pieces=kept))
         trace = tuple(entry for entry in self.trace if entry.t < end)
         unit = 'piece' if pieces == 1 else 'pieces'
         message = (

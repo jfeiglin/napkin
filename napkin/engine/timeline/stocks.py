@@ -15,7 +15,7 @@ from ...core import expr as nodes
 from ...core.literals import Literals, node_parts
 from ...core.units import rational
 from ...expressions import evaluate
-from ...program.record import History, Piece
+from ...program.record import Piece
 from ..continuous.transfers import (
     ZERO_AMOUNT,
     certified_amount,
@@ -684,10 +684,12 @@ class Stocks:
         return probed(float(balance))
 
     def replace(self, store, value, balance):
+        """Apply the stage or edit and report whether it changed the physical balance."""
         self.run.post_stock(store, self.run.now)
         old, cursor, at = self.balances[store]
-        self.balances[store] = rational(value) if balance is None else balance, cursor, at
-        return float(old)
+        new = rational(value) if balance is None else balance
+        self.balances[store] = new, cursor, at
+        return new != old
 
     def external(self, name, value, tx):
         run = self.run
@@ -733,7 +735,7 @@ class Stocks:
             if name in corrected and points:
                 if points[-1].t == end:
                     points = points[:-1]
-                histories.append(History(history.key, (*points, Piece(end, corrected[name]))))
+                histories.append(replace(history, pieces=(*points, Piece(end, corrected[name]))))
             else:
                 histories.append(history)
         return replace(record, histories=tuple(histories))

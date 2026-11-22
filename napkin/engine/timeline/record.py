@@ -43,9 +43,9 @@ pieces of each value of a run:
   where an edit made one, as the run goes: a record that ends before the first edit of a store holds
   no ledger of it, and an edit adds to the budget
   of pieces at its own time, never before.
-- **The time of a change** that `elapsed` reads has a piece at the start of its value and at each
-  commit that changed it. It has no key in the record: the reader finds it from the history of the
-  value that it reads.
+- **The time of a change** that `elapsed` reads starts with the value's creation time. The
+  value's history carries the time of every commit that changed it, including separate commits
+  at one time and exact stock postings smaller than a floating-point unit.
 - **An occurrence that a failed commit started** holds no value in the record: the record holds the
   occurrences that its trace starts, and the commit that failed is not in it (`moment.py`).
 - **A formula, and a request or a capacity written as one,** is fitted on each completed interval from the
@@ -75,12 +75,12 @@ member or of the root, is a value of every run, whatever reads it (spec, "Any na
 reported"); a capacity that the program leaves out is `Unavailable`, as the flow has no ceiling of its
 own (`absent`); any other path is a KeyError that says why. Its `Reader` evaluates a formula, a reduction, a keyed
 read and a dynamic read at each time that it is asked from the recorded values of what it reads (a
-formula of a finished occurrence reads its frozen piece; the time of the last change of a value is
-its last piece that differs from the one before), depth first with no recursion, and keeps what each
+formula of a finished occurrence reads its frozen piece; an elapsed clock reads the time of the
+last committed change), depth first with no recursion, and keeps what each
 evaluation read, which a report's evidence trail follows. It never reads a formula's fitted pieces: a
 fit is checked at a few points of each piece only, so it could lose a kink between two of them, or a
-yes/no that changes and changes back. It reads a record with the plan of the run that made it, or
-makes the record's occurrences again from the starts of its trace (`Plan.replay`).
+yes/no that changes and changes back. Its plan replays this record's starts and captures under
+the comparison settings of its manifest (`Plan.replay`).
 """
 
 from __future__ import annotations
@@ -88,7 +88,6 @@ from __future__ import annotations
 import math
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
-from copy import copy
 from dataclasses import dataclass, replace
 from fractions import Fraction
 from itertools import pairwise
@@ -103,10 +102,10 @@ from ...core.errors import ExpressionError
 from ...core.units import rational
 from ...expressions import evaluate
 from ...program import parts as p
-from ...program.config import Configuration, Request
+from ...program.config import Configuration, Numerics, Request
 from ...program.parts import DistributionType, OccurrenceType
 from ...program.proofs import always
-from ...program.record import Curve, Entry, History, Key, Manifest, Piece, Record, Unavailable
+from ...program.record import ChangeHistory, Curve, Entry, History, Key, Manifest, Piece, Record, Unavailable
 from ..continuous.kernels import Affine, MatrixExponential
 from ..errors import SimulationError
 from .collections import dynamic_value, history_of, index_of, kept, known, looked_up, reduced
@@ -205,7 +204,7 @@ def fitted(values, start, end, tolerance):
 
 
 def _line_number(value):
-    return isinstance(value, (float, int)) and not isinstance(value, bool)
+    return isinstance(value, (float, int, Fraction)) and not isinstance(value, bool)
 
 
 def recorded_piece(t, value, rate):
@@ -214,22 +213,28 @@ def recorded_piece(t, value, rate):
 
 
 def _compact(pieces):
-    """The pieces with each that continues the line of the one before it left out."""
+    """Drop a piece only when its predecessor gives the same value and outgoing rate.
+
+    A small discontinuity can be a committed posting even on a moving stock.
+    Its size relative to the opening balance does not identify a continuation.
+    """
     if len(pieces) < 2:
         return pieces
     kept = []
     for t, value, rate in pieces:
-        if kept and not isinstance(rate, Curve) and not isinstance(value, (bool, str, Unavailable)):
+        if kept:
             t0, v0, r0 = kept[-1]
-            if not isinstance(r0, Curve) and not isinstance(v0, (bool, str, Unavailable)):
-                scale = max(abs(v0), abs(value), 1e-300)
-                if rate == r0 and (
-                    (v0 == value and rate == 0)
-                    or (math.isfinite(scale) and abs(v0 + r0 * (t - t0) - value) <= 1e-13 * scale)
-                ):
+            if not isinstance(rate, Curve) and rate == r0:
+                if rate == 0 and value == v0:
                     continue
-        elif kept and isinstance(value, (bool, str, Unavailable)) and kept[-1][1] == value:
-            continue
+                if rate != 0 and _line_number(v0) and _line_number(value):
+                    continued = (
+                        v0 + rational(r0) * (rational(t) - rational(t0))
+                        if isinstance(v0, Fraction)
+                        else v0 + r0 * (t - t0)
+                    )
+                    if continued == value:
+                        continue
         kept.append((t, value, rate))
     return kept
 
@@ -501,6 +506,16 @@ class Recorder:
                 return math.inf, 0
         return (math.inf, 0) if uses else (upper, growth)
 
+    def _posted_value(self, name, t, value):
+        """Keep a physical posting's exact intercept when its public float loses a remainder."""
+        if self.run is not None:
+            point = self.run.stock_state.balances.get(name)
+            if point is not None and point[2] == t:
+                balance = point[0]
+                if balance != value and float(balance) == value:
+                    return balance
+        return value
+
     def add(self, name, t, value, rate):
         """One piece of a value, which a run gives as it goes."""
         if self._held_growth:
@@ -508,7 +523,7 @@ class Recorder:
                 self._held_upper += self._held_growth
             else:
                 self._held_upper, self._held_growth = math.inf, 0
-        self.pieces.setdefault(name, []).append((t, value, rate))
+        self.pieces.setdefault(name, []).append((t, self._posted_value(name, t, value), rate))
         self._dirty.add(name)
         self._from = min(self._from, t)
 
@@ -516,6 +531,8 @@ class Recorder:
         """Pieces of a value, which a run gives as it goes."""
         if pieces:
             self._held_upper, self._held_growth = math.inf, 0
+            if self.run is not None and name in self.run.stock_state.balances:
+                pieces = [(t, self._posted_value(name, t, value), rate) for t, value, rate in pieces]
             self.pieces.setdefault(name, []).extend(pieces)
             self._dirty.add(name)
             self._from = min(self._from, pieces[0][0])
@@ -749,11 +766,18 @@ class Recorder:
         plan, request = self.plan, self.plan.configuration.request
         last = failure if failure is not None else pause
         trace = (*self.trace, last) if last is not None else tuple(self.trace)
-        held = [
-            History(h.key, tuple(h.pieces))
-            for h in self._histories.values()
-            if h.key is not None and h.pieces
-        ]
+        held = []
+        for name, history in self._histories.items():
+            if history.key is None or not history.pieces:
+                continue
+            pieces = tuple(history.pieces)
+            if plan.changed_of.get(name) in self._histories:
+                changes = self.run.changes.get(name, ())
+                through_end = bisect_right(changes, end)
+                times = (self.run.changed_start(name), *changes[:through_end])
+                held.append(ChangeHistory(history.key, pieces, times))
+            else:
+                held.append(History(history.key, pieces))
         manifest = Manifest(
             request.horizon,
             request.everything,
@@ -775,7 +799,7 @@ class Recorder:
         # The values that the record holds stay within the request's budget of pieces (R-A4a-07); a
         # record that its budget ends keeps its histories up to that end (`requested`).
         bounded = made.within(request.pieces)
-        return bounded if bounded is made else requested(bounded, plan.program, plan)
+        return bounded if bounded is made else requested(bounded, plan.program)
 
     @staticmethod
     def _history(key, pieces):
@@ -1068,15 +1092,18 @@ def needed(plan, names, definitions):
     return found
 
 
-def requested(record, program, plan=None):
+def requested(record, program):
     """The record with what a record of its request keeps: every history, of a record of every value;
     else the histories that its manifest names, those that their values need (`needed`, under the
     occurrences that its trace starts and the definitions that its commits gave), and the ledger of
     each store that an edit changed by its end (the store's books, `Manifest.names`); each history in
-    the order of its key, a piece at its end holding its value there (`_finished`). `plan` is a plan of the program that may serve (`plan_for`)."""
+    the order of its key, a piece at its end holding its value there (`_finished`)."""
     histories = record.histories
     if not record.manifest.everything:
-        found, names = _needed_by(program, record.manifest.keys, record.trace, plan)
+        found = _plan_of(program, record)
+        names = needed(
+            found, [name_of(key) for key in record.manifest.keys], found.definitions_of(record.trace)
+        )
         keys = set(record.manifest.keys) | {found.values[name].key for name in names}
         histories = [history for history in histories if history.key in keys or history.key.store is not None]
     return _finished(Record(record.manifest, tuple(histories), record.trace, record.failure))
@@ -1098,37 +1125,10 @@ def _finished(record):
                 else (piece.t, piece.value, piece.rate if piece.curve is None else piece.curve)
                 for piece in history.pieces
             ]
-            histories.append(Recorder._history(history.key, pieces))
+            histories.append(replace(history, pieces=Recorder._history(history.key, pieces).pieces))
         else:
             histories.append(history)
     return Record(record.manifest, tuple(histories), record.trace, record.failure)
-
-
-def _needed_by(program, keys, trace, plan=None):
-    """(the plan, the engine names) of what a record of only `keys` that ends with `trace` needs
-    (`needed`): on a plan whose values are as the program declares them and whose occurrences are
-    those that the trace starts (`plan_for`), under the definitions that the trace's commits gave."""
-    plan = plan_for(program, trace, plan)
-    return plan, needed(plan, [name_of(key) for key in keys], plan.definitions_of(trace))
-
-
-def plan_for(program, trace, plan=None):
-    """A plan of a program whose values are as the program declares them (no commit gave one a new
-    definition) and whose occurrences are those that a trace starts: `plan`, or the plan that the
-    reader keeps (`remember`), when it is one; else one made again from the trace (`Plan.replay`). So
-    what a record needs follows from the record, and not from the run that made the plan."""
-    starts = {entry.owner for entry in trace if entry.kind == 'start'}
-    kept = _PLANS.get(id(program))
-    for found in (plan, kept[1] if kept is not None and kept[0] is program else None):
-        if (
-            found is not None
-            and not found.defined
-            and starts == {occurrence for made in found.occurrences.values() for occurrence in made}
-        ):
-            return found
-    made = Plan.of(program, Configuration(Request(0)))
-    made.replay(trace)
-    return made
 
 
 def _order(history):
@@ -1402,13 +1402,13 @@ def absent(key, found):
 
 def named(program, key, plan=None):
     """The declared unit and the scale of the value at a key (`declared`), once the key is checked as
-    a reader checks it (`Reader.checked`) against a plan of the program (`plan`, else the reader's):
+    a reader checks it (`Reader.checked`) against a plan of the program (`plan`, else a new one):
     it names a value that a run of the program holds, or a property that the program leaves out,
     whose read gives the reason (`absent`). Any other key is a KeyError that says why. A key of an
     occurrence is checked against its event, since only a run makes its occurrences."""
     found = declaration(program, key)
     if '#' not in key.owner or found.what == 'ledger':
-        _checked(_plan_of(program) if plan is None else plan, key, found)
+        _checked(Plan.of(program, Configuration(Request(0))) if plan is None else plan, key, found)
     return found.unit, found.scale
 
 
@@ -1446,33 +1446,13 @@ def in_unit(value, scale):
     return float(Fraction(value) / scale)
 
 
-# The plan of the program that a reader or a run used last: a program is read again and again.
-_PLANS = {}
-
-
-def remember(plan):
-    """Keep the plan of a run for the reader: what a configuration sets changes no formula, no
-    reduction and no keyed read, so the plan of any run of a program serves every record of it. A
-    definition that a commit gave a value is in the trace of its record (`Plan.definitions_of`), and
-    the reader reads the plan's values as the program declares them (`Plan.original`)."""
-    _PLANS.clear()
-    _PLANS[id(plan.program)] = (plan.program, plan)
-
-
-def _plan_of(program, record=None):
-    """A plan of a program, which names each formula with its node: the plan that a run of it
-    kept, else the plan of a bare request. A record whose occurrences that plan does not hold has
-    them made again in a plan of its own, from the starts of its trace (`Plan.replay`)."""
-    found = _PLANS.get(id(program))
-    if found is None or found[0] is not program:
-        remember(Plan.of(program, Configuration(Request(0))))
-        found = _PLANS[id(program)]
-    plan = found[1]
-    if record is not None:
-        starts = {entry.owner for entry in record.trace if entry.kind == 'start'}
-        if starts != {occ for occurrences in plan.occurrences.values() for occ in occurrences}:
-            plan = Plan.of(program, Configuration(Request(0)))
-            plan.replay(record.trace)
+def _plan_of(program, record):
+    """Rebuild the declarations and occurrence bindings owned by this record's trace."""
+    factor = record.manifest.comparison_factor
+    numerics = Numerics(rtol=factor, atol_factor=factor)
+    plan = Plan.of(program, Configuration(Request(record.manifest.horizon), numerics=numerics))
+    plan.comparison_scales.update(record.manifest.comparison_scales)
+    plan.replay(record.trace)
     return plan
 
 
@@ -1507,7 +1487,7 @@ class Reader:
     def __init__(self, record, program):
         self.record, self.program = record, program
         self.plan = _plan_of(program, record)
-        self.units = copy(self.plan.units)
+        self.units = self.plan.units
         self.comparison_scales = dict(record.manifest.comparison_scales)
         self.frozen_scales = {}
         self.comparison_time = None
@@ -1769,21 +1749,28 @@ class Reader:
             raise LookupError(f'the record keeps no history of {value.key or value.name}') from None
 
     def _changed(self, name, t, read):
-        """The time at which a stored value last changed at a commit, at time t: of the last piece of
-        its history at or before t that differs from the value before it (a value that holds between
-        moments has a piece at each commit that changes it; one that moves, beyond its tolerance), or
-        the time of its first piece."""
+        """The last commit that changed the value by t, or its creation if no commit changed it."""
         stored = self.plan.changed[name]
         read(stored)  # it has a value at t, or the change has none
-        pieces = self._stored(self.plan.values[stored]).pieces
-        last = bisect_right([piece.t for piece in pieces], t) - 1
+        history = self._stored(self.plan.values[stored])
+        if isinstance(history, ChangeHistory):
+            through = bisect_right(history.changes, t)
+            if through:
+                return history.changes[through - 1]
+            raise LookupError(f'{history.key} has no value at {t} h')
+        # Earlier records have only displayed pieces. Held readings expose their jumps exactly.
+        # A fitted curve's seam can differ by roundoff, so retain the earlier numerical guard there.
+        pieces = history.pieces
+        last = bisect_right(pieces, t, key=_piece_time) - 1
         for k in range(last, 0, -1):
-            before, piece = pieces[k - 1].at(pieces[k].t), pieces[k].value
-            if isinstance(piece, bool | str) or isinstance(before, bool | str):
-                if piece != before:
-                    return pieces[k].t
-            elif abs(float(piece) - float(before)) > 1e-12 * max(1.0, abs(float(before))):
-                return pieces[k].t
+            previous, piece = pieces[k - 1], pieces[k]
+            before, after = previous.at(piece.t), piece.value
+            held = previous.curve is piece.curve is None and previous.rate == piece.rate == 0
+            if held or isinstance(before, bool | str) or isinstance(after, bool | str):
+                if before != after:
+                    return piece.t
+            elif abs(float(after) - float(before)) > 1e-12 * max(1.0, abs(float(before))):
+                return piece.t
         return pieces[0].t
 
     def _ready(self, names, t):
@@ -1802,7 +1789,7 @@ class Reader:
         self._ready(sorted(plan.dynamic_reads(name)), t)
         try:
             members = plan.members_at(dynamic.source, read)
-            return dynamic_value(dynamic, members, plan, read, t, plan.units)
+            return dynamic_value(dynamic, members, plan, read, t, self.units)
         except FAILURES as problem:
             return Unavailable(str(problem))
 
