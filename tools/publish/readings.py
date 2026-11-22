@@ -1,5 +1,6 @@
 """Render instantaneous start and horizon readings for one current-language model."""
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from napkin import report
@@ -20,7 +21,8 @@ OUTPUT = Path('results/readings.md')
 
 def artifacts(ctx):
     return {
-        catalogue.result(sid, OUTPUT.name): render(model, jobs=ctx.jobs) for sid, model in ctx.models.items()
+        catalogue.result(sid, OUTPUT.name): render(model, completed=ctx.studies[sid])
+        for sid, model in ctx.models.items()
     }
 
 
@@ -58,15 +60,56 @@ def scale_of(reader, program, path, at):
     return None if floor is None else in_unit(floor, unit)
 
 
-def render(model, *, jobs=1):
-    """The completed named runs in featured order, with the exercised evidence at each reading."""
+def check_support(model):
+    """A publication may only use inputs and values supported by evidence."""
     problems = [item for item in model.reports if item.code in (CODE, DATUM)]
     if problems:
         raise ValueError('\n'.join(f'{p.file}:{p.line}: {p.message} [{p.code}]' for p in problems))
+
+
+@dataclass(frozen=True)
+class Reading:
+    value: object
+    unit: str
+    scale: float | None = None
+
+    @property
+    def text(self):
+        return display(self.value, self.scale)
+
+
+def reported_rows(brief, model, name, record, times):
+    """Yield the displayed readings and their exercised references in brief and time order."""
+    paths = shown(brief, model, record)
+    unavailable = {path: value_note(model, 'not_estimated', path, 'reason') for path in paths}
+    measured = [path for path in paths if unavailable[path] is None]
+    config = model.configure(name)
+    options = options_of(model.declared, name)
+    reader = Reader(record, model.program)
+    for at in times:
+        result = report(record, model.program, config, measured, [at], table=model.table, options=options)
+        definitions = {rid: (kind, text) for rid, kind, text in result.records}
+        readings = {value.path: value for value in result.values}
+        for path in paths:
+            value = readings.get(path)
+            if value is None:
+                yield path, at, Reading(f'Not estimated ({unavailable[path]})', ''), {}
+                continue
+            references = {
+                rid: definitions.get(rid) for item in value.trail if item.exercised for rid in item.records
+            }
+            reading = Reading(value.values[0], value.unit or '1', scale_of(reader, model.program, path, at))
+            yield path, at, reading, references
+
+
+def render(model, *, jobs=1, completed=None):
+    """The completed named runs in featured order, with the exercised evidence at each reading."""
+    check_support(model)
     brief = brief_of(model)
     ids = [r.name for r in model.declared.runs] or [None]
     order = list(dict.fromkeys([*(brief.featured or ()), *ids]))
-    completed = catalogue.completed_study(model, runs=order, jobs=jobs)
+    if completed is None:
+        completed = catalogue.completed_study(model, runs=order, jobs=jobs)
     scenario = model.declared.scenario
     lines = [f'# {cell(scenario.title)}', '']
     if scenario.summary:
@@ -80,7 +123,8 @@ def render(model, *, jobs=1):
         ]
     )
     cited = {}
-    for name, record in completed.items():
+    for name in order:
+        record = completed[name]
         lines.extend(
             [
                 f'## {cell(name) if name is not None else "Default run"}',
@@ -89,35 +133,11 @@ def render(model, *, jobs=1):
                 '|---|---:|---|---|---|',
             ]
         )
-        paths = shown(brief, model, record)
-        unavailable = {path: value_note(model, 'not_estimated', path, 'reason') for path in paths}
-        measured = [path for path in paths if unavailable[path] is None]
-        config = model.configure(name)
-        options = options_of(model.declared, name)
-        reader = Reader(record, model.program)
-        for at in dict.fromkeys([0, record.end]):
-            result = report(record, model.program, config, measured, [at], table=model.table, options=options)
-            definitions = {rid: (kind, text) for rid, kind, text in result.records}
-            readings = {value.path: value for value in result.values}
-            for path in paths:
-                if path not in readings:
-                    row = (path, f'{at:g}', f'Not estimated ({unavailable[path]})', '', '')
-                else:
-                    value = readings[path]
-                    references = dict.fromkeys(
-                        rid for item in value.trail if item.exercised for rid in item.records
-                    )
-                    for rid in references:
-                        if rid in definitions:
-                            cited[rid] = definitions[rid]
-                    row = (
-                        path,
-                        f'{at:g}',
-                        display(value.values[0], scale_of(reader, model.program, path, at)),
-                        value.unit or '1',
-                        ', '.join(references),
-                    )
-                lines.append('| ' + ' | '.join(cell(item) for item in row) + ' |')
+        times = dict.fromkeys([0, record.end])
+        for path, at, reading, refs in reported_rows(brief, model, name, record, times):
+            cited.update((rid, definition) for rid, definition in refs.items() if definition is not None)
+            row = (path, f'{at:g}', reading.text, reading.unit, ', '.join(refs))
+            lines.append('| ' + ' | '.join(cell(item) for item in row) + ' |')
         lines.append('')
     if cited:
         lines.extend(['## Evidence', ''])
