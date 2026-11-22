@@ -916,15 +916,18 @@ def departing_branches(surfaces, t, y, side_at, rates, place, moving, contacted,
             try:
                 if left != right and (a, b) not in contacted:
                     # An interpolated inventory at a scheduled cut can miss a physical
-                    # tangency by a few ulps. Require an actual equality on the local
-                    # trajectory at a neighbouring clock float. A nonzero gap elsewhere
-                    # inside the band stays held until its band-exit root.
+                    # tangency by a few ulps. Look for equality on the local trajectory.
+                    # A direct stock moving past a fixed limit can cross between two
+                    # neighbouring clock floats without ever representing the limit.
                     def touches(toward):
                         at = t
                         for _ in range(8):
                             at = math.nextafter(at, toward)
                             read = side_at(at, y + (at - t) * drift)
-                            if read(a) == read(b):
+                            gap = read(a) - read(b)
+                            if gap == 0:
+                                return True
+                            if (gap > 0) != (left > right) and (directed(a, b) or directed(b, a)):
                                 return True
                         return False
 
