@@ -106,6 +106,7 @@ from ...program.config import Configuration, Numerics, Request
 from ...program.parts import DistributionType, OccurrenceType
 from ...program.proofs import always
 from ...program.record import ChangeHistory, Curve, Entry, History, Key, Manifest, Piece, Record, Unavailable
+from ..continuous.integrate import crossing_time, switch_layers, switch_pairs
 from ..continuous.kernels import Affine, MatrixExponential
 from ..errors import SimulationError
 from .collections import dynamic_value, history_of, index_of, kept, known, looked_up, reduced
@@ -201,6 +202,67 @@ def fitted(values, start, end, tolerance):
             else:
                 at.append((a, float(first[k]), Curve(b - a, tuple(float(c) for c in series))))
     return [sorted(pieces, key=lambda piece: piece[0]) for pieces in found]
+
+
+def _bend_times(layers, operand, start, end, tolerance):
+    """Roots of numeric branch surfaces inside a piece, inner decisions before their users.
+
+    The difference between two smooth operands can cross zero twice. Fit that difference,
+    split at its turning points, and locate each change of sign against the actual operands.
+    Sampling only the selected result can miss an entire narrow min/max arm.
+    """
+    cuts = {start, end}
+    for layer in layers:
+        bounds = sorted(cuts)
+        for left, right in layer:
+
+            def gap(t):
+                values = operand(left, t), operand(right, t)
+                if any(isinstance(value, Unavailable) for value in values):
+                    raise LookupError('an operand has no recorded value here')
+                difference = float(values[0]) - float(values[1])
+                if not math.isfinite(difference):
+                    raise ValueError('a difference of branch operands is not finite')
+                return difference
+
+            def values(times):
+                return np.array([[gap(t)] for t in times])
+
+            for a, b in pairwise(bounds):
+                try:
+                    (pieces,) = fitted(values, a, b, tolerance)
+                    for origin, _, curve in pieces:
+                        if not isinstance(curve, Curve):
+                            continue
+                        # A piece is left-closed. At its outgoing boundary the next held
+                        # value may already have jumped, so bracket from its incoming side.
+                        stop = min(b, origin + curve.length)
+                        if stop <= origin:
+                            continue
+                        extrema = (
+                            chebyshev.chebroots(chebyshev.chebder(curve.coefficients))
+                            if len(curve.coefficients) > 2
+                            else ()
+                        )
+                        interior = sorted(
+                            origin + 0.5 * curve.length * (1 + float(u.real))
+                            for u in extrema
+                            if u.imag == 0 and -1 < u.real < 1
+                        )
+                        for lo, hi in pairwise([origin, *interior, math.nextafter(stop, origin)]):
+                            if hi <= lo:
+                                continue
+                            first, last = gap(lo), gap(hi)
+                            if first == last or (first < 0 and last < 0) or (first > 0 and last > 0):
+                                continue
+                            root = crossing_time(gap, lo, hi, accepted=(first, last))
+                            if root is not None and a < root < b:
+                                cuts.add(root)
+                except FAILURES:
+                    # An inactive branch need not have a value here. The ordinary fit
+                    # still reports any failure of the selected expression.
+                    continue
+    return sorted(cuts)
 
 
 def _line_number(value):
@@ -947,6 +1009,8 @@ class Recorder:
         if reads is None:
             reads = sorted(set(nodes.names(node)) - {'t'})
         reads = [read for read in reads if read in histories]
+        authored = compute is None and point is None
+        layers = None  # built only if a numeric authored expression actually moves
         if compute is None:
 
             def compute(env):
@@ -967,6 +1031,15 @@ class Recorder:
         names = frozenset(reads)
         starts = sorted(anchors or ())
 
+        def environment(t):
+            # Resolving a comparison can also require a selector inside a named operand.
+            def read(key):
+                if key not in readers:
+                    readers[key] = _reader(histories[key])
+                return readers[key](t)
+
+            return Reads(names, read, t)
+
         def at(t):
             place = bisect_right(starts, t) - 1
             if place >= 0:
@@ -977,14 +1050,7 @@ class Recorder:
             if point is not None:
                 return point(t, readers)
 
-            # Each read is taken from its history where the evaluation asks for it (`reads.py`).
-            def read(key):
-                if key not in readers:
-                    # A comparison can ask for a selector inside a named operand.
-                    readers[key] = _reader(histories[key])
-                return readers[key](t)
-
-            return compute(Reads(names, read, t))
+            return compute(environment(t))
 
         def tried(t):
             """The value at t, or `Unavailable` with the reason where it cannot be evaluated."""
@@ -1013,13 +1079,33 @@ class Recorder:
             for c, d in pairwise([a, *self.fits.intervals(a, b), b]):
 
                 def fit():
+                    nonlocal layers
                     begin = first if c == a else tried(c)
                     if discrete:
                         return _switches(lambda time: cast(tried(time)), c, d, cast(begin), crossing)
                     size = scale if isinstance(begin, Unavailable) else max(scale, abs(float(begin)))
-                    return _numbers(
-                        at, tried, c, d, begin, np.array([plan.numerics.atol_factor * size]), crossing
-                    )
+                    tolerance = np.array([plan.numerics.atol_factor * size])
+                    if layers is None:
+                        pairs = dict.fromkeys(
+                            pair
+                            for branch in (nodes.breadth_first(node) if authored else ())
+                            if isinstance(branch, nodes.Call)
+                            and branch.function in ('min', 'max', 'clip', 'abs')
+                            for pair in switch_pairs(branch)
+                        )
+                        layers = switch_layers(tuple(pairs), {})
+                    if not layers:
+                        return _numbers(at, tried, c, d, begin, tolerance, crossing)
+
+                    def operand(expression, t):
+                        return evaluate(expression, environment(t), plan.units)
+
+                    pieces = []
+                    for lo, hi in pairwise(_bend_times(layers, operand, c, d, tolerance)):
+                        pieces.extend(
+                            _numbers(at, tried, lo, hi, begin if lo == c else tried(lo), tolerance, crossing)
+                        )
+                    return pieces
 
                 pieces.extend(self.fits.pieces(name, c, d, fit))
         return pieces
