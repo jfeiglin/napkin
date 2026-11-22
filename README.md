@@ -21,7 +21,7 @@ flowchart LR
         engine["engine: run, sample, play"]
     end
     command["napkin command and Python API"]
-    briefs["tools/publish: the briefs of each case"]
+    briefs["tools/publish: current readings and source dossiers"]
     research -->|"tools/evidence: fetch, check, integrate"| evidence
     evidence --> model --> compiler --> engine
     engine --> command
@@ -106,6 +106,7 @@ python3 -m venv .venv
 | [docs/extending.md](docs/extending.md) | What to change for a new feature |
 | [docs/draw.md](docs/draw.md) | The static picture of a model, `napkin draw` |
 | [docs/known-issues.md](docs/known-issues.md) | The known issues, and the features that could come next |
+| [Scenario migration results](scratch/rewrite/audit/scenario-recovery-ports.md) | Current recovery models, inputs and historical comparisons |
 | [scenarios/README.md](scenarios/README.md) | Historical catalogue briefs, results and evidence |
 | [scenarios/docs/catalogue.md](scenarios/docs/catalogue.md) | How the cases are written |
 | [scenarios/docs/evidence/README.md](scenarios/docs/evidence/README.md) | How the evidence is recorded |
