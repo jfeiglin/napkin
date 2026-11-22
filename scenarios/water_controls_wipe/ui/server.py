@@ -7,18 +7,19 @@ checkout, so a run that the store holds comes back at once. The server keeps the
 in memory and makes each one once, however many requests ask for it."""
 
 import json
+import math
 import mimetypes
 import multiprocessing
 import threading
 from collections import OrderedDict
 from concurrent.futures import ProcessPoolExecutor
-from functools import cache
+from functools import cache, lru_cache
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
-from napkin import evaluate_study, load_scenario, store
+from napkin import load_scenario, store
 from scenarios.water_controls_wipe.ui import view
 from tools import catalogue
 
@@ -44,13 +45,14 @@ def describe(name):
     return view.describe(_model(name), name)
 
 
-def frame(name, run):
-    """The frame of one run of a place (`view.frame`), or the errors that stop the run."""
+@lru_cache(maxsize=2)
+def _record(name, run):
     model = _model(name)
-    study = evaluate_study(model, None, runs=[run])
-    if not study.admissible:
-        return {'errors': [d for d in study.diagnostics if d.get('severity') == 'error']}
-    return view.frame(model, study, run)
+    return store.run(model.program, model.configure(run))
+
+
+def frame(name, run, hour=None):
+    return view.frame(_model(name), _record(name, run), run, hour)
 
 
 # --- In the server -------------------------------------------------------------------------------
@@ -78,13 +80,13 @@ class Engine:
     def description(self, name):
         return self.descriptions[name].result()
 
-    def frame(self, name, run):
+    def frame(self, name, run, hour=None):
         """The frame of a run, made once: a request for a frame that a worker makes waits for it."""
-        key = (name, run)
+        key = (name, run, hour)
         with self.lock:
             found = self.frames.get(key)
             if found is None or (found.done() and found.exception() is not None):
-                found = self.frames[key] = self._worker(name).submit(frame, name, run)
+                found = self.frames[key] = self._worker(name).submit(frame, name, run, hour)
             self.frames.move_to_end(key)
             while len(self.frames) > FRAMES:
                 oldest = next(iter(self.frames))
@@ -92,13 +94,6 @@ class Engine:
                     break
                 del self.frames[oldest]
         return found
-
-    def warm(self, name):
-        """Ask for each run of a place, the featured run first, so that a change of run is quick."""
-        place = self.description(name)
-        runs = [r['id'] for r in place['runs']]
-        for run in [place['featured'], *(r for r in runs if r != place['featured'])]:
-            self.frame(name, run)
 
     def close(self):
         for worker in self.workers:
@@ -111,10 +106,7 @@ def summary(place):
         'id': place['id'],
         'key': place['key'],
         'name': place['name'],
-        'title': place['title'],
         'systems': len(place['systems']),
-        'people': place['people'],
-        'hospitals': sum(len(s['hospitals']) for s in place['systems']),
     }
 
 
@@ -135,12 +127,15 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(
                 HTTPStatus.FORBIDDEN, {'error': 'This server answers only on this computer.'}
             )
-        path = unquote(urlsplit(self.path).path)
+        url = urlsplit(self.path)
+        path = unquote(url.path)
         if path == '/api' or path.startswith('/api/'):
-            return self.api([part for part in path.split('/')[2:] if part])
+            return self.api(
+                [part for part in path.split('/')[2:] if part], parse_qs(url.query, keep_blank_values=True)
+            )
         return self.file(path)
 
-    def api(self, parts):
+    def api(self, parts, query):
         engine = self.engine
         keys = {name.split(':', 1)[1]: name for name in engine.names}
         if parts == ['places']:
@@ -153,14 +148,25 @@ class Handler(BaseHTTPRequestHandler):
         if len(parts) == 2 and parts[0] == 'places':
             name = keys[parts[1]]
             place = engine.description(name)
-            threading.Thread(target=engine.warm, args=(name,), daemon=True).start()
             return self.send_json(HTTPStatus.OK, place)
         if len(parts) == 4 and parts[0] == 'places' and parts[2] == 'runs':
             name, run = keys[parts[1]], parts[3]
             runs = [r['id'] for r in engine.description(name)['runs']]
             if run not in runs:
                 return self.send_json(HTTPStatus.NOT_FOUND, {'error': 'No such run.', 'runs': runs})
-            found = engine.frame(name, run).result()
+            hour = None
+            if query:
+                try:
+                    if set(query) != {'hour'} or len(query['hour']) != 1:
+                        raise ValueError
+                    hour = float(query['hour'][0])
+                    if not math.isfinite(hour) or not 0 <= hour <= engine.description(name)['horizon']:
+                        raise ValueError
+                except ValueError:
+                    return self.send_json(
+                        HTTPStatus.BAD_REQUEST, {'error': 'Choose one hour within the run.'}
+                    )
+            found = engine.frame(name, run, hour).result()
             if 'errors' in found:
                 return self.send_json(HTTPStatus.UNPROCESSABLE_ENTITY, found)
             return self.send_json(HTTPStatus.OK, found)

@@ -8,8 +8,7 @@ import threading
 
 import pytest
 
-from napkin import evaluate_study
-from scenarios.water_controls_wipe.tests import family
+import napkin
 from scenarios.water_controls_wipe.ui import server, view
 from tests.helpers import catalogue_model
 
@@ -21,7 +20,7 @@ def served(tmp_path_factory):
     dist = tmp_path_factory.mktemp('dist')
     (dist / 'index.html').write_bytes(PAGE)
     (dist.parent / 'secret.txt').write_text('outside the page')
-    name = family.places()[0]
+    name = 'water_controls_wipe:lumberton'
     engine = server.Engine([name], jobs=1)
     found = server.server(engine, 0, dist=dist)
     thread = threading.Thread(target=found.serve_forever, daemon=True)
@@ -59,8 +58,13 @@ def test_a_frame_from_the_server_is_the_views_frame_of_the_same_run(served):
     run = place['featured']
     status, body = get(port, f'/api/places/{key}/runs/{run}')
     assert status == 200
-    study = evaluate_study(model, None, runs=[run])
-    assert json.loads(body) == json.loads(json.dumps(view.frame(model, study, run)))
+    record = napkin.run(model.program, model.configure(run))
+    assert json.loads(body) == view.frame(model, record, run)
+    status, body = get(port, f'/api/places/{key}/runs/{run}?hour=2.25')
+    assert status == 200
+    assert json.loads(body) == view.frame(model, record, run, 2.25)
+    for bad in ('-1', 'NaN', 'abc', '3000', '2&hour=3'):
+        assert get(port, f'/api/places/{key}/runs/{run}?hour={bad}')[0] == 400
 
 
 def test_it_refuses_what_it_does_not_serve(served):
