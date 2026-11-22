@@ -216,6 +216,17 @@ def entries(root=ROOT):
     return {name: owner.entry for name, owner in _running(folders(root)).items()}
 
 
+def completed_study(model, runs=None, edits=None, *, jobs=1):
+    """The selected run records of a compiled catalogue model, each complete to its horizon."""
+    from napkin.engine.study import study
+
+    records = study(model, runs=runs, edits=edits, jobs=jobs)
+    for name, record in records.items():
+        if record.stop is not None or record.end != model.base.request.horizon:
+            raise ValueError(f'{name or "default"} stopped at {record.end} h: {record.stopped()}')
+    return records
+
+
 def _survey(root):
     """(the owners, {owner: its readers}) of the catalogue at `root`. The folders that each model reads
     are found from the first declaration of its entry file (`library_folders`); no model is built."""

@@ -243,15 +243,19 @@ def catalogue_problems(model):
     leaves open (scenarios/docs/catalogue.md): each output says whom it covers, with a scope of its own or the
     scope on the scenario line. Each problem names the output as the file names it."""
 
-    outcomes = next(iter(model.whole.values())).outcomes
+    from tools.publish.brief import brief_of, reported_paths, shown, value_note
+
+    if model.declared.scenario.scope is not None:
+        return []
+    paths = dict.fromkeys([*(reported_paths(model) or ()), *shown(brief_of(model), model)])
     return [
         {
             'code': 'catalogue',
             'path': name,
             'message': 'an output of the catalogue says whom it covers: give it scope "…", or the scenario one',
         }
-        for name, outcome in model.outputs.items()
-        if outcomes[outcome].scope is None
+        for name in paths
+        if value_note(model, 'reporting', name, 'scope') is None
     ]
 
 

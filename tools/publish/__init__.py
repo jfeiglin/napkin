@@ -14,13 +14,13 @@ import multiprocessing
 import re
 from concurrent.futures import ProcessPoolExecutor
 from decimal import Decimal
-from functools import cache, cached_property
+from functools import cache, cached_property, partial
+from importlib import import_module
 from pathlib import Path
 
 from napkin import store
-from napkin.engine import evaluate_study
-from napkin.engine.study import StudyResult
 from napkin.model import load_scenario
+from napkin.model.library import load_library
 
 from .. import catalogue
 from ..catalogue import ROOT
@@ -50,23 +50,15 @@ def _model(root, scenario_id):
 
 
 def _default_study(root, scenario_id):
-    """One scenario's default study, evaluated in a worker: its runs and diagnostics."""
+    """The compiled model revision and its completed default run records from one worker."""
     model = _model(root, scenario_id)
-    study = evaluate_study(model)
-    return (
-        model.model_hash,
-        model.implementation_hash,
-        study.admissible,
-        study.diagnostics,
-        study.effective_edits,
-        study.runs,
-    )
+    return model.model_hash, catalogue.completed_study(model)
 
 
 class Context:
     """Lazily compiled models and completed studies shared by all builders.
 
-    ``studies`` supplies completed default studies (with their models); otherwise each is evaluated
+    ``studies`` supplies ``{scenario: (compiled model, completed records by run)}``; otherwise each is evaluated
     once, in ``jobs`` worker processes. ``scenario_ids`` restricts compilation and evaluation to
     known catalogue IDs; validation precedes reading the library or compiling a model.
     ``committed_spreads`` takes each brief's spread section from the committed brief instead of
@@ -92,12 +84,12 @@ class Context:
                 for sid, study in studies.items()
                 if self.scenario_ids is None or sid in self.scenario_ids
             }
-            self.__dict__['studies'] = supplied
-            self.__dict__['models'] = {sid: study.model for sid, study in supplied.items()}
+            self.__dict__['studies'] = {sid: records for sid, (_, records) in supplied.items()}
+            self.__dict__['models'] = {sid: model for sid, (model, _) in supplied.items()}
 
     @cached_property
     def libraries(self):
-        return {sid: model.library for sid, model in self.models.items()}
+        return {sid: load_library(self.paths[sid]) for sid in self.models}
 
     @cached_property
     def paths(self):
@@ -116,45 +108,22 @@ class Context:
     def studies(self):
         """Every scenario's accepted default study."""
         self.progress(f'evaluating {len(self.models)} default studies')
-        if self.jobs > 1:
-            # Each worker studies one scenario at a time. With fewer scenarios than jobs, the processes
-            # that this one may use (itself and its helpers) and no worker takes go to the workers as
-            # helpers that simulate the runs of their study.
-            workers = max(1, min(self.jobs, len(self.models)))
-            helpers = max(0, (store.helpers() + 1) // workers - 1)
-            with ProcessPoolExecutor(
-                workers,
-                mp_context=multiprocessing.get_context('spawn'),
-                **store.pool_options(helpers=helpers),
-            ) as pool:
-                futures = {sid: pool.submit(_default_study, str(self.root), sid) for sid in self.models}
-                completed = {sid: future.result() for sid, future in futures.items()}
-            studies = {}
-            for sid, (
-                model_hash,
-                implementation_hash,
-                admissible,
-                diagnostics,
-                edits,
-                runs,
-            ) in completed.items():
-                model = self.models[sid]
-                if (model_hash, implementation_hash) != (model.model_hash, model.implementation_hash):
+        if self.jobs == 1 or len(self.models) <= 1:
+            return {
+                sid: catalogue.completed_study(model, jobs=self.jobs) for sid, model in self.models.items()
+            }
+        studies = {}
+        with ProcessPoolExecutor(
+            min(self.jobs, len(self.models)),
+            mp_context=multiprocessing.get_context('spawn'),
+            **store.pool_options(),
+        ) as pool:
+            futures = {sid: pool.submit(_default_study, str(self.root), sid) for sid in self.models}
+            for sid, future in futures.items():
+                model_hash, records = future.result()
+                if model_hash != self.models[sid].model_hash:
                     raise ValueError(f'{sid}: a worker built another model revision')
-                studies[sid] = StudyResult(
-                    model_hash,
-                    admissible,
-                    diagnostics,
-                    edits,
-                    runs,
-                    model=model,
-                    implementation_hash=implementation_hash,
-                )
-        else:
-            studies = {sid: evaluate_study(model) for sid, model in self.models.items()}
-        for sid, study in studies.items():
-            if not study.admissible:
-                raise ValueError(f'{sid}: default study rejected: {study.diagnostics}')
+                studies[sid] = records
         return studies
 
 
@@ -169,16 +138,20 @@ def builders():
     folders, `catalogue.folders`), so a hand-written file beside them is never taken for an orphan.
     """
     from ..evidence import manifest
-    from . import assumptions, briefs, dossier, methods, runs
 
     return {
-        'briefs': (briefs.artifacts, (f'{RESULTS}/brief.md', briefs.INDEX)),
-        'methods': (methods.artifacts, (f'{RESULTS}/methods.md',)),
-        'dossier': (dossier.artifacts, (f'{RESULTS}/source-verification.json',)),
+        'briefs': (partial(_artifacts, 'briefs'), (f'{RESULTS}/brief.md', catalogue.INDEX)),
+        'methods': (partial(_artifacts, 'methods'), (f'{RESULTS}/methods.md',)),
+        'dossier': (partial(_artifacts, 'dossier'), (f'{RESULTS}/source-verification.json',)),
         'manifest': (lambda ctx: manifest.artifacts(ctx.root), (manifest.PATH,)),
-        'assumptions': (assumptions.artifacts, (f'{RESULTS}/assumption-review.json',)),
-        'runs': (runs.artifacts, (f'{RESULTS}/runs.json', f'{RESULTS}/runs.csv')),
+        'assumptions': (partial(_artifacts, 'assumptions'), (f'{RESULTS}/assumption-review.json',)),
+        'runs': (partial(_artifacts, 'runs'), (f'{RESULTS}/runs.json', f'{RESULTS}/runs.csv')),
     }
+
+
+def _artifacts(name, ctx):
+    """Load a renderer when a selection asks it to generate an artifact."""
+    return import_module(f'.{name}', __name__).artifacts(ctx)
 
 
 def _located(path, locations):

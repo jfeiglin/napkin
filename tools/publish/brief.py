@@ -29,8 +29,12 @@ from dataclasses import dataclass
 
 from napkin.draw.style import StyleError, beside, checked, lookup, names_of, problem, table, unknown
 from napkin.engine.sampling import SamplingSettings
-from napkin.model.ir import thaw
-from napkin.model.model import input_name
+from napkin.engine.timeline.record import declaration, key_of, named
+from napkin.model import semantic
+from napkin.model.language.nodes import Text
+from napkin.program import parts
+
+from .. import catalogue
 
 BRIEF_FILE = 'brief.toml'
 # The keys of `brief.toml` that hold a list of names, and those that hold a text.
@@ -87,7 +91,7 @@ class Spread:
     @property
     def settings(self):
         """The sampling settings of the spread (`SamplingSettings`)."""
-        return SamplingSettings(self.samples, self.seed, self.method)
+        return SamplingSettings(self.samples, self.seed)
 
 
 @dataclass(frozen=True)
@@ -225,7 +229,7 @@ def read_spreads(value, origin, problems):
     """The spreads of the value of `[[spread]]` (`Spread`), in order: each has an `id` (`IDENTIFIER`,
     once), which names its edit document `spreads/<id>.json`; the `runs` that it samples, a nonempty
     list of names; and `samples`, `seed` and `method`, `random` by default, as `SamplingSettings` takes
-    them (a `sobol` spread has the 8 blocks that the engine has by default). It may have a `description` and `outputs`, a nonempty list of names. Each problem goes to
+    them. It may have a `description` and `outputs`, a nonempty list of names. Each problem goes to
     `problems`, and an entry with a problem gives no spread."""
     entries = _entries(value, SPREAD, SPREAD_KEYS, origin, problems)
     out = []
@@ -234,20 +238,23 @@ def read_spreads(value, origin, problems):
         description = _text(entry, 'description', where, origin, problems, required=False)
         runs = _listed(entry, 'runs', where, origin, problems)
         outputs = _listed(entry, 'outputs', where, origin, problems, required=False)
-        settings = {'samples': entry.get('samples'), 'seed': entry.get('seed'), 'method': entry.get('method')}
-        settings['method'] = 'random' if settings['method'] is None else settings['method']
+        settings = {'samples': entry.get('samples'), 'seed': entry.get('seed')}
+        method = entry.get('method', 'random')
+        if method != 'random':
+            problems.append(
+                problem(origin, f'{where}.method', f'the engine supports random sampling, got {method!r}')
+            )
         valid = SamplingSettings().record()
         for key, given in settings.items():
-            # The engine checks each setting, one at a time, so that a problem names its key. The
-            # method is last, with the samples of the entry when they are valid: `sobol` sampling
-            # takes its samples in blocks.
             try:
                 SamplingSettings(**{**valid, key: given})
                 valid[key] = given
             except ValueError as exc:
                 problems.append(problem(origin, f'{where}.{key}', str(exc)))
         if len(problems) == before and identifier is not None:
-            out.append(Spread(identifier, description, runs, **settings, outputs=outputs or ()))
+            out.append(
+                Spread(identifier, description, runs, **settings, method=method, outputs=outputs or ())
+            )
     return tuple(out)
 
 
@@ -272,37 +279,40 @@ def check_brief(brief, model):
     outputs, and has its edit document beside the brief settings. The engine checks the edit document
     when the spread runs, as it checks every edit document."""
     out = []
-    if brief.choice_group is not None and brief.choice_group not in model.menu:
+    runs = {item.name for item in model.declared.runs}
+    if brief.choice_group is not None and brief.choice_group not in {
+        item.group for item in model.declared.options
+    }:
         out.append(problem(brief.origin, 'choice_group', f'{brief.choice_group} is not a group of options'))
     for name in brief.show or ():
         if output_name(name, model) is None:
             out.append(problem(brief.origin, 'show', f'{name} is not an output'))
     for name in brief.drivers or ():
-        if input_name(name) not in model.inputs:
+        if not is_input(name, model):
             out.append(problem(brief.origin, 'drivers', f'{name} is not an input'))
     featured = brief.featured or ()
     for name in featured:
-        if name not in model.runs:
+        if name not in runs:
             out.append(problem(brief.origin, 'featured', f'{name} is not a run'))
-    if len(featured) == 2 and all(name in model.runs for name in featured):
+    if len(featured) == 2 and all(name in runs for name in featured):
         run, other = featured
-        if model.runs[other]['comparison_of'] != run:
+        if note_value(model, 'comparisons', other) != run:
             message = f'[{run}, {other}] names a run and its comparison, so {other} says versus {run}'
             out.append(problem(brief.origin, 'featured', message))
     for position, sweep in enumerate(brief.sweeps):
         where = f'{SWEEP}[{position}]'
-        if sweep.id in model.runs:
+        if sweep.id in runs:
             message = f'{sweep.id} is the name of a run, and the run table names each row once'
             out.append(problem(brief.origin, f'{where}.id', message))
-        if sweep.run not in model.runs:
+        if sweep.run not in runs:
             out.append(problem(brief.origin, f'{where}.run', f'{sweep.run} is not a run'))
         for name, _ in sweep.values:
-            if input_name(name) not in model.inputs:
+            if not is_input(name, model):
                 out.append(problem(brief.origin, f'{where}.set', f'{name} is not an input'))
     for position, spread in enumerate(brief.spreads):
         where = f'{SPREAD}[{position}]'
         for name in spread.runs:
-            if name not in model.runs:
+            if name not in runs:
                 out.append(problem(brief.origin, f'{where}.runs', f'{name} is not a run'))
         for name in spread.outputs:
             if output_name(name, model) is None:
@@ -323,42 +333,112 @@ def brief_of(model):
     return checked(model, BRIEF_FILE, read_brief, check_brief, Brief())
 
 
-def output_name(name, model):
-    """The model's name of the output that the brief names, or None."""
-    for candidate in (name, input_name(name)):
-        if candidate in model.outputs:
-            return candidate
+def note_value(model, first, *path):
+    """The authored value of a note such as `comparisons.other` or `not_estimated.total.reason`."""
+    notes = model.declared.notes
+    for key in (first, *path):
+        note = next((item for item in notes if item.key == key), None)
+        if note is None:
+            return None
+        notes = note.notes
+    return note.value.value if isinstance(note.value, Text) else note.value
+
+
+def value_note(model, section, name, field):
+    """A reporting note about a value, including a member's note inherited from its template."""
+    value = note_value(model, section, *name.split('.'), field)
+    if value is not None:
+        return value
+    key = key_of(model.program, name)
+    if key.owner and '#' not in key.owner:
+        template, _ = model.program.member(key.owner)
+        return note_value(model, section, template.name, *key.steps, field)
     return None
 
 
-def shown(brief, model):
-    """The outputs that the pages list, by the model's names: `show`, or every output in the order of
-    the model file."""
-    return list(model.outputs) if brief.show is None else [output_name(name, model) for name in brief.show]
+def is_input(path, model):
+    """Whether an edit can name this input of the root, a member, or every instance of a template."""
+    owner, mark, field = path.partition('.instances.')
+    if mark:
+        return (
+            isinstance(model.declared.part(owner), semantic.DeclaredTemplate)
+            and getattr(model.declared.part(f'{owner}.{field}'), 'kind', None) == parts.INPUT
+        )
+    try:
+        found = declaration(model.program, key_of(model.program, path))
+    except KeyError:
+        return False
+    return found.what in ('value', 'distribution') and getattr(found.part, 'kind', None) == parts.INPUT
+
+
+def output_name(name, model):
+    """A reportable path, or a value documented with a reason for having no estimate."""
+    key = key_of(model.program, name)
+    try:
+        named(model.program, key)
+    except KeyError:
+        if value_note(model, 'not_estimated', name, 'reason') is None:
+            return None
+    return name
+
+
+def reported_paths(model):
+    """Paths identified by reporting or unestimated notes, expanding notes on a template to its members.
+
+    A former output without any reporting metadata leaves no note. Only an authored `show` or a
+    migration manifest can identify such a prior selection.
+    """
+    sections = [note for note in model.declared.notes if note.key in ('reporting', 'not_estimated')]
+    if not sections:
+        return None
+    paths = {}
+    for section in sections:
+        fields = {'about', 'scope', 'category', 'lag'} if section.key == 'reporting' else {'reason', 'label'}
+        for note in section.notes:
+            if any(item.key in fields and item.value is not None for item in note.notes):
+                paths[note.key] = None
+                continue
+            if isinstance(model.declared.part(note.key), semantic.DeclaredTemplate):
+                owners = [member.id for member in model.program.template(note.key).members]
+            else:
+                owners = [note.key]
+            for field in note.notes:
+                for owner in owners:
+                    paths[f'{owner}.{field.key}'] = None
+    return list(paths)
+
+
+def shown(brief, model, record=None):
+    """Authored `show`, then reporting notes if present, then every public path of a completed record."""
+    if brief.show is not None:
+        return list(brief.show)
+    paths = reported_paths(model)
+    if paths is not None:
+        return paths
+    from napkin.commands.run import named as named_values
+
+    if record is None:
+        record = catalogue.completed_study(model, runs=[None])[None]
+    return named_values(model, record)
 
 
 def controls(model):
-    """The inputs that the options set, by the model's names, in menu order."""
-    flat = {name: key for key, name in thaw(model.entities).items()}
-    out = []
-    for options in thaw(model.menu).values():
-        for option in options:
-            for entity in model.scenario.entities:
-                for setting in entity.settings:
-                    name = f'{flat.get(entity.name, entity.name)}.{setting.target}'
-                    if setting.profile == option and name in model.inputs and name not in out:
-                        out.append(name)
-    return out
+    """The declared input paths that the options set, in menu and setting order."""
+    return list(
+        dict.fromkeys(setting.path for option in model.declared.options for setting in option.settings)
+    )
 
 
 def drivers(brief, model):
     """The inputs that the brief lists: `drivers`, or the inputs that the options set (`controls`)."""
-    return controls(model) if brief.drivers is None else [input_name(name) for name in brief.drivers]
+    return controls(model) if brief.drivers is None else list(brief.drivers)
 
 
 def featured(brief, model):
     """The runs that the pages show first: `featured`, or the first run."""
-    return list(brief.featured) if brief.featured is not None else list(model.runs)[:1]
+    if brief.featured is not None:
+        return list(brief.featured)
+    return [model.declared.runs[0].name if model.declared.runs else None]
 
 
 __all__ = [

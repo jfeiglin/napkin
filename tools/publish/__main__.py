@@ -58,6 +58,8 @@ def main(argv=None):
         help="With --check: take each brief's spread section from its committed brief, sampling none",
     )
     args = parser.parse_args(argv)
+    if args.jobs < 1:
+        parser.error('--jobs is a whole number of at least 1')
     if args.committed_spreads and not args.check:
         parser.error('--committed-spreads goes with --check: --write samples every spread')
     try:
@@ -68,8 +70,7 @@ def main(argv=None):
     except ValueError as exc:
         parser.error(str(exc))
     # Each run that the summaries need comes from the run store when it is there.
-    # The publisher uses `--jobs` processes in all, its workers and their helpers.
-    store.activate(store.default_directory(), helpers=args.jobs - 1)
+    store.activate(store.default_directory())
     started = time.monotonic()
     ctx.progress = lambda message: print(
         f'[publish {time.monotonic() - started:6.1f}s] {message}', file=sys.stderr, flush=True

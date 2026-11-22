@@ -2,11 +2,13 @@
 have the session or test lifetime selected by pytest."""
 
 import json
+from decimal import Decimal
 from functools import cache
 from pathlib import Path
 
-from napkin.engine import edits_for, evaluate_study
+from napkin.engine import edits_for
 from napkin.model import load_json, load_scenario
+from napkin.model.load import dump_json
 from tests.result_cache import result_cache
 from tests.selection import selected
 from tools import catalogue
@@ -28,29 +30,24 @@ def catalogue_model(scenario_id):
 
 @result_cache()
 def catalogue_default(scenario_id):
-    """A catalogue scenario's completed, admissible default study."""
-    study = evaluate_study(catalogue_model(scenario_id))
-    assert study.admissible, study.diagnostics
-    return study
+    """The completed records of a catalogue scenario's named runs, or its single default run."""
+    return catalogue.completed_study(catalogue_model(scenario_id))
 
 
 def catalogue_study(scenario_id, edits=None, *, runs=None):
     """A catalogue study under an edit body (`set`, `options`, `runs`; `edits_for` binds it),
-    cached by its canonical record; without edits, the default study. ``runs`` simulates only the
-    named runs of an edited study (``evaluate_study(runs=...)``)."""
-    if not edits:
+    cached by its canonical record. ``runs`` selects the named runs with or without edits."""
+    if not edits and runs is None:
         return catalogue_default(scenario_id)
     return _cached_catalogue_study(
-        scenario_id, json.dumps(edits, sort_keys=True), None if runs is None else tuple(runs)
+        scenario_id, dump_json(edits or {}, sort_keys=True), None if runs is None else tuple(runs)
     )
 
 
 @result_cache(maxsize=48)
 def _cached_catalogue_study(scenario_id, encoded, runs):
     model = catalogue_model(scenario_id)
-    result = evaluate_study(model, edits_for(model, json.loads(encoded)), runs=runs)
-    assert result.admissible, result.diagnostics
-    return result
+    return catalogue.completed_study(model, runs, edits_for(model, json.loads(encoded, parse_float=Decimal)))
 
 
 def example_edit_sets():
@@ -66,7 +63,7 @@ def example_edit_sets():
         if sid in SCENARIO_IDS
         for edit in (catalogue.locate(sid, ROOT).folder / 'edits').glob('*.json')
     ):
-        record = load_json(path)
+        record = load_json(path, exact_numbers=True)
         examples[path.relative_to(ROOT).as_posix()] = (
             record['scenario'],
             {key: value for key, value in record.items() if key != 'scenario'},
