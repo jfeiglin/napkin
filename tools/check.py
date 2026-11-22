@@ -78,6 +78,8 @@ def tests(marker, scope=None, *, paths=(), jobs=None):
     selection = {SELECTION: None if scope is None else ','.join(scope)}
     focused = scope is not None and not paths
     workers = jobs if jobs is not None else (0 if scope is not None or paths else 'auto')
+    # Package properties in one file can share the same completed scenario on a worker.
+    schedule = ['--dist=loadfile'] if scope is None and not paths and marker == 'not deep' else []
     return run(
         python(
             '-m',
@@ -87,6 +89,7 @@ def tests(marker, scope=None, *, paths=(), jobs=None):
             'no:cacheprovider',
             '-n',
             str(workers),
+            *schedule,
             '--maxfail=1',
             '--focused' if focused else '--no-focused',
             *(['--all-scenarios'] if scope is None else []),

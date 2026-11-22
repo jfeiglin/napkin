@@ -33,6 +33,8 @@ In Washington, DC, a full downstream store kept a positive residual on its books
 
 Lehigh uncovered a second branch issue. The advisory was already active, yet the scheduler kept forecasting the stock comparison in a pressure-loss guard that first required potable status. This advanced the clock one representable tick at a time. Ignoring a branch while a held condition rules it out lets the run reach its horizon. Changing the held condition re-enables the forecast. [Trigger regression](../../../tests/engine/test_inactive_guard_contacts.py)
 
+The follow-up at `c328fbb` checks a much slower change. Nearly balanced inflow and outflow leave a small physical surplus. Initially the stock is within its comparison band of zero. As the transfers accumulate, it eventually crosses the edge of that band, and the dependent meter changes from 1 to 2 L/h. Component, Sparse and MovingDeclared each record 1 L/h immediately before their located switch and 2 L/h at it. Their totals at 2,000 h agree with the independent 3,000 L result to within 0.000002 L. The same check runs from a serialized checkpoint. [Cross-method regression](../../../tests/engine/test_held_branch_velocity.py)
+
 Run `python scratch/rewrite/a5/artifact_parity.py` from the checkout to compare source execution with five fresh artifact consumers. Each consumer has only the binary and the serialized run configuration in its working directory. File-access controls reject scenario text and package data, including local units and evidence. The check compares each reading’s value, unit and exercised citations, the evidence definitions, and ordered event names and times. [Executable parity check](../a5/artifact_parity.py)
 
 | Case | Readings | Ordered event starts |
@@ -53,3 +55,20 @@ The checker archives both revisions and runs each in its own Python process. It 
 ```sh
 python scratch/rewrite/a5/paired_migrations.py --candidate HEAD
 ```
+
+## Catalogue verification
+
+The catalogue contains 19 runnable entries across four packages, including water recovery in 16 places. All 60 named runs completed. The publisher reproduced the 19 reading files, 19 evidence dossiers and the catalogue source manifest byte for byte. [Current catalogue](../../../scenarios/README.md)
+
+The final numerical change is `c328fbb`. Commit `7f08701` tightens the rate assertion at a located comparison-band exit. The full deep tier passed 25,929 tests in 869.63 seconds on ten workers. Every heat case passed, including four changed-input runs that had exposed allocation or modeling errors. The archived comparison still uses the original display precision.
+
+The full regular tier passed 11,839 tests on four workers, with one macOS skip for a Linux process-information test. The budget checker measured 178.411 seconds against 180 seconds, and confirmed all 300 rotated seeds with zero truncated comparisons. Distributing individual test cases took 214.397 seconds on the same machine. Keeping each test file on one worker allowed the water properties to reuse their completed regional run. Both timings cover exactly the same cases and assertions. `tools.check` now selects file-based scheduling for the full regular tier.
+
+```sh
+python -m tools.publish --check --jobs 4
+python -m pytest --no-focused -n 4 --dist loadfile -m 'not deep' --junitxml=regular.xml -o junit_family=xunit1
+python scratch/rewrite/audit/port_corpus_results.py regular regular.xml --full-suite
+python -m pytest --no-focused -n 10 --maxschedchunk=4 -m deep scenarios tests
+```
+
+The six-workload engine speed campaign belongs to the previous engine handoff. Its ratios apply to the revisions named in that report. Verification on the scenario branch covered catalogue execution, parity, publication and test-suite time. [Engine timing results and measured commits](engine-finalized-results.md)

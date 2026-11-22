@@ -169,6 +169,7 @@ def test_focused_commands_reuse_one_process_and_explicit_paths_bypass_contract_f
     check.tests('not deep', ('SC98',))
     check.tests('not deep', ('SC98',), paths=('tests/test_check.py',), jobs=2)
     check.tests('deep', None)
+    check.tests('not deep', None, jobs=4)
     assert calls[0][calls[0].index('-n') + 1] == '0'
     assert '--focused' in calls[0] and '--result-cache-scope=test' in calls[0]
     assert calls[1][-1] == 'tests/test_check.py' and '--no-focused' in calls[1]
@@ -176,6 +177,8 @@ def test_focused_commands_reuse_one_process_and_explicit_paths_bypass_contract_f
     assert calls[1][calls[1].index('-n') + 1] == '2'
     assert '--no-focused' in calls[2] and '--focused' not in calls[2]
     assert '--all-scenarios' in calls[2]
+    assert '--dist=loadfile' in calls[3]
+    assert all('--dist=loadfile' not in command for command in calls[:3])
 
 
 def test_global_environment_removes_an_inherited_scenario_selection(monkeypatch):
