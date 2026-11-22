@@ -129,3 +129,190 @@ def test_product_check_posts_the_hold_and_the_reconciliation_work_in_one_stage()
     assert obs['resuscitation_reserve.stock'][0] - obs['resuscitation_reserve.stock'][1] == pytest.approx(
         6.25
     )
+
+
+@pytest.mark.parametrize(
+    ('reset_delay', 'expected_time'),
+    [(0, 672), (168, 696.25), (24.25, 696.25)],
+)
+def test_credentials_are_revoked_on_a_confirmed_hold_or_the_scheduled_reset(reset_delay, expected_time):
+    r = record(
+        'subpar_persistent',
+        **{'manufacturer.time_to_find': 24, 'manufacturer.reset_delay': reset_delay},
+    )
+    assert [entry.t for entry in r.entries('start', 'manufacturer.credentials_reset')] == pytest.approx(
+        [672 + reset_delay], abs=1e-9, rel=0
+    )
+    values = readings(r, ['release_systems.credentials'], [expected_time - 0.001, expected_time, 1440])
+    assert values['release_systems.credentials'] == ('UNCHANGED', 'RESET', 'RESET')
+
+
+@pytest.mark.parametrize('ulp', [-2, 2])
+def test_holding_an_empty_reserve_uses_its_accepted_balance(monkeypatch, ulp):
+    from napkin.engine import edits_for
+    from napkin.engine.timeline import run, stocks
+    from scenarios.iv_fluid_shortage.tests.clinical_industrial_damage_support import model
+
+    monkeypatch.setattr(stocks, 'LEDGER_PROBE', ulp)
+    m = model()
+    changes = {'manufacturer.time_to_find': 24, 'manufacturer.reset_delay': 168}
+    config = m.configure('subpar_persistent', edits_for(m, {'set': changes}))
+    # Run the numerical probe directly since the normal run store contains unperturbed results.
+    r = run(m.program, config)
+    assert r.failure is None and r.end == 1440
+    hold = starts(r)['manufacturer.discrepancy_confirmed']
+    assert starts(r)['manufacturer.credentials_reset'] == pytest.approx(840, abs=1e-9, rel=0)
+    assert readings(r, ['release_systems.credentials'], [hold])['release_systems.credentials'] == ('RESET',)
+    at_hold = readings(r, ['other_care_reserve.held', 'resuscitation_reserve.held'], [hold])
+    assert at_hold['other_care_reserve.held'] == pytest.approx([0], abs=1e-6)
+    assert at_hold['resuscitation_reserve.held'] == pytest.approx([6.25])
+
+
+@pytest.mark.parametrize(
+    ('name', 'notice_hours', 'review_hours', 'clearance', 'release'),
+    [
+        ('fixed_quality_review', [72, 312], [72, 408], 744, 744),
+        ('followup_quality_review', [72, 648], [72, 648], 984, 984),
+        ('expedited_quality_review', [72, 312], [72, 312], 480, 672),
+    ],
+)
+def test_quality_review_clock_enters_release_and_downstream_product_checks(
+    name, notice_hours, review_hours, clearance, release
+):
+    r = record(name)
+    assert r.failure is None and r.end == 1440
+    assert [e.t for e in r.entries('start', 'quality_review.notice')] == notice_hours
+    assert [e.t for e in r.entries('start', 'quality_review.review')] == review_hours
+    assert starts(r)['release_team.restart_release'] == release
+    assert starts(r)['deliveries.first_arrival'] == release + 24
+    assert starts(r)['manufacturer.credentials_reset'] == release + 24
+    assert starts(r)['manufacturer.discrepancy_confirmed'] == release + 216.25
+    result = readings(r, ['quality_review.cleared_at', 'quality_review.completed'], [r.end])
+    assert result['quality_review.cleared_at'] == (clearance,)
+    assert result['quality_review.completed'] == (2,)
+
+
+def test_seeded_reviews_compare_both_schedules_and_staffing_under_the_same_demand():
+    from napkin.spread import spread
+    from scenarios.iv_fluid_shortage.tests.clinical_industrial_damage_support import model
+
+    paths = ['quality_review.effort', 'quality_review.gap', 'quality_review.cleared_at']
+    m = model()
+    by_run = {}
+    for name, capacity in [
+        ('fixed_quality_review', 1),
+        ('followup_quality_review', 1),
+        ('expedited_quality_review', 2),
+    ]:
+        result = spread(m, paths, run=name, samples=3, seed=23)
+        assert result.refused is None and len(result.samples) == 3
+        demand = {}
+        for sample in result.samples:
+            (effort,), (gap,), (cleared,) = sample.values
+            assert 288 <= effort <= 384 and 180 <= gap <= 300
+            demand[sample.seed] = effort, gap
+            duration = effort / capacity
+            second_start = duration + gap if name == 'followup_quality_review' else max(gap, duration)
+            assert cleared == pytest.approx(72 + second_start + duration, abs=1e-8, rel=0)
+        by_run[name] = demand
+    fixed = by_run['fixed_quality_review']
+    assert fixed == by_run['expedited_quality_review'] == by_run['followup_quality_review']
+    assert len({effort for effort, _ in fixed.values()}) == len({gap for _, gap in fixed.values()}) == 3
+
+
+@pytest.mark.parametrize(('window', 'accepted', 'cleared'), [(240, 1, 408), (241, 2, 1080)])
+def test_intake_closes_at_the_named_hour_and_review_effort_changes_clearance(window, accepted, cleared):
+    r = record(
+        'fixed_quality_review',
+        **{'quality_review.intake_window': window, 'quality_review.followup_effort': 2},
+    )
+    assert r.failure is None and r.end == 1440
+    values = readings(
+        r, ['quality_review.received', 'quality_review.completed', 'quality_review.cleared_at'], [1440]
+    )
+    assert values['quality_review.received'] == values['quality_review.completed'] == (accepted,)
+    assert values['quality_review.cleared_at'] == (cleared,)
+
+
+@pytest.mark.parametrize(
+    ('name', 'limit', 'notices', 'reviews', 'clearance'),
+    [
+        ('fixed_quality_review', 1, [70], [70], 238),
+        ('fixed_quality_review', 3, [70, 118, 166], [70, 238, 406], 574),
+        ('followup_quality_review', 3, [70, 286, 502], [70, 286, 502], 670),
+        ('fixed_quality_review', 3, [], [], None),
+    ],
+)
+def test_notice_limit_and_first_delay_follow_the_procurement_clock(name, limit, notices, reviews, clearance):
+    r = record(
+        name,
+        **{
+            'hospitals.start_delay': 60,
+            'quality_review.first_delay': 10,
+            'quality_review.notice_limit': limit,
+            'quality_review.capacity': 2,
+            'quality_review.interval': 48,
+            'quality_review.intake_window': 960 if notices else 9,
+        },
+    )
+    assert r.failure is None and r.end == 1440
+    assert [e.t for e in r.entries('start', 'quality_review.notice')] == notices
+    assert [e.t for e in r.entries('start', 'quality_review.review')] == reviews
+    assert starts(r).get('quality_review.clearance') == clearance
+
+
+def test_notice_arriving_as_a_review_finishes_starts_one_new_review():
+    r = record(
+        'fixed_quality_review',
+        **{
+            'quality_review.notice_limit': 3,
+            'quality_review.capacity': 2,
+            'quality_review.interval': 168,
+        },
+    )
+    assert r.failure is None and r.end == 1440
+    hours = [72, 240, 408]
+    assert [e.t for e in r.entries('start', 'quality_review.notice')] == hours
+    assert [e.t for e in r.entries('start', 'quality_review.review')] == hours
+    assert starts(r)['quality_review.clearance'] == 576
+
+
+def test_future_notice_has_no_effect_on_release_inventory_or_supply():
+    baseline = record('subpar_persistent_human')
+    future = record(
+        'fixed_quality_review', **{'quality_review.first_delay': 1440, 'records.released_lot': 'CLEAR'}
+    )
+    assert future.failure is None and future.end == baseline.end == 1440
+    assert 'quality_review.notice' not in starts(future)
+    for event in (
+        'release_team.restart_release',
+        'deliveries.first_arrival',
+        'manufacturer.credentials_reset',
+    ):
+        assert starts(future)[event] == starts(baseline)[event]
+    paths = ['deliveries.delivery_rate', 'other_care_reserve.stock', 'other_care_reserve.deficit']
+    assert readings(future, paths, [72, 671, 672, 695, 696, 1440]) == readings(
+        baseline, paths, [72, 671, 672, 695, 696, 1440]
+    )
+
+
+def test_late_notice_pauses_and_resumes_hospital_supply_after_transport():
+    r = record(
+        'fixed_quality_review',
+        **{
+            'quality_review.notice_limit': 1,
+            'quality_review.first_delay': 700,
+            'records.released_lot': 'CLEAR',
+        },
+    )
+    assert r.failure is None and r.end == 1440
+    events = starts(r)
+    assert (events['release_team.restart_release'], events['deliveries.first_arrival']) == (672, 696)
+    assert (events['quality_review.notice'], events['quality_review.clearance']) == (772, 1108)
+    times = [771, 772, 795, 796, 1108, 1131, 1132]
+    values = readings(
+        r, ['quality_review.cleared', 'deliveries.available', 'other_care_reserve.unmet_rate'], times
+    )
+    assert values['quality_review.cleared'] == (True, False, False, False, True, True, True)
+    assert values['deliveries.available'] == (True, True, True, False, False, False, True)
+    assert values['other_care_reserve.unmet_rate'] == pytest.approx([0, 0, 0, 25, 25, 25, 0])
