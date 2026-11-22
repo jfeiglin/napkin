@@ -7,6 +7,7 @@ from napkin.engine.report import Shown
 from napkin.model import load_scenario
 from napkin.model.runs import options_of
 from napkin.model.support import CODE, DATUM
+from napkin.package import entries
 from napkin.program.record import Unavailable
 
 from .. import catalogue
@@ -97,14 +98,22 @@ def render(model, *, jobs=1):
     return '\n'.join(lines)
 
 
+def publish_package(path, *, check, jobs=1):
+    """Render every variant before writing any files. Each variant owns its readings."""
+    pages = {entry.parent: render(load_scenario(entry), jobs=jobs) for entry in entries(path).values()}
+    results = {}
+    for folder, content in pages.items():
+        target = folder / OUTPUT
+        if check:
+            results[target] = target.is_file() and target.read_bytes() == content.encode('utf-8')
+        else:
+            write({OUTPUT: content}, folder)
+            results[target] = True
+    return results
+
+
 def publish(path, *, check, jobs=1):
-    """Generate or check only this entry's readings file. Return its path and whether it matches."""
-    entry = Path(path)
-    if entry.is_dir():
-        entry = entry / 'model.scn'
-    content = render(load_scenario(entry), jobs=jobs)
-    target = entry.parent / OUTPUT
-    if check:
-        return target, target.is_file() and target.read_bytes() == content.encode('utf-8')
-    write({OUTPUT: content}, entry.parent)
-    return target, True
+    """Generate or check one entry and return its path and whether it matches."""
+    if len(entries(path)) != 1:
+        raise ValueError('a family has more than one readings file; select a variant or use publish_package')
+    return next(iter(publish_package(path, check=check, jobs=jobs).items()))

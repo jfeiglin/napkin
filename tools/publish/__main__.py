@@ -55,7 +55,7 @@ def main(argv=None):
     selection.add_argument(
         '--model',
         metavar='PATH',
-        help='Render the selected readings of one current-language model to its results/readings.md',
+        help='Render current readings for a model or each variant of a package to its results/readings.md',
     )
     parser.add_argument('--jobs', type=int, default=4, help='Worker processes for studies and spreads')
     parser.add_argument(
@@ -71,19 +71,20 @@ def main(argv=None):
             parser.error(
                 '--model renders its readings directly and takes neither --only nor --committed-spreads'
             )
-        from .readings import publish
+        from .readings import publish_package
 
         store.activate(store.default_directory())
         try:
-            target, matches = publish(args.model, check=args.check, jobs=args.jobs)
+            results = publish_package(args.model, check=args.check, jobs=args.jobs)
         except (OSError, ValueError) as error:
             print(error, file=sys.stderr)
             return 1
-        if not matches:
-            print(f'{target} differs from the completed run records', file=sys.stderr)
-            return 1
-        print(f'{"Verified" if args.check else "Wrote"} {target}')
-        return 0
+        for target, matches in results.items():
+            if matches:
+                print(f'{"Verified" if args.check else "Wrote"} {target}')
+            else:
+                print(f'{target} differs from the completed run records', file=sys.stderr)
+        return int(not all(results.values()))
     if args.committed_spreads and not args.check:
         parser.error('--committed-spreads goes with --check: --write samples every spread')
     try:

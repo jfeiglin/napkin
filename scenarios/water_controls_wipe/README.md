@@ -66,6 +66,7 @@ From the checkout:
 
 ```sh
 napkin run scenarios/water_controls_wipe/variants/jamestown --run delayed_none --at 24h,2160h --value unserved_volume
+python -m tools.publish --model scenarios/water_controls_wipe --check --jobs 4
 ```
 
 Each place offers early, standard and delayed response settings. Washington, DC also offers

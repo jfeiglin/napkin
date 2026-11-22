@@ -85,3 +85,21 @@ def test_failed_run_or_unsupported_input_cannot_replace_the_previous_summary(tmp
     with pytest.raises(ValueError, match='no_record'):
         readings.publish(entry, check=False)
     assert target.read_bytes() == saved
+
+
+def test_family_entry_checks_each_variants_own_readings_before_writing(tmp_path):
+    package(tmp_path)
+    folders = [tmp_path / 'variants' / name for name in ('east', 'west')]
+    for folder in folders:
+        folder.mkdir(parents=True)
+        (folder / 'model.scn').write_text(f'variant "{folder.name}"\n')
+    assert main(['--write', '--model', str(tmp_path)]) == 0
+    assert not (tmp_path / readings.OUTPUT).exists()
+    assert all((folder / readings.OUTPUT).is_file() for folder in folders)
+    assert main(['--check', '--model', str(tmp_path / 'model.scn')]) == 0
+    first = folders[0] / readings.OUTPUT
+    first.write_text('previous version\n')
+    assert main(['--check', '--model', str(tmp_path)]) == 1
+    (folders[1] / 'model.scn').write_text('variant "west"\nassert t < 2 h @selection\n')
+    assert main(['--write', '--model', str(tmp_path)]) == 1
+    assert first.read_text() == 'previous version\n'
