@@ -177,17 +177,20 @@ def test_a_variant_owns_the_summaries_in_its_own_results_folder(tmp_path):
         'scenarios/SC97/results/readings.md': 'package readings',
         'scenarios/SC97/variants/east/results/readings.md': 'east readings',
         'scenarios/SC97/variants/west/results/readings.md': 'west readings',
-        # A folder that no variant can have.
-        'scenarios/SC97/variants/East/results/readings.md': 'not a variant',
+        # Invalid even on filesystems where east and East name the same folder.
+        'scenarios/SC97/variants/North/results/readings.md': 'not a variant',
     }
     write_files(tmp_path, stale)
     east = 'scenarios/SC97/variants/east/results/readings.md'
     assert publish.orphans({}, tmp_path, ['readings'], scenario_ids=['SC97:east']) == [east]
     assert publish.orphans({}, tmp_path, ['readings']) == sorted(
-        set(stale) - {'scenarios/SC97/variants/East/results/readings.md'}
+        set(stale) - {'scenarios/SC97/variants/North/results/readings.md'}
     )
     assert publish.prune({}, tmp_path, ['readings'], scenario_ids=['SC97:east']) == [east]
-    assert sorted(path for path in stale if (tmp_path / path).is_file()) == sorted(set(stale) - {east})
+    assert not (tmp_path / east).exists()
+    for path, contents in stale.items():
+        if path != east:
+            assert (tmp_path / path).read_text() == contents
     # A selection names an owner with a model of its own.
     write_files(tmp_path, {'scenarios/SC97/variants/west/model.scn': 'not compiled'})
     assert list(publish.Context(tmp_path, scenario_ids=['SC97:west']).paths) == ['SC97:west']

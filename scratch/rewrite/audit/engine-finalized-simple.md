@@ -2,6 +2,12 @@
 
 The remote Claude tip and the audited baseline were both `6202824d6d567c34ac46da7b018e66a9c28588b3` when `engine_finalized_simple` was created. The owner will arrange the final audit and merge into Claude.
 
+## Audit repairs from b433a4d
+
+| Kind | Owner | Readers, pattern search and evidence |
+|---|---|---|
+| POINT | Publisher selection fixture in `tests/publish/test_publish_selection.py` | The invalid `East` directory shared a file with `east` on the case-insensitive Mac volume. `North` gives the invalid variant its own file. The test checks the contents of every surviving file and the rejection of the mixed-case selector. A search of the tests for case-colliding variant paths found one other `East` path in `test_locator.py`, which tests path spelling without creating both directories. The original assertion failed on macOS. All 10 publisher selection tests passed after the fixture change. |
+
 ## Follow a transfer
 
 | Decision, in order | Owner and contract |
