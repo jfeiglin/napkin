@@ -1,0 +1,17 @@
+scenario "A record of elapsed time"
+    horizon 2.5 h
+yard:
+    amount: L = 0 L
+    first_seen: h = 0 h
+    last_seen: h = 0 h
+    age = formula(elapsed(this.amount))
+    work = event():
+        after 1.0 h:
+            this.amount = 0.5 pL
+        after 0.5 h:
+            this.first_seen = elapsed(this.amount)
+        after 0.5 h:
+            this.amount = 1.0 pL
+        after 0.5 h:
+            this.last_seen = elapsed(this.amount)
+yard.work.start()

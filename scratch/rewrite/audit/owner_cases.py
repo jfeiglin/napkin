@@ -16,6 +16,9 @@ from tests.engine import (
     collection_scope_cases,
     comparison_band_cases,
     cross_rate_cases,
+    record_history_cases,
+    record_identity_cases,
+    record_numerics_cases,
     reversible_bound_cases,
     simultaneous_bound_cases,
     solver_flow_scale_cases,
@@ -53,6 +56,9 @@ FAMILIES = {
     's5/filter': collection_kind_cases.check_filter_history,
     's7/objective': solver_scale_cases.check_solver_scale,
     's7/flow': solver_flow_scale_cases.check_solver_flow_scale,
+    's8/history': record_history_cases.check_record_history,
+    's8/identity': record_identity_cases.check_record_identity,
+    's8/numerics': record_numerics_cases.check_record_numerics,
 }
 
 
@@ -98,6 +104,9 @@ def run_cases(ids, destination):
         's5/filter': collection_kind_cases,
         's7/objective': solver_scale_cases,
         's7/flow': solver_flow_scale_cases,
+        's8/history': record_history_cases,
+        's8/identity': record_identity_cases,
+        's8/numerics': record_numerics_cases,
     }
     sources_by_module = {
         module: {module.__name__: hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()}

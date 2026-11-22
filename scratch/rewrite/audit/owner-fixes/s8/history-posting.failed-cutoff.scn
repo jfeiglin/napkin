@@ -1,0 +1,13 @@
+scenario "Stock balances"
+    horizon 2 h
+yard:
+    stock: L = 4000000 L in [0 L, 4000000 L]
+    supply: L = 1.2E-9 L in [0 L,]
+    receipt: L = 0 L in [0 L,]
+    work = event():
+        after 1 h:
+            move 3E-10 L from this.stock to this.receipt
+        after 1 h:
+            move 3E-10 L from this.supply to this.receipt
+            move 6E-10 L from this.supply to this.stock
+yard.work.start()

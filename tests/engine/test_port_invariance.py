@@ -21,6 +21,9 @@ from tests.engine.collection_scope_cases import check_collection_scope
 from tests.engine.comparison_band_cases import check_comparison_band
 from tests.engine.cross_rate_cases import check_cross_rate
 from tests.engine.port_cases import HORIZON, Case, Spelling, builder_program, text_program
+from tests.engine.record_history_cases import check_record_history
+from tests.engine.record_identity_cases import check_record_identity
+from tests.engine.record_numerics_cases import check_record_numerics
 from tests.engine.reversible_bound_cases import check_reversible_bounds
 from tests.engine.simultaneous_bound_cases import check_simultaneous_bounds
 from tests.engine.solver_flow_scale_cases import check_solver_flow_scale
@@ -44,6 +47,9 @@ OWNER_CHECKS = {
     'filter_history': check_filter_history,
     'solver_scale': check_solver_scale,
     'solver_flow_scale': check_solver_flow_scale,
+    'record_history': check_record_history,
+    'record_identity': check_record_identity,
+    'record_numerics': check_record_numerics,
 }
 TRANSFORMS = (
     'empty_event',

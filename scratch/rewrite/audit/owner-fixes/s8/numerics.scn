@@ -1,0 +1,18 @@
+scenario "Stored occurrence lookups"
+    horizon 3 h
+meter:
+    level: L = 1.0000004 L scale 1 L
+    seen: L = 0 L
+    near = formula(this.batch.occurrences.at(1 h if this.level <= 1 L else 0 h).amount)
+    filtered = formula(this.batch.occurrences.where(gate <= 1 L).at(t).amount)
+    outside = formula(this.batch.occurrences.at(1 h if this.level <= 0.9999 L else 0 h).amount)
+    equal = formula(this.batch.occurrences.at(1 h if this.level <= 1.0000004 L else 0 h).amount)
+    batch = event(amount: L, gate: L):
+        after 4 h
+    launch = event():
+        after 1 h:
+            this.batch.start(9 L, 1.0000004 L)
+        after 1 h:
+            this.seen = this.near
+meter.batch.start(2 L, 1 L)
+meter.launch.start()
