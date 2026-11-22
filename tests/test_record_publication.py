@@ -103,3 +103,133 @@ def test_family_entry_checks_each_variants_own_readings_before_writing(tmp_path)
     (folders[1] / 'model.scn').write_text('variant "west"\nassert t < 2 h @selection\n')
     assert main(['--write', '--model', str(tmp_path)]) == 1
     assert first.read_text() == 'previous version\n'
+
+
+def test_scoped_and_whole_catalogue_own_only_current_artifacts(tmp_path, monkeypatch, capsys):
+    import json
+
+    from napkin import SCHEMA_VERSION
+    from tools.evidence import manifest
+    from tools.publish import __main__ as runner
+
+    monkeypatch.setattr(runner, 'ROOT', tmp_path)
+    scenarios = tmp_path / 'scenarios'
+    library = scenarios / 'library'
+    library.mkdir(parents=True)
+    vocabulary = {
+        'schema_version': SCHEMA_VERSION,
+        'id': 'vocabulary',
+        'title': 'Vocabulary',
+        'units': {},
+        'sources': [],
+        'claims': [],
+        'assumptions': [],
+    }
+    (library / 'vocabulary.json').write_text(json.dumps(vocabulary))
+    historical = [scenarios / 'README.md']
+    for sid in ('SC97', 'SC98'):
+        folder = scenarios / sid
+        results = folder / 'results'
+        results.mkdir(parents=True)
+        package(folder)
+        historical.extend(
+            results / filename
+            for filename in (
+                'brief.md',
+                'methods.md',
+                'source-verification.json',
+                'assumption-review.json',
+                'runs.csv',
+                'runs.json',
+                'index.html',
+            )
+        )
+    for path in historical:
+        path.write_bytes(b'preserved historical publication\n')
+    first = scenarios / 'SC97' / 'results'
+    second = scenarios / 'SC98' / 'results'
+    manifest_file = tmp_path / manifest.PATH
+    scoped = ['--scenario', 'SC97', '--jobs', '1']
+    assert main(['--write', *scoped]) == 0
+    current = first / 'readings.md', first / 'source-dossier.json'
+    assert all(path.is_file() for path in current)
+    assert not manifest_file.exists()
+    assert not (second / 'readings.md').exists() and not (second / 'source-dossier.json').exists()
+    for stale in current:
+        saved = stale.read_bytes()
+        stale.write_bytes(b'stale current data\n')
+        assert main(['--check', *scoped]) == 1
+        assert stale.name in capsys.readouterr().err
+        stale.write_bytes(saved)
+    assert main(['--check', *scoped]) == 0
+    assert main(['--write', '--jobs', '1']) == 0
+    assert manifest_file.exists() and (second / 'source-dossier.json').exists()
+    assert main(['--check', '--jobs', '1']) == 0
+    manifest_file.write_bytes(b'changed manifest')
+    assert main(['--check', *scoped]) == 0
+    assert main(['--check', '--jobs', '1']) == 1
+    assert manifest.PATH in capsys.readouterr().err
+    assert all(path.read_bytes() == b'preserved historical publication\n' for path in historical)
+
+
+@pytest.mark.parametrize(
+    'request_args',
+    [
+        ['--only', 'briefs'],
+        ['--only', 'html'],
+        ['--only', 'runs'],
+        ['--only', 'methods'],
+        ['--only', 'assumptions'],
+        ['--committed-spreads'],
+    ],
+)
+def test_historical_formats_explain_the_supported_current_publication(request_args, capsys):
+    with pytest.raises(SystemExit) as exit_code:
+        main(['--check', *request_args])
+    assert exit_code.value.code == 2
+    diagnostic = capsys.readouterr().err.lower()
+    assert 'historical' in diagnostic and '8488047' in diagnostic
+    assert 'readings' in diagnostic and 'dossier' in diagnostic
+
+
+def test_explicit_spread_check_completes_the_authored_runs_and_rejects_a_failed_sample(tmp_path):
+    from tools import publish
+
+    entry = tmp_path / 'scenarios' / 'measured'
+    entry.mkdir(parents=True)
+    source = SOURCE.replace('input first = 2 @early', 'input first = uniform(1, 3).draw() @early')
+    package(entry, source)
+    with (entry / 'brief.toml').open('a') as out:
+        out.write('\n[[spread]]\nid = "gauges"\nruns = ["nearby", "standard"]\nsamples = 3\nseed = 2\n')
+    (entry / 'spreads').mkdir()
+    (entry / 'spreads' / 'gauges.json').write_text('{"set":{}}')
+    messages = []
+    ctx = publish.Context(tmp_path, jobs=1, scenario_ids=['measured'], progress=messages.append)
+    publish.sample_spreads(ctx)
+    assert messages[-1] == 'verified 6 samples from current declared spreads'
+    # The central and sampled checks must both run. Seed 2 includes a first reading above 2.1.
+    (entry / 'model.scn').write_text(source + '\nassert first <= 2.1 @selection\n')
+    with pytest.raises(ValueError, match=r'measured gauges nearby: sample \d+ .*stops'):
+        publish.sample_spreads(publish.Context(tmp_path, jobs=1, scenario_ids=['measured']))
+
+
+def test_selecting_a_catalogue_family_writes_each_variant_once(tmp_path, monkeypatch):
+    from tools.publish import __main__ as runner
+
+    monkeypatch.setattr(runner, 'ROOT', tmp_path)
+    root = tmp_path / 'scenarios' / 'gauges'
+    root.mkdir(parents=True)
+    package(root)
+    variants = [root / 'variants' / name for name in ('east', 'west')]
+    for entry in variants:
+        entry.mkdir(parents=True)
+        (entry / 'model.scn').write_text(f'variant "{entry.name}"\n')
+    scope = ['--scenario', 'gauges', '--scenario', 'gauges:east', '--jobs', '1']
+    assert main(['--write', *scope]) == 0
+    assert not (root / 'results').exists()
+    for folder in variants:
+        assert sorted(f.name for f in (folder / 'results').iterdir()) == [
+            'readings.md',
+            'source-dossier.json',
+        ]
+    assert main(['--check', *scope]) == 0

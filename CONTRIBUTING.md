@@ -547,47 +547,20 @@ example and the acceptance fixture. It holds no Monte Carlo sample of a spread a
 
 ### The committed summaries
 
-The publisher, `tools.publish`, renders the committed summaries from the models. It is a pure
-renderer. When a change makes the summaries of some scenarios stale, refresh only those:
+The current catalogue publisher renders each runnable entry's `results/readings.md` and
+`results/source-dossier.json`. The whole-catalogue command also renders the active source
+manifest. A scoped check or refresh covers only its selected package or variants.
 
-```bash
+```sh
+python -B -m tools.publish --check --scenario ID
 python -B -m tools.publish --write --scenario ID --jobs 1
 ```
 
-| Command | What it gives | Time |
-| --- | --- | --- |
-| `python -B -m tools.publish --write` | The briefs and the catalogue's index, the methods, each scenario's evidence dossier and assumption inventory, the source manifest, and the run tables | Compilation, rendering and the selected studies set the time; stored runs alone do not make it short. It also samples each spread (below) |
-| `python -B -m tools.evidence.integrate --check --complete` | The reproduction of the sources from the cache of acquired sources (`.evidence-cache`), in the extraction environment that the records name | It depends on the cache. No automatic check runs it |
-| `python -B -m tools.evidence.integrate --coverage` | The report of the evidence coverage | It builds every model of the catalogue |
-
-`--only BUILDER` restricts the publisher to the builders that you name: `assumptions`, `briefs`,
-`dossier`, `manifest`, `methods` or `runs`.
-
-**The cost of the spreads.** A brief whose `brief.toml` defines a spread (`[[spread]]`) samples
-hundreds of runs when it is published. The longest takes about 25 minutes on four cores. `tools.check`
-does not sample them: it takes each spread section from the committed brief (`--committed-spreads`).
-`tools.check --spreads` and `--release` sample them, and `tools.publish --write` always does. Say what
-this costs before you start one of them.
-
-**Selected publication.** Repeat `--scenario ID` to check or write some scenarios only, in the
-folders that they own. The IDs must exist before the publisher compiles a model or evaluates a study.
-The selection keeps the order of the catalogue, and evaluates each default study once. A selected
-scenario with sweeps also evaluates them for its run table. A selected scenario whose brief defines
-spreads samples them for its brief, unless `--check --committed-spreads` is given. A committed brief
-without its spread section then shows as stale.
-
-A selection writes, checks or deletes only the files of the selected scenarios. The other summaries,
-the index of the catalogue and the authored files stay as they are, even when they are stale. The
-publisher reports the aggregate builders and the index that it skips. An aggregate builder
-(`manifest`) that you name together with `--scenario` is an error. Without a selection, the
-publisher runs every builder, on the whole catalogue.
-
-**The same on every computer.** A committed summary is the same on every computer. The last digits
-of a calculated value differ between computers. So the builders round each value to nine significant
-figures before its display rounding: three figures in the briefs and six in the run tables. A final
-value in a brief can be within the solver's relative tolerance of zero. The tolerance is relative to
-the largest value of that outcome in its pathway. Such a value is a residue of the calculation, and
-it reads 0.
+`--only readings` and `--only dossier` select one format. Use `--only manifest` for the
+whole-catalogue source manifest. The regular checker uses these current publications.
+`tools.check --spreads` and the current release check also execute the declared sample studies.
+Historical briefs, campaign tables and HTML retain their earlier revision and paths.
+[Current publication commands and coverage](tools/publish/README.md)
 
 ### Releasing
 

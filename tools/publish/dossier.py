@@ -116,11 +116,12 @@ def artifacts(ctx):
             effective_library=ctx.libraries[sid],
         )
         record['scenario'] = sid
+        record['model_hash'] = ctx.models[sid].model_hash
         for source in record['sources']:
             source['scenario'] = sid
             for claim in source['claims']:
                 claim['scenario'] = sid
-        outputs[catalogue.result(sid, 'source-verification.json')] = (
+        outputs[catalogue.result(sid, 'source-dossier.json')] = (
             dump_json(record, indent=2, ensure_ascii=True) + '\n'
         )
     return outputs

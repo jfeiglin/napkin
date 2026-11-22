@@ -17,6 +17,12 @@ from .brief import brief_of, shown, value_note
 OUTPUT = Path('results/readings.md')
 
 
+def artifacts(ctx):
+    return {
+        catalogue.result(sid, OUTPUT.name): render(model, jobs=ctx.jobs) for sid, model in ctx.models.items()
+    }
+
+
 def display(value):
     if isinstance(value, Unavailable):
         return f'Unavailable ({value.reason})'

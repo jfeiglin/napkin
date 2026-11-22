@@ -316,15 +316,14 @@ def test_the_evidence_stage_refuses_a_package_that_rests_a_value_on_no_record(tm
     assert 'SC98: 1 part without the support of a record' in capsys.readouterr().out
 
 
-def test_the_summaries_take_the_committed_spreads_unless_spreads_are_asked(monkeypatch):
-    """D-39: the summaries stage samples no brief's spread unless asked; the publisher then takes each
-    spread section from the committed brief."""
+def test_the_summaries_sample_current_spreads_only_when_requested(monkeypatch):
     calls = []
     monkeypatch.setattr(check, 'run', lambda command, cwd=None, environment=None: calls.append(command) or 0)
     check.summaries(('SC98',))
     check.summaries(('SC98',), spreads=True)
     check.summaries(None)
-    assert ['--committed-spreads' in command for command in calls] == [True, False, True]
+    assert ['--sample-spreads' in command for command in calls] == [False, True, False]
+    assert all('--committed-spreads' not in command for command in calls)
     assert calls[0][-2:] == ['--scenario', 'SC98']
 
 

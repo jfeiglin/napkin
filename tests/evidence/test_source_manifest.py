@@ -193,9 +193,9 @@ def test_inline_evidence_needs_no_owned_files_in_a_manifest_or_dossier(tmp_path)
     assert result['library_source_count'] == rows['SC99']['library_source_count'] == 1
 
     dossiers = build(Context(tmp_path), only=['dossier'])
-    local = json.loads(dossiers['scenarios/observations/results/source-verification.json'])
+    local = json.loads(dossiers['scenarios/observations/results/source-dossier.json'])
     assert local['sources'] == [] and local['summary']['claims'] == 0
-    sourced = json.loads(dossiers['scenarios/SC99/results/source-verification.json'])
+    sourced = json.loads(dossiers['scenarios/SC99/results/source-dossier.json'])
     assert {claim['id'] for claim in sourced['sources'][0]['claims']} == {'C-ACCESS', 'C-ACTION'}
     assert all(claim['reachable_from_scenarios'] == ['SC99'] for claim in sourced['sources'][0]['claims'])
 

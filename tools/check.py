@@ -16,7 +16,8 @@ computes, which a datum, being a number, cannot be.
 
 --all retains the complete tests and catalogue publication comparison.
 --all --deep also runs exhaustive admission tests and replays three stored simulations.
---release adds release metadata and wheel checks and uses an empty run store.
+--release adds release metadata, current declared spread studies and wheel checks and uses an
+empty run store. The current publication check covers readings, source dossiers and the source manifest.
 
 The run store reuses simulations, not compilation or rendering. A cache hit is not a
 promise of a fast full-catalogue check. Use targeted tests during development and run
@@ -117,13 +118,12 @@ def stored_runs_again(number):
 
 
 def summaries(scope=None, jobs=4, spreads=False):
-    """Compare selected owned summaries once; aggregate catalogue renders require full scope. A brief's
-    spread is sampled only with `spreads`; otherwise the comparison takes the spread section of the
-    committed brief (D-39)."""
+    """Check current readings and dossiers. A full check also verifies the manifest. Sampling
+    replays the current declared spreads at their authored sizes when requested."""
     if scope == ():
         return 0
     publish = python(
-        '-m', 'tools.publish', '--check', '--jobs', str(jobs), *([] if spreads else ['--committed-spreads'])
+        '-m', 'tools.publish', '--check', '--jobs', str(jobs), *(['--sample-spreads'] if spreads else [])
     )
     if scope is None:
         return run(publish)
@@ -399,7 +399,7 @@ def main(argv=None):
     parser.add_argument(
         '--spreads',
         action='store_true',
-        help="Also sample the briefs' spreads (`[[spread]]`) when comparing the summaries; a release always does",
+        help='Also run the current declared spreads at their authored sample counts. A release does this.',
     )
     parser.add_argument(
         '--plan', action='store_true', help='Show the scope and stages without running checks'
@@ -434,7 +434,10 @@ def main(argv=None):
     if args.release and (args.scenario or args.all or args.tests or args.skip_summaries):
         parser.error('a release checks everything; do not restrict tests, scenarios or summaries')
     if args.release:
-        scope, reason = None, 'a release checks everything'
+        scope, reason = (
+            None,
+            'the current release checks tests, publications, declared spreads, notes and wheel',
+        )
     elif args.all:
         scope, reason = None, '--all'
     elif args.scenario:

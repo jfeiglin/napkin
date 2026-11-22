@@ -27,6 +27,7 @@ from ..catalogue import ROOT
 
 # These builders describe the complete catalogue or library, not a selection of scenarios.
 AGGREGATE = ('manifest',)
+HISTORICAL = ('assumptions', 'briefs', 'html', 'methods', 'runs')
 # A committed location in the results folder of each owner of the catalogue: `{results}/brief.md` is
 # `scenarios/water_wipe/results/brief.md` for the scenario water_wipe (`catalogue.result`).
 RESULTS = '{results}'
@@ -75,9 +76,15 @@ class Context:
         self.scenario_ids = _selection(scenario_ids)
         if self.scenario_ids is not None:
             known = catalogue.entries(self.root)
-            unknown = sorted(set(self.scenario_ids).difference(known))
+            packages = {name.partition(':')[0] for name in known}
+            unknown = sorted(set(self.scenario_ids).difference(known, packages))
             if unknown:
                 raise ValueError('Unknown scenario IDs: ' + ', '.join(unknown))
+            self.scenario_ids = tuple(
+                name
+                for name in known
+                if name in self.scenario_ids or name.partition(':')[0] in self.scenario_ids
+            )
         if studies is not None:
             supplied = {
                 sid: study
@@ -140,18 +147,48 @@ def builders():
     from ..evidence import manifest
 
     return {
-        'briefs': (partial(_artifacts, 'briefs'), (f'{RESULTS}/brief.md', catalogue.INDEX)),
-        'methods': (partial(_artifacts, 'methods'), (f'{RESULTS}/methods.md',)),
-        'dossier': (partial(_artifacts, 'dossier'), (f'{RESULTS}/source-verification.json',)),
+        'readings': (partial(_artifacts, 'readings'), (f'{RESULTS}/readings.md',)),
+        'dossier': (partial(_artifacts, 'dossier'), (f'{RESULTS}/source-dossier.json',)),
         'manifest': (lambda ctx: manifest.artifacts(ctx.root), (manifest.PATH,)),
-        'assumptions': (partial(_artifacts, 'assumptions'), (f'{RESULTS}/assumption-review.json',)),
-        'runs': (partial(_artifacts, 'runs'), (f'{RESULTS}/runs.json', f'{RESULTS}/runs.csv')),
     }
 
 
 def _artifacts(name, ctx):
     """Load a renderer when a selection asks it to generate an artifact."""
     return import_module(f'.{name}', __name__).artifacts(ctx)
+
+
+def sample_spreads(ctx):
+    """Run each declared spread of the selection at its authored settings through the public sampler."""
+    from napkin.engine import edits_for
+    from napkin.model.load import load_json
+    from napkin.spread import spread
+
+    from .brief import brief_of, shown, spread_document, value_note
+
+    total = 0
+    for sid, model in ctx.models.items():
+        brief = brief_of(model)
+        for spec in brief.spreads:
+            path = spread_document(model, spec)
+            body = load_json(path, exact_numbers=True)
+            if not isinstance(body, dict):
+                raise ValueError(f'{path}: an edit document is a JSON object')
+            edits = edits_for(model, body)
+            paths = [
+                name
+                for name in spec.outputs or shown(brief, model)
+                if value_note(model, 'not_estimated', name, 'reason') is None
+            ]
+            for run in spec.runs:
+                ctx.progress(f'sampling {sid} {spec.id} {run}: {spec.samples} samples, seed {spec.seed}')
+                result = spread(
+                    model, paths, run=run, edits=edits, samples=spec.samples, seed=spec.seed, jobs=ctx.jobs
+                )
+                if result.refused:
+                    raise ValueError(f'{sid} {spec.id} {run}: {result.refused}')
+                total += len(result.samples)
+    ctx.progress(f'verified {total} samples from current declared spreads')
 
 
 def _located(path, locations):
@@ -171,6 +208,14 @@ def _located(path, locations):
 def selected(only=None, scenario_ids=None):
     """The builders to run: ``only`` names them; otherwise every builder. A selection of scenarios
     runs no aggregate builder."""
+    for name in only or ():
+        if name in HISTORICAL:
+            raise ValueError(
+                f'{name} is a historical publication format at revision 8488047. '
+                'Current formats are readings, dossier and manifest.'
+            )
+        if name not in builders():
+            raise ValueError(f'Unknown publication format {name!r}')
     selection = _selection(scenario_ids)
     if selection is not None:
         requested = [name for name in AGGREGATE if only and name in only]
@@ -209,7 +254,6 @@ def build(ctx, only=None):
     names = selected(only, scenario_ids)
     if scenario_ids is not None:
         ctx.progress('skipping aggregate builders: ' + ', '.join(AGGREGATE))
-        ctx.progress(f'skipping the catalogue index: {catalogue.INDEX}')
     for name, (builder, locations) in builders().items():
         if name not in names:
             continue
