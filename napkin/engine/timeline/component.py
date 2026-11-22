@@ -72,6 +72,7 @@ from ..errors import SimulationError
 from .collections import node_of
 from .contacts import put_bounds
 from .network import paired_rates
+from .region import Region
 from .way import MovingTransfers, Way
 
 
@@ -568,6 +569,15 @@ class ComponentWay(MovingTransfers, Way):
         if single is None:
             self.component.field.leg_rates = lambda: self.component.field.delivered
         self._stepped(float(t))
+
+    def held_region(self):
+        """The present segment's branches, which its field holds (`Field.choose`), as a region."""
+        branches = self.component.field.branches
+        if not branches:
+            return None
+        region = Region()
+        region.set(branches, {})
+        return region
 
     def _pair(self, system, plan):
         """Two directed pipes with one common stock and no other constraining face.

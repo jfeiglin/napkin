@@ -492,8 +492,11 @@ class Stocks:
             elif primitive is not None:
                 allowed = polynomial_amount(primitive, since, t)
             else:
+                # The window [through, t] is the present segment's: read the capacity on the
+                # branches that the segment ran on (`Way.held_value`), never a comparison
+                # decided again at each time, which can flip inside its band before the switch.
                 allowed = certified_amount(
-                    lambda at: self.run.value(capacity, min(at, math.nextafter(t, since))),
+                    lambda at: way.held_value(capacity, min(at, math.nextafter(t, since))),
                     since,
                     t,
                     f'{capacity}: cannot certify the accepted capacity',

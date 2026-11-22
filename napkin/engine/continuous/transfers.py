@@ -111,51 +111,16 @@ def _gauss_rule():
     return [((1 + rational(x)) / 2, rational(w) / denominator) for x, w in zip(points, weights)]
 
 
-def _bisected(rate, a, b, *, depth=64, most=4096):
-    """Pieces of [a, b] on each of which the Gauss rule agrees with the sum over its two
-    halves to 1e-13, halving where it does not. A step in the rate ends up inside one piece
-    no wider than about (b - a) / 2**depth, whose share of the total is negligible. None when
-    more than `most` pieces would be needed."""
-    rule = [(float(x), float(w)) for x, w in _gauss_rule()]
-
-    def measured(lo, hi):
-        width = hi - lo
-        return width * sum(w * float(rate(lo + x * width)) for x, w in rule)
-
-    pieces, pending = [], [(a, b, measured(a, b), 0)]
-    while pending:
-        lo, hi, whole, level = pending.pop()
-        mid = lo + (hi - lo) / 2
-        if level >= depth or not lo < mid < hi:
-            pieces.append((lo, hi))
-            continue
-        left, right = measured(lo, mid), measured(mid, hi)
-        if abs(left + right - whole) <= 1e-13 * (abs(left) + abs(right)):
-            pieces += [(lo, mid), (mid, hi)]
-        else:
-            pending += [(mid, hi, right, level + 1), (lo, mid, left, level + 1)]
-        if len(pieces) + len(pending) > most:
-            return None
-    return sorted(pieces)
-
-
 def certified_amount(rate, a, b, label):
     """Measure a curved rate on QUADPACK's accepted subintervals, accumulating all weights and
     durations before rounding. Neither the numerical error estimate nor the number of intervals
     increases the physical allowance."""
     answer = quad(rate, a, b, epsabs=0, epsrel=1e-13, full_output=True)
     if len(answer) > 3:
-        # QUADPACK's extrapolation gives up on a rate that steps, as a capacity with a branch
-        # does, and whether it gives up depends on the platform's arithmetic. Halving the
-        # pieces until each one's rule agrees with its halves localizes the step instead.
-        pieces = _bisected(rate, a, b)
-        if pieces is None:
-            raise SimulationError(f'{label}: {answer[3]}')
-    else:
-        parts = answer[2]
-        pieces = list(zip(parts['alist'][: parts['last']], parts['blist'][: parts['last']]))
+        raise SimulationError(f'{label}: {answer[3]}')
+    parts = answer[2]
     total = Fraction(0)
-    for lo, hi in pieces:
+    for lo, hi in zip(parts['alist'][: parts['last']], parts['blist'][: parts['last']]):
         start = rational(lo)
         duration = rational(hi) - start
         total += duration * sum(w * rational(rate(float(start + x * duration))) for x, w in _gauss_rule())

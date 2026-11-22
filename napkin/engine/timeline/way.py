@@ -118,6 +118,19 @@ class Way:
         changes = getattr(self, 'adjustments', None)
         return value + changes.get(name, 0) if changes else value
 
+    def held_region(self):
+        """The branches that the present segment runs on (`region.Region`), or None for a way that
+        holds none. Inside a segment only a located switch changes a branch."""
+        return getattr(self, 'region', None)
+
+    def held_value(self, name, t):
+        """A value at t on the branches of the present segment (`integrate.branch_expression`), as
+        this way applied it there. A check over the segment's accepted window reads what the segment
+        ran on, never a comparison decided again at each time: near a located switch the raw
+        comparison can flip inside its band before the switch."""
+        region = self.held_region()
+        return self.run.value(name, t) if region is None else self.run.in_region(name, t, region)
+
     def resting_value(self, name, t):
         if self.resting_rates is not None:
             side = self.resting_rates.sides.get(self.place[name])
