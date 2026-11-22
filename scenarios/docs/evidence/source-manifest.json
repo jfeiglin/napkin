@@ -4174,7 +4174,7 @@
     {
       "scenario": "heat_wave_blackout",
       "manifest_version": "1.0",
-      "library_source_count": 102,
+      "library_source_count": 63,
       "normalization": "nfkc-lig-v2",
       "extractors": [
         "gs-10.07.1 txtwrite-pages",
@@ -4238,54 +4238,6 @@
           "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import hess2014heatillness=/path/to/raw-document"
         },
         {
-          "id": "sel2016ukraine",
-          "title": "Ukraine Cyber-Induced Power Outage: Analysis and Practical Mitigation Strategies",
-          "publication_url": "https://selinc.com/api/download/117044/",
-          "retrieval": {
-            "requested_url": "https://selinc.com/api/download/117044/",
-            "final_url": "https://selinc.com/api/download/117044/",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:35:10Z",
-            "tool": "curl",
-            "media_type": "application/pdf",
-            "bytes": 491308,
-            "sha256": "f006c51de8e7667c38cfc1d6832d6077d1cbc2049c649f109f597bc3ea7aac8f",
-            "text": {
-              "extractor": "gs-10.07.1 txtwrite-pages",
-              "sha256": "2a2d5c24a282a4e067e168a88fb376f591adcd80d328a26ee91ddf2e939b3d47"
-            }
-          },
-          "claims": [
-            "T-SC41-01"
-          ],
-          "acquisition_url": "https://selinc.com/api/download/117044/",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import sel2016ukraine=/path/to/raw-document"
-        },
-        {
-          "id": "eisac2016ukraine",
-          "title": "Analysis of the Cyber Attack on the Ukrainian Power Grid",
-          "publication_url": "https://nsarchive.gwu.edu/sites/default/files/documents/3891751/SANS-and-Electricity-Information-Sharing-and.pdf",
-          "retrieval": {
-            "requested_url": "https://nsarchive.gwu.edu/sites/default/files/documents/3891751/SANS-and-Electricity-Information-Sharing-and.pdf",
-            "final_url": "https://nsarchive.gwu.edu/sites/default/files/documents/3891751/SANS-and-Electricity-Information-Sharing-and.pdf",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:35:17Z",
-            "tool": "curl",
-            "media_type": "application/pdf",
-            "bytes": 1480089,
-            "sha256": "d929b179cc4d45723cd0da43484a86a9e3eac68663d7b6569526e9fb7e46fac9",
-            "text": {
-              "extractor": "gs-10.07.1 txtwrite-pages",
-              "sha256": "e7673499dcf8e0f941f6e654ae94c7b4058a826e53cfaf0220fbe70eb3a13dd0"
-            }
-          },
-          "claims": [
-            "AT-CYBER-01"
-          ],
-          "acquisition_url": "https://nsarchive.gwu.edu/sites/default/files/documents/3891751/SANS-and-Electricity-Information-Sharing-and.pdf",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import eisac2016ukraine=/path/to/raw-document"
-        },
-        {
           "id": "inl2022cyote_ukraine2015",
           "title": "Precursor Analysis Report: Ukraine Energy Sector Cyber Attack 2015",
           "publication_url": "https://cyote.inl.gov/content/uploads/24/2025/12/CyOTE-Case-Study_Ukraine-2015.pdf",
@@ -4310,30 +4262,6 @@
           ],
           "acquisition_url": "https://web.archive.org/web/20251223124619id_/https://cyote.inl.gov/content/uploads/24/2025/12/CyOTE-Case-Study_Ukraine-2015.pdf",
           "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import inl2022cyote_ukraine2015=/path/to/raw-document"
-        },
-        {
-          "id": "nist_sp800_82r3",
-          "title": "Guide to Operational Technology (OT) Security",
-          "publication_url": "https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=956505",
-          "retrieval": {
-            "requested_url": "https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=956505",
-            "final_url": "https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=956505",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:37:22Z",
-            "tool": "curl",
-            "media_type": "application/pdf",
-            "bytes": 8525141,
-            "sha256": "58ef03f0ab593b4aeb8ffec4632025e8676d9e84d6e8ec096df78c1164e3c555",
-            "text": {
-              "extractor": "gs-10.07.1 txtwrite-pages",
-              "sha256": "a98332b363ef88658680ac5e1e65d46b03af47991769dc0a3ed2e5288e9334f0"
-            }
-          },
-          "claims": [
-            "E-SC41-OT-RESPONSE"
-          ],
-          "acquisition_url": "https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=956505",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import nist_sp800_82r3=/path/to/raw-document"
         },
         {
           "id": "hhs_empower_faq",
@@ -4704,54 +4632,6 @@
           "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import hhs_empower_rest=/path/to/raw-document"
         },
         {
-          "id": "bea2026countygdp",
-          "title": "Gross Domestic Product by County and Personal Income by County, 2024",
-          "publication_url": "https://www.bea.gov/news/2026/gross-domestic-product-county-and-personal-income-county-2024",
-          "retrieval": {
-            "requested_url": "https://apps.bea.gov/regional/zip/CAGDP1.zip",
-            "final_url": "https://apps.bea.gov/regional/zip/CAGDP1.zip#CAGDP1_AZ_2001_2024.csv",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:54:02Z",
-            "tool": "manual",
-            "media_type": "text/csv",
-            "bytes": 15049,
-            "sha256": "5c386c44b7555c3b804d269a34f3691ccb70da7bd4faf59f4a75900785e61bd2",
-            "text": {
-              "extractor": "utf8-decode-v1",
-              "sha256": "5c386c44b7555c3b804d269a34f3691ccb70da7bd4faf59f4a75900785e61bd2"
-            }
-          },
-          "claims": [
-            "E-BEA-MARICOPA"
-          ],
-          "acquisition_url": "https://apps.bea.gov/regional/zip/CAGDP1.zip#CAGDP1_AZ_2001_2024.csv",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import bea2026countygdp=/path/to/raw-document"
-        },
-        {
-          "id": "census_quickfacts_phoenix",
-          "title": "QuickFacts: Phoenix city, Arizona; Maricopa County, Arizona; Pinal County, Arizona",
-          "publication_url": "https://www.census.gov/quickfacts/fact/table/phoenixcityarizona,maricopacountyarizona,pinalcountyarizona/PST045225",
-          "retrieval": {
-            "requested_url": "https://www.census.gov/quickfacts/fact/table/phoenixcityarizona,maricopacountyarizona,pinalcountyarizona/PST045225",
-            "final_url": "https://www.census.gov/quickfacts/fact/table/phoenixcityarizona,maricopacountyarizona,pinalcountyarizona/PST045225",
-            "http_status": null,
-            "retrieved_at": "2026-09-18T02:53:12Z",
-            "tool": "tinyfish",
-            "media_type": "text/plain; charset=utf-8",
-            "bytes": 6126,
-            "sha256": "7a95efe227b6c3b6da26a6368fd3df2d810f1f4beb3c9b4e5c344161aef50084",
-            "text": {
-              "extractor": "utf8-decode-v1",
-              "sha256": "7a95efe227b6c3b6da26a6368fd3df2d810f1f4beb3c9b4e5c344161aef50084"
-            }
-          },
-          "claims": [
-            "E-CENSUS-PHX"
-          ],
-          "acquisition_url": "https://www.census.gov/quickfacts/fact/table/phoenixcityarizona,maricopacountyarizona,pinalcountyarizona/PST045225",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import census_quickfacts_phoenix=/path/to/raw-document"
-        },
-        {
           "id": "baik2025blackouts",
           "title": "A Method to estimate the economy-wide consequences of widespread, long duration electric power interruptions",
           "publication_url": "https://doi.org/10.1038/s41467-025-58537-4",
@@ -4818,8 +4698,7 @@
             }
           },
           "claims": [
-            "E-MANDIANT22",
-            "V-C03"
+            "E-MANDIANT22"
           ],
           "acquisition_url": "https://cloud.google.com/blog/topics/threat-intelligence/sandworm-disrupts-power-ukraine-operational-technology",
           "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import mandiant2023sandworm=/path/to/raw-document"
@@ -4849,78 +4728,6 @@
           "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import nerc_eop008=/path/to/raw-document"
         },
         {
-          "id": "cisa_aa24_038a",
-          "title": "PRC State-Sponsored Actors Compromise and Maintain Persistent Access to U.S. Critical Infrastructure",
-          "publication_url": "https://www.cisa.gov/sites/default/files/2024-03/aa24-038a_csa_prc_state_sponsored_actors_compromise_us_critical_infrastructure_3.pdf",
-          "retrieval": {
-            "requested_url": "https://www.cisa.gov/sites/default/files/2024-03/aa24-038a_csa_prc_state_sponsored_actors_compromise_us_critical_infrastructure_3.pdf",
-            "final_url": "https://www.cisa.gov/sites/default/files/2024-03/aa24-038a_csa_prc_state_sponsored_actors_compromise_us_critical_infrastructure_3.pdf",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:55:05Z",
-            "tool": "curl",
-            "media_type": "application/pdf",
-            "bytes": 1635282,
-            "sha256": "f90e5d955b131306453a7c2ced1efcf0618d3e0dfd6c6c181262319fab63339b",
-            "text": {
-              "extractor": "gs-10.07.1 txtwrite-pages",
-              "sha256": "556984933b5aacabb91596aa792f5c4314d51834a3ffec084a77672c1d0b8d01"
-            }
-          },
-          "claims": [
-            "E-VOLT-PREPOSITION"
-          ],
-          "acquisition_url": "https://www.cisa.gov/sites/default/files/2024-03/aa24-038a_csa_prc_state_sponsored_actors_compromise_us_critical_infrastructure_3.pdf",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import cisa_aa24_038a=/path/to/raw-document"
-        },
-        {
-          "id": "mitre_t0813",
-          "title": "ATT&CK for ICS technique T0813: Denial of Control",
-          "publication_url": "https://attack.mitre.org/techniques/T0813/",
-          "retrieval": {
-            "requested_url": "https://attack.mitre.org/techniques/T0813/",
-            "final_url": "https://attack.mitre.org/techniques/T0813/",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:33:42Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 50346,
-            "sha256": "b50b09553350a3b02e95b8129de745f0e6662c90eeb4404fc30644261483fdce",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "be69816f3d85e0ff689e4d5de00b3088c383ab5b63d0d0e29a11d634bfa9b68d"
-            }
-          },
-          "claims": [
-            "ATTACK-T0813"
-          ],
-          "acquisition_url": "https://attack.mitre.org/techniques/T0813/",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import mitre_t0813=/path/to/raw-document"
-        },
-        {
-          "id": "mitre_t0831",
-          "title": "ATT&CK for ICS technique T0831: Manipulation of Control",
-          "publication_url": "https://attack.mitre.org/techniques/T0831/",
-          "retrieval": {
-            "requested_url": "https://attack.mitre.org/techniques/T0831/",
-            "final_url": "https://attack.mitre.org/techniques/T0831/",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:33:36Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 46334,
-            "sha256": "9b4aebe44de80ccb6d5265abd683ce51a454505fd8ebc9a0a7b26098d05e1b6e",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "8efee559b1bb8223cc334c92517f9f9c2f984e099a2d335bac8c82815cdd68be"
-            }
-          },
-          "claims": [
-            "ATTACK-T0831"
-          ],
-          "acquisition_url": "https://attack.mitre.org/techniques/T0831/",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import mitre_t0831=/path/to/raw-document"
-        },
-        {
           "id": "mitre_t0837",
           "title": "ATT&CK for ICS technique T0837: Loss of Protection",
           "publication_url": "https://attack.mitre.org/techniques/T0837/",
@@ -4943,102 +4750,6 @@
           ],
           "acquisition_url": "https://attack.mitre.org/techniques/T0837/",
           "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import mitre_t0837=/path/to/raw-document"
-        },
-        {
-          "id": "mitre_t0859",
-          "title": "ATT&CK for ICS technique T0859: Valid Accounts",
-          "publication_url": "https://attack.mitre.org/techniques/T0859/",
-          "retrieval": {
-            "requested_url": "https://attack.mitre.org/techniques/T0859/",
-            "final_url": "https://attack.mitre.org/techniques/T0859/",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:33:32Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 67390,
-            "sha256": "b2a36e19c3023a405b2321c3ae2ea7790a8fd871cbb881d8b2b3ce7e2a32708c",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "797e0125a7c22f36e2b79a96309b627b4fa7d443a7046801f1188290916ed75a"
-            }
-          },
-          "claims": [
-            "ATTACK-T0859"
-          ],
-          "acquisition_url": "https://attack.mitre.org/techniques/T0859/",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import mitre_t0859=/path/to/raw-document"
-        },
-        {
-          "id": "mitre_t0886",
-          "title": "ATT&CK for ICS technique T0886: Remote Services",
-          "publication_url": "https://attack.mitre.org/techniques/T0886/",
-          "retrieval": {
-            "requested_url": "https://attack.mitre.org/techniques/T0886/",
-            "final_url": "https://attack.mitre.org/techniques/T0886/",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:33:33Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 66937,
-            "sha256": "0cbe82db8b9c4bf99675e3854d188b79b8f648a15b4d972d7c29886c4c36e7f7",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "e18adc9012e2a460dbab8dbf653cbee89cc36416b27c69e0aba076fa4d5d7770"
-            }
-          },
-          "claims": [
-            "ATTACK-T0886"
-          ],
-          "acquisition_url": "https://attack.mitre.org/techniques/T0886/",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import mitre_t0886=/path/to/raw-document"
-        },
-        {
-          "id": "mitre_t1078",
-          "title": "ATT&CK Enterprise technique T1078: Valid Accounts",
-          "publication_url": "https://attack.mitre.org/techniques/T1078/",
-          "retrieval": {
-            "requested_url": "https://attack.mitre.org/techniques/T1078/",
-            "final_url": "https://attack.mitre.org/techniques/T1078/",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:34:00Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 187103,
-            "sha256": "445c9c225d6c2695584fbd13f46ce3847cccefb42da357661244ac6208a71393",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "9aebaf9038cb4a2ed8eabee87c7b16bcbfdacd33589df67adef779102f0bb94b"
-            }
-          },
-          "claims": [
-            "ATTACK-T1078"
-          ],
-          "acquisition_url": "https://attack.mitre.org/techniques/T1078/",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import mitre_t1078=/path/to/raw-document"
-        },
-        {
-          "id": "mitre_t1133",
-          "title": "ATT&CK Enterprise technique T1133: External Remote Services",
-          "publication_url": "https://attack.mitre.org/techniques/T1133/",
-          "retrieval": {
-            "requested_url": "https://attack.mitre.org/techniques/T1133/",
-            "final_url": "https://attack.mitre.org/techniques/T1133/",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:34:02Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 130821,
-            "sha256": "d3caed8f8ac8c4413300a5f45e3a37ee3912177d6aa8147be2b173754882714e",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "13d74e7a1c50b6ace93532c7232694b5bd9b98198805025f88bb4d01fc9efab1"
-            }
-          },
-          "claims": [
-            "ATTACK-T1133"
-          ],
-          "acquisition_url": "https://attack.mitre.org/techniques/T1133/",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import mitre_t1133=/path/to/raw-document"
         },
         {
           "id": "slowik2019crashoverride",
@@ -5089,57 +4800,6 @@
           "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import stone2021compound=/path/to/raw-document"
         },
         {
-          "id": "gao2019gridcyber",
-          "title": "Critical Infrastructure Protection: Actions Needed to Address Significant Cybersecurity Risks Facing the Electric Grid",
-          "publication_url": "https://www.gao.gov/assets/gao-19-332.pdf",
-          "retrieval": {
-            "requested_url": "https://www.gao.gov/assets/gao-19-332.pdf",
-            "final_url": "https://web.archive.org/web/20220120044208id_/https://www.gao.gov/assets/gao-19-332.pdf",
-            "archived_url": "https://web.archive.org/web/20220120044208id_/https://www.gao.gov/assets/gao-19-332.pdf",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:56:48Z",
-            "tool": "archive",
-            "media_type": "application/pdf",
-            "bytes": 5045393,
-            "sha256": "0b7e6bb41fb7bf6d83beb4097193903410444e983c0be663ffc535d76a4e9222",
-            "text": {
-              "extractor": "gs-10.07.1 txtwrite-pages",
-              "sha256": "8cb1a9a9536ad36a5e18efc9e90ff882dea6558d692cc2f866c76953e0255782"
-            }
-          },
-          "claims": [
-            "E-GAO19-NOOUTAGE",
-            "E-GAO19-THREAT",
-            "E-GAO19-SCALE"
-          ],
-          "acquisition_url": "https://web.archive.org/web/20220120044208id_/https://www.gao.gov/assets/gao-19-332.pdf",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import gao2019gridcyber=/path/to/raw-document"
-        },
-        {
-          "id": "inl2016electricsector",
-          "title": "Cyber Threat and Vulnerability Analysis of the U.S. Electric Sector",
-          "publication_url": "https://www.energy.gov/sites/prod/files/2017/01/f34/Cyber%20Threat%20and%20Vulnerability%20Analysis%20of%20the%20U.S.%20Electric%20Sector.pdf",
-          "retrieval": {
-            "requested_url": "https://www.energy.gov/sites/prod/files/2017/01/f34/Cyber%20Threat%20and%20Vulnerability%20Analysis%20of%20the%20U.S.%20Electric%20Sector.pdf",
-            "final_url": "https://www.energy.gov/sites/prod/files/2017/01/f34/Cyber%20Threat%20and%20Vulnerability%20Analysis%20of%20the%20U.S.%20Electric%20Sector.pdf",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:56:18Z",
-            "tool": "curl",
-            "media_type": "application/pdf",
-            "bytes": 1173712,
-            "sha256": "432fa45224b95099c9e5132117e00a13655ec328831636e8c094aa10b42473a6",
-            "text": {
-              "extractor": "gs-10.07.1 txtwrite-pages",
-              "sha256": "2c34b78109c001c80c6cc359269f3241af6dfb652b975ca3b80fdeda595449e3"
-            }
-          },
-          "claims": [
-            "E-INL16-SCALE"
-          ],
-          "acquisition_url": "https://www.energy.gov/sites/prod/files/2017/01/f34/Cyber%20Threat%20and%20Vulnerability%20Analysis%20of%20the%20U.S.%20Electric%20Sector.pdf",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import inl2016electricsector=/path/to/raw-document"
-        },
-        {
           "id": "doe_dhs2017eo13800",
           "title": "Section 2(e): Assessment of Electricity Disruption Incident Response Capabilities",
           "publication_url": "https://www.cisa.gov/sites/default/files/publications/EO13800-electricity-subsector-report.pdf",
@@ -5162,30 +4822,6 @@
           ],
           "acquisition_url": "https://www.cisa.gov/sites/default/files/publications/EO13800-electricity-subsector-report.pdf",
           "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import doe_dhs2017eo13800=/path/to/raw-document"
-        },
-        {
-          "id": "knake2017cyberattack",
-          "title": "A Cyberattack on the U.S. Power Grid",
-          "publication_url": "https://static.cfr.org/sites/default/files/pdf/2017/03/ContingencyPlanningMemo31_Knake.pdf",
-          "retrieval": {
-            "requested_url": "https://backend-live.cfr.org/sites/default/files/pdf/2017/03/ContingencyPlanningMemo31_Knake.pdf",
-            "final_url": "https://static.cfr.org/sites/default/files/pdf/2017/03/ContingencyPlanningMemo31_Knake.pdf",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:57:54Z",
-            "tool": "curl",
-            "media_type": "application/pdf",
-            "bytes": 990170,
-            "sha256": "2280ebaa641d661aaa04335d07b214b5786f2ce07fbb401c33e65074173847f0",
-            "text": {
-              "extractor": "gs-10.07.1 txtwrite-pages",
-              "sha256": "2077de90dc14c22ee994d014f28b270606149a668e0d842cf707b1e394ddf8ab"
-            }
-          },
-          "claims": [
-            "E-KNAKE17-THREAT"
-          ],
-          "acquisition_url": "https://static.cfr.org/sites/default/files/pdf/2017/03/ContingencyPlanningMemo31_Knake.pdf",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import knake2017cyberattack=/path/to/raw-document"
         },
         {
           "id": "nasem2017resilience",
@@ -5285,56 +4921,6 @@
           "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import caton2025beryled=/path/to/raw-document"
         },
         {
-          "id": "cisa2018_ta18_074a",
-          "title": "Russian Government Cyber Activity Targeting Energy and Other Critical Infrastructure Sectors",
-          "publication_url": "https://www.cisa.gov/news-events/alerts/2018/03/15/russian-government-cyber-activity-targeting-energy-and-other-critical-infrastructure-sectors",
-          "retrieval": {
-            "requested_url": "https://www.cisa.gov/news-events/alerts/2018/03/15/russian-government-cyber-activity-targeting-energy-and-other-critical-infrastructure-sectors",
-            "final_url": "https://www.cisa.gov/news-events/alerts/2018/03/15/russian-government-cyber-activity-targeting-energy-and-other-critical-infrastructure-sectors",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:57:57Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 109612,
-            "sha256": "8d8f726dd2ff9954b4ff334e6266075a43ef5cbf9e271e7ad44502e03bf60478",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "0e784349dd8bb00efb25141ecfddc26d2d9342ec47c909da6e44b66e16f28dc1"
-            }
-          },
-          "claims": [
-            "E-TA18-ICSRECON",
-            "E-TA18-ACCESS"
-          ],
-          "acquisition_url": "https://www.cisa.gov/news-events/alerts/2018/03/15/russian-government-cyber-activity-targeting-energy-and-other-critical-infrastructure-sectors",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import cisa2018_ta18_074a=/path/to/raw-document"
-        },
-        {
-          "id": "odni2025ata",
-          "title": "Annual Threat Assessment of the U.S. Intelligence Community",
-          "publication_url": "https://archive.dni.gov/files/ODNI/documents/assessments/ATA-2025-Unclassified-Report.pdf",
-          "retrieval": {
-            "requested_url": "https://archive.dni.gov/files/ODNI/documents/assessments/ATA-2025-Unclassified-Report.pdf",
-            "final_url": "https://web.archive.org/web/20260728182539id_/https://archive.dni.gov/files/ODNI/documents/assessments/ATA-2025-Unclassified-Report.pdf",
-            "archived_url": "https://web.archive.org/web/20260101000000id_/https://archive.dni.gov/files/ODNI/documents/assessments/ATA-2025-Unclassified-Report.pdf",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T03:00:43Z",
-            "tool": "archive",
-            "media_type": "application/pdf",
-            "bytes": 670822,
-            "sha256": "88d26a15fa149b585bd9b20b4f2a7c07083d2303df5a23cc9612f4200584b3e6",
-            "text": {
-              "extractor": "gs-10.07.1 txtwrite-pages",
-              "sha256": "5cd2f19d7d0a5f818e6efdb74197c5fee7725e26490b2cc884b02f5d85c751b4"
-            }
-          },
-          "claims": [
-            "E-ODNI25-RUSSIA-PREPOS"
-          ],
-          "acquisition_url": "https://web.archive.org/web/20260101000000id_/https://archive.dni.gov/files/ODNI/documents/assessments/ATA-2025-Unclassified-Report.pdf",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import odni2025ata=/path/to/raw-document"
-        },
-        {
           "id": "maricopa2024heatdeaths",
           "title": "2024 Heat-Related Deaths Report",
           "publication_url": "https://www.maricopa.gov/ArchiveCenter/ViewFile/Item/5934",
@@ -5382,78 +4968,6 @@
           ],
           "acquisition_url": "https://www.maricopa.gov/ArchiveCenter/ViewFile/Item/6510",
           "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import maricopa2025heatdeaths=/path/to/raw-document"
-        },
-        {
-          "id": "aps2026peakrecord",
-          "title": "APS Keeps Power Flowing During Record Energy Demand",
-          "publication_url": "https://www.aps.com/en/About/Our-Company/Newsroom/Articles/APS-Keeps-Power-Flowing-During-Record-Energy-Demand",
-          "retrieval": {
-            "requested_url": "https://www.aps.com/en/About/Our-Company/Newsroom/Articles/APS-Keeps-Power-Flowing-During-Record-Energy-Demand",
-            "final_url": "https://www.aps.com/en/About/Our-Company/Newsroom/Articles/APS-Keeps-Power-Flowing-During-Record-Energy-Demand",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:59:46Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 134130,
-            "sha256": "df41c75b6fa535564a0f04b4c9b609355e1a0d42e75f283585a6a6a2ceb925a9",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "9c4227d3007b75feeaeb6a7948cdce05a99ed19e72b2a2ecd830ebb6ea470a33"
-            }
-          },
-          "claims": [
-            "E-APS26-CUST"
-          ],
-          "acquisition_url": "https://www.aps.com/en/About/Our-Company/Newsroom/Articles/APS-Keeps-Power-Flowing-During-Record-Energy-Demand",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import aps2026peakrecord=/path/to/raw-document"
-        },
-        {
-          "id": "srp2025peakrecord",
-          "title": "SRP Sets New Multi-Day Records for Energy Demand",
-          "publication_url": "https://media.srpnet.com/srp-sets-new-multi-day-records-for-energy-demand/",
-          "retrieval": {
-            "requested_url": "https://media.srpnet.com/srp-sets-new-multi-day-records-for-energy-demand/",
-            "final_url": "https://media.srpnet.com/srp-sets-new-multi-day-records-for-energy-demand/",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T03:00:15Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=UTF-8",
-            "bytes": 47582,
-            "sha256": "02703e174fcc3321f5f242b21c52a50f5649f5386f1c8fe47b437c55256e07d2",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "0f53d353086b45af49d214f3058182f4c1c0709832b012c0629b6192a2490594"
-            }
-          },
-          "claims": [
-            "E-SRP25-ABOUT"
-          ],
-          "acquisition_url": "https://media.srpnet.com/srp-sets-new-multi-day-records-for-energy-demand/",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import srp2025peakrecord=/path/to/raw-document"
-        },
-        {
-          "id": "srp2026peakrecord",
-          "title": "SRP Sets Multi-Day Record for Energy Demand Amid Extreme Heat",
-          "publication_url": "https://media.srpnet.com/srp-sets-multi-day-record-for-energy-demand-amid-extreme-heat/",
-          "retrieval": {
-            "requested_url": "https://media.srpnet.com/srp-sets-multi-day-record-for-energy-demand-amid-extreme-heat/",
-            "final_url": "https://media.srpnet.com/srp-sets-multi-day-record-for-energy-demand-amid-extreme-heat/",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T03:00:14Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=UTF-8",
-            "bytes": 39751,
-            "sha256": "a676da6790c379899c273dda54eafaa15c315ead01b2a9956486e1e295ed72a5",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "dda57d43fa02c3f56fec31b3a5e1d037e43331c1570f979f5a1f9cad4e75a13b"
-            }
-          },
-          "claims": [
-            "E-SRP26-CUST"
-          ],
-          "acquisition_url": "https://media.srpnet.com/srp-sets-multi-day-record-for-energy-demand-amid-extreme-heat/",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import srp2026peakrecord=/path/to/raw-document"
         },
         {
           "id": "beatty2006blackout",
@@ -5577,31 +5091,6 @@
           "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import fiuba2020sadiblackout=/path/to/raw-document"
         },
         {
-          "id": "casey2020outagereview",
-          "title": "Power outages and community health: a narrative review",
-          "publication_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7749027/",
-          "retrieval": {
-            "requested_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7749027/",
-            "final_url": "https://web.archive.org/web/20260517160751id_/https://pmc.ncbi.nlm.nih.gov/articles/PMC7749027/",
-            "archived_url": "https://web.archive.org/web/20260517160751id_/https://pmc.ncbi.nlm.nih.gov/articles/PMC7749027/",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T04:38:28Z",
-            "tool": "archive",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 278887,
-            "sha256": "c3d5a6ad69559a15a46d0ebb36cfc20ba7efe14f6bdbf02f6c23df014118e2a0",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "93fa5d66ab8e47ca91136ad42bdd4138c5590e9e33f4bb7a1c62a1ad8d90d134"
-            }
-          },
-          "claims": [
-            "E-CASEY20-EVIDENCE"
-          ],
-          "acquisition_url": "https://web.archive.org/web/20260517160751id_/https://pmc.ncbi.nlm.nih.gov/articles/PMC7749027/",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import casey2020outagereview=/path/to/raw-document"
-        },
-        {
           "id": "casey2021dmerentals",
           "title": "Trends from 2008\u20132018 in electricity-dependent durable medical equipment rentals and sociodemographic disparities",
           "publication_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8140591/",
@@ -5705,32 +5194,6 @@
           "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import resmed2018astral=/path/to/raw-document"
         },
         {
-          "id": "gao2021distributioncyber",
-          "title": "Electricity Grid Cybersecurity: DOE Needs to Ensure Its Plans Fully Address Risks to Distribution Systems",
-          "publication_url": "https://www.gao.gov/assets/gao-21-81.pdf",
-          "retrieval": {
-            "requested_url": "https://www.gao.gov/assets/gao-21-81.pdf",
-            "final_url": "https://web.archive.org/web/20210318212117id_/https://www.gao.gov/assets/gao-21-81.pdf",
-            "archived_url": "https://web.archive.org/web/20210318212117id_/https://www.gao.gov/assets/gao-21-81.pdf",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T04:34:45Z",
-            "tool": "archive",
-            "media_type": "application/pdf",
-            "bytes": 2839223,
-            "sha256": "36c257134a3e0a8b9af39de3d122ee6fafa0a9aee69a27170e41756bfbd95880",
-            "text": {
-              "extractor": "gs-10.07.1 txtwrite-pages",
-              "sha256": "761f5e49e996ccdbd3868dc28c615c4268a0178c15e8a1334be14da8ff55b47a"
-            }
-          },
-          "claims": [
-            "E-GAO21-VISIBILITY",
-            "E-GAO21-DER-VECTOR"
-          ],
-          "acquisition_url": "https://web.archive.org/web/20210318212117id_/https://www.gao.gov/assets/gao-21-81.pdf",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import gao2021distributioncyber=/path/to/raw-document"
-        },
-        {
           "id": "lbnl2025outagecosts",
           "title": "Berkeley Lab Helps Utilities Understand Power Outage Costs",
           "publication_url": "https://energyanalysis.lbl.gov/news/berkeley-lab-helps-utilities-understand-power-outage-costs",
@@ -5753,154 +5216,6 @@
           ],
           "acquisition_url": "https://energyanalysis.lbl.gov/news/berkeley-lab-helps-utilities-understand-power-outage-costs",
           "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import lbnl2025outagecosts=/path/to/raw-document"
-        },
-        {
-          "id": "doj2022gladkikh",
-          "title": "Four Russian Government Employees Charged in Two Historical Hacking Campaigns Targeting Critical Infrastructure Worldwide",
-          "publication_url": "https://www.justice.gov/archives/opa/pr/four-russian-government-employees-charged-two-historical-hacking-campaigns-targeting-critical",
-          "retrieval": {
-            "requested_url": "https://www.justice.gov/archives/opa/pr/four-russian-government-employees-charged-two-historical-hacking-campaigns-targeting-critical",
-            "final_url": "https://web.archive.org/web/20250328191508id_/https://www.justice.gov/archives/opa/pr/four-russian-government-employees-charged-two-historical-hacking-campaigns-targeting-critical",
-            "archived_url": "https://web.archive.org/web/20250328191508id_/https://www.justice.gov/archives/opa/pr/four-russian-government-employees-charged-two-historical-hacking-campaigns-targeting-critical",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T04:54:48Z",
-            "tool": "archive",
-            "media_type": "text/html; charset=UTF-8",
-            "bytes": 99925,
-            "sha256": "22157715e6c9c781f5a4086ca5d61454be2c7dde04e902b62912551b8845a3b5",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "8e25c758bd4339fb112f84fe349c93347c6863112b53ce981c749fd8b2fd83fd"
-            }
-          },
-          "claims": [
-            "E-DOJ22-DRAGONFLY"
-          ],
-          "acquisition_url": "https://web.archive.org/web/20250328191508id_/https://www.justice.gov/archives/opa/pr/four-russian-government-employees-charged-two-historical-hacking-campaigns-targeting-critical",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import doj2022gladkikh=/path/to/raw-document"
-        },
-        {
-          "id": "aisi2026incident",
-          "title": "Incident Report: unsanctioned agent behaviour during cyber testing",
-          "publication_url": "https://www.aisi.gov.uk/blog/incident-report-unsanctioned-agent-behaviour-during-cyber-testing",
-          "retrieval": {
-            "requested_url": "https://www.aisi.gov.uk/blog/incident-report-unsanctioned-agent-behaviour-during-cyber-testing",
-            "final_url": "https://www.aisi.gov.uk/blog/incident-report-unsanctioned-agent-behaviour-during-cyber-testing",
-            "http_status": 200,
-            "retrieved_at": "2026-09-19T12:39:14Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 41426,
-            "sha256": "d877ecd7c74dcf9b667aadb79c49e784e11f4a87eda89f287089038b8584350c",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "05182a1ea872b8a51aefed0d307d1f6a5fe2ffcc739f7b1416e9ec816412f648"
-            }
-          },
-          "claims": [
-            "E-AISI-UNSANCTIONED",
-            "E-AISI-TASK-DRIVEN",
-            "E-AISI-CONTAIN-CLEANUP"
-          ],
-          "acquisition_url": "https://www.aisi.gov.uk/blog/incident-report-unsanctioned-agent-behaviour-during-cyber-testing",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import aisi2026incident=/path/to/raw-document"
-        },
-        {
-          "id": "anthropic2025agenticmisalign",
-          "title": "Agentic misalignment: How LLMs could be insider threats",
-          "publication_url": "https://www.anthropic.com/research/agentic-misalignment",
-          "retrieval": {
-            "requested_url": "https://www.anthropic.com/research/agentic-misalignment",
-            "final_url": "https://www.anthropic.com/research/agentic-misalignment",
-            "http_status": 200,
-            "retrieved_at": "2026-09-19T12:39:14Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 310281,
-            "sha256": "e5c2f17cad705a34614936098b973a12cc8bb18b0c67b76b7d990b07bf080c1e",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "2281c0bc0e5e878ef40d261d0bcf05beee373b386aca43bec61c398ec02d6d31"
-            }
-          },
-          "claims": [
-            "E-AGENTIC-MISALIGN"
-          ],
-          "acquisition_url": "https://www.anthropic.com/research/agentic-misalignment",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import anthropic2025agenticmisalign=/path/to/raw-document"
-        },
-        {
-          "id": "cisa2023unitronics",
-          "title": "IRGC-Affiliated Cyber Actors Exploit PLCs in Multiple Sectors, Including U.S. Water and Wastewater Systems Facilities (AA23-335A)",
-          "publication_url": "https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-335a",
-          "retrieval": {
-            "requested_url": "https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-335a",
-            "final_url": "https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-335a",
-            "http_status": 200,
-            "retrieved_at": "2026-09-19T12:39:15Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 105002,
-            "sha256": "2d55e4bccccba92a3609032c4dcf15d82ef2a35e9781cd8e7d454e095653516c",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "57fb3212353da3d5d27bb9d2c74d931e3db4b04afe304fc4440ba24908ce0618"
-            }
-          },
-          "claims": [
-            "E-PLC-INTERNET-REACH"
-          ],
-          "acquisition_url": "https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-335a",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import cisa2023unitronics=/path/to/raw-document"
-        },
-        {
-          "id": "cisa2024voltyphoon",
-          "title": "PRC State-Sponsored Actors Compromise and Maintain Persistent Access to U.S. Critical Infrastructure (AA24-038A)",
-          "publication_url": "https://www.cisa.gov/news-events/cybersecurity-advisories/aa24-038a",
-          "retrieval": {
-            "requested_url": "https://www.cisa.gov/news-events/cybersecurity-advisories/aa24-038a",
-            "final_url": "https://www.cisa.gov/news-events/cybersecurity-advisories/aa24-038a",
-            "http_status": 200,
-            "retrieved_at": "2026-09-19T12:39:14Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 204166,
-            "sha256": "1abb2262ac7a964f67bda284a1b8eb09a23129fddaa782c913e5e8b2ebefda47",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "88ef61fe9a90c04551db26af14c948c07e32824a73bc9943ca7b7fc53473ad04"
-            }
-          },
-          "claims": [
-            "E-VOLT-ITOT",
-            "E-VOLT-VCENTER"
-          ],
-          "acquisition_url": "https://www.cisa.gov/news-events/cybersecurity-advisories/aa24-038a",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import cisa2024voltyphoon=/path/to/raw-document"
-        },
-        {
-          "id": "eac2012power",
-          "title": "Report on Power Sector of the Kingdom of Cambodia for the Year 2011",
-          "publication_url": "https://policy.asiapacificenergy.org/sites/default/files/report-2011en.pdf",
-          "retrieval": {
-            "requested_url": "https://policy.asiapacificenergy.org/sites/default/files/report-2011en.pdf",
-            "final_url": "https://policy.asiapacificenergy.org/sites/default/files/report-2011en.pdf",
-            "http_status": 200,
-            "retrieved_at": "2026-09-19T12:40:21Z",
-            "tool": "curl",
-            "media_type": "application/pdf",
-            "bytes": 1639209,
-            "sha256": "d030a184666182eac430fa70ec7f7d93211e2eced17ac777c8d5332175dfa413",
-            "text": {
-              "extractor": "gs-10.07.1 txtwrite-pages",
-              "sha256": "252f1548976331258758b029e058e98021cfe42a08b55c2d441c112b8a3b8606"
-            }
-          },
-          "claims": [
-            "E-LYP-ELECTRICITY"
-          ],
-          "acquisition_url": "https://policy.asiapacificenergy.org/sites/default/files/report-2011en.pdf",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import eac2012power=/path/to/raw-document"
         },
         {
           "id": "treasury2024lyp",
@@ -5926,80 +5241,6 @@
           ],
           "acquisition_url": "https://home.treasury.gov/news/press-releases/jy2576",
           "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import treasury2024lyp=/path/to/raw-document"
-        },
-        {
-          "id": "wh2026cetco",
-          "title": "Expanding Capabilities to Combat Transnational Cyber-Enabled Crime",
-          "publication_url": "https://www.whitehouse.gov/presidential-actions/2026/08/expanding-capabilities-to-combat-transnational-cyber-enabled-crime/",
-          "retrieval": {
-            "requested_url": "https://www.whitehouse.gov/presidential-actions/2026/08/expanding-capabilities-to-combat-transnational-cyber-enabled-crime/",
-            "final_url": "https://www.whitehouse.gov/presidential-actions/2026/08/expanding-capabilities-to-combat-transnational-cyber-enabled-crime/",
-            "http_status": 200,
-            "retrieved_at": "2026-09-19T12:39:13Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=UTF-8",
-            "bytes": 303887,
-            "sha256": "e9a6a3efa80c633f7678b5533905efdb1b28e2eaff5980eaf204ffc5daa76d2e",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "09fee1df61de788997bad6dd571e2df9dc10fd696dfc89f288072863d767f0a8"
-            }
-          },
-          "claims": [
-            "E-MEMO-PROGRAM",
-            "E-MEMO-CRITICAL-OUTCOME",
-            "E-MEMO-NOTIFY"
-          ],
-          "acquisition_url": "https://www.whitehouse.gov/presidential-actions/2026/08/expanding-capabilities-to-combat-transnational-cyber-enabled-crime/",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import wh2026cetco=/path/to/raw-document"
-        },
-        {
-          "id": "iaps2026hacca",
-          "title": "Highly Autonomous Cyber-Capable Agents: Anticipating Capabilities, Tactics, and Strategic Implications",
-          "publication_url": "https://www.iaps.ai/research/highly-autonomous-cyber-capable-agents",
-          "retrieval": {
-            "requested_url": "https://static1.squarespace.com/static/64edf8e7f2b10d716b5ba0e1/t/69b1709a79b9076e980f8dc9/1773236378439/Highly%2BAutonomous%2BCyber-Capable%2BAgents_%2B_%2BAnticipating%2BCapabilities,%2BTactics,%2Band%2BStrategic%2BImplications.pdf",
-            "final_url": "https://static1.squarespace.com/static/64edf8e7f2b10d716b5ba0e1/t/69b1709a79b9076e980f8dc9/1773236378439/Highly%2BAutonomous%2BCyber-Capable%2BAgents_%2B_%2BAnticipating%2BCapabilities,%2BTactics,%2Band%2BStrategic%2BImplications.pdf",
-            "http_status": 200,
-            "retrieved_at": "2026-09-20T12:44:57Z",
-            "tool": "curl",
-            "media_type": "application/pdf",
-            "bytes": 5476991,
-            "sha256": "7ddb2f29684120222083a823af2d3b530af548888599dfe9b51d6c5c828c45ff",
-            "text": {
-              "extractor": "gs-10.07.1 txtwrite-pages",
-              "sha256": "1956f29a823b80cba879a5e6fe6549c74e19c9b9a105769408e8bff05819345f"
-            }
-          },
-          "claims": [
-            "E-SC41-CONTINUING-RESOURCES"
-          ],
-          "acquisition_url": "https://static1.squarespace.com/static/64edf8e7f2b10d716b5ba0e1/t/69b1709a79b9076e980f8dc9/1773236378439/Highly%2BAutonomous%2BCyber-Capable%2BAgents_%2B_%2BAnticipating%2BCapabilities,%2BTactics,%2Band%2BStrategic%2BImplications.pdf",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import iaps2026hacca=/path/to/raw-document"
-        },
-        {
-          "id": "baker2025obfuscation",
-          "title": "Monitoring Reasoning Models for Misbehavior and the Risks of Promoting Obfuscation",
-          "publication_url": "https://arxiv.org/pdf/2503.11926",
-          "retrieval": {
-            "requested_url": "https://arxiv.org/pdf/2503.11926",
-            "final_url": "https://arxiv.org/pdf/2503.11926",
-            "http_status": 200,
-            "retrieved_at": "2026-09-24T19:18:49Z",
-            "tool": "curl",
-            "media_type": "application/pdf",
-            "bytes": 5643216,
-            "sha256": "2547162c549d70e02beca2687903a8fce75fd950269a3ee479d5b8ebbb53ff38",
-            "text": {
-              "extractor": "gs-10.07.1 txtwrite-pages",
-              "sha256": "28a47e0eac78c749e3f934edec78d76a0fd9cbfd82f08c716c756f75c66e06db"
-            }
-          },
-          "claims": [
-            "E-BAKER25-OBFUSCATION"
-          ],
-          "acquisition_url": "https://arxiv.org/pdf/2503.11926",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import baker2025obfuscation=/path/to/raw-document"
         },
         {
           "id": "doj2025kkpark",
@@ -6048,78 +5289,6 @@
           ],
           "acquisition_url": "https://spcommreports.ohchr.org/TMResultsBase/DownLoadPublicCommunicationFile?gId=29651",
           "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import ohchr2025scamcompounds=/path/to/raw-document"
-        },
-        {
-          "id": "treasury2025sb0237",
-          "title": "Treasury Sanctions Southeast Asian Networks Targeting Americans with Cyber Scams",
-          "publication_url": "https://home.treasury.gov/news/press-releases/sb0237",
-          "retrieval": {
-            "requested_url": "https://home.treasury.gov/news/press-releases/sb0237",
-            "final_url": "https://home.treasury.gov/news/press-releases/sb0237",
-            "http_status": 200,
-            "retrieved_at": "2026-09-24T19:18:31Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 85343,
-            "sha256": "caba17d1a6bfab9552e69eb13aa211bad3f12a5a4c98bd787d03ea5ee41db8de",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "610424bf2ec60b73a3057bef1bce0f86dc54386c40170938be32b6fd72dfb46f"
-            }
-          },
-          "claims": [
-            "E-OFAC25-SCAM-POWER"
-          ],
-          "acquisition_url": "https://home.treasury.gov/news/press-releases/sb0237",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import treasury2025sb0237=/path/to/raw-document"
-        },
-        {
-          "id": "anthropic2026_ai_orchestration",
-          "title": "Detecting and countering misuse of AI: September 2026",
-          "publication_url": "https://www.anthropic.com/threat-intelligence-report-september-2026",
-          "retrieval": {
-            "requested_url": "https://www.anthropic.com/threat-intelligence-report-september-2026",
-            "final_url": "https://www.anthropic.com/threat-intelligence-report-september-2026",
-            "http_status": 200,
-            "retrieved_at": "2026-10-04T18:10:10Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 1180840,
-            "sha256": "af6e56b025156a16c1d51d008736842d2f7450afb19b66430d94b37a5168a853",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "2b8c6b457c3328bd66110679cf245daec510db6c6c1212c81e1f4d65ff473665"
-            }
-          },
-          "claims": [
-            "AI-ORCHESTRATION-2026"
-          ],
-          "acquisition_url": "https://www.anthropic.com/threat-intelligence-report-september-2026",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import anthropic2026_ai_orchestration=/path/to/raw-document"
-        },
-        {
-          "id": "aisi2026_agent_trust",
-          "title": "Incident Report: unsanctioned agent behaviour during cyber testing",
-          "publication_url": "https://www.aisi.gov.uk/blog/incident-report-unsanctioned-agent-behaviour-during-cyber-testing",
-          "retrieval": {
-            "requested_url": "https://www.aisi.gov.uk/blog/incident-report-unsanctioned-agent-behaviour-during-cyber-testing",
-            "final_url": "https://www.aisi.gov.uk/blog/incident-report-unsanctioned-agent-behaviour-during-cyber-testing",
-            "http_status": 200,
-            "retrieved_at": "2026-10-04T18:10:07Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 41426,
-            "sha256": "d877ecd7c74dcf9b667aadb79c49e784e11f4a87eda89f287089038b8584350c",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "05182a1ea872b8a51aefed0d307d1f6a5fe2ffcc739f7b1416e9ec816412f648"
-            }
-          },
-          "claims": [
-            "AI-AGENT-TRUST-2026"
-          ],
-          "acquisition_url": "https://www.aisi.gov.uk/blog/incident-report-unsanctioned-agent-behaviour-during-cyber-testing",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import aisi2026_agent_trust=/path/to/raw-document"
         },
         {
           "id": "anderson2011heatwaves",
@@ -6216,54 +5385,6 @@
           ],
           "acquisition_url": "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=EXT_ID:9696724%20AND%20SRC:MED&resultType=core&format=json",
           "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import dematte1998heatstroke=/path/to/raw-document"
-        },
-        {
-          "id": "doe417instructions",
-          "title": "Form DOE-417 Electric Emergency Incident and Disturbance Report: Instructions (OMB No. 1901-0288, expiration 05/31/2027)",
-          "publication_url": "https://doe417.pnnl.gov/files/DOE417_Form_Instructions.pdf",
-          "retrieval": {
-            "requested_url": "https://doe417.pnnl.gov/files/DOE417_Form_Instructions.pdf",
-            "final_url": "https://doe417.pnnl.gov/files/DOE417_Form_Instructions.pdf",
-            "http_status": 200,
-            "retrieved_at": "2026-10-17T18:26:37Z",
-            "tool": "curl",
-            "media_type": "application/pdf",
-            "bytes": 376941,
-            "sha256": "36c5719a55668b1cda8983f7757ac3a7a1b7cc08f68aed1bf62fdf2dc42d9f67",
-            "text": {
-              "extractor": "gs-10.07.1 txtwrite-pages",
-              "sha256": "33e9da471b29c667f3a041686be3e7d5d5a1e4d6fcf8746e8250e7bc787a49e3"
-            }
-          },
-          "claims": [
-            "E-DOE417-DEADLINES"
-          ],
-          "acquisition_url": "https://doe417.pnnl.gov/files/DOE417_Form_Instructions.pdf",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import doe417instructions=/path/to/raw-document"
-        },
-        {
-          "id": "dragos2026yir",
-          "title": "Dragos 2026 OT Report Shows Surge in Threat Groups and Ransomware",
-          "publication_url": "https://www.dragos.com/resources/press-release/dragos-2026-year-in-review-new-ot-threats-ransomware",
-          "retrieval": {
-            "requested_url": "https://www.dragos.com/resources/press-release/dragos-2026-year-in-review-new-ot-threats-ransomware",
-            "final_url": "https://www.dragos.com/resources/press-release/dragos-2026-year-in-review-new-ot-threats-ransomware",
-            "http_status": 200,
-            "retrieved_at": "2026-10-17T18:27:19Z",
-            "tool": "curl",
-            "media_type": "text/html;charset=UTF-8",
-            "bytes": 160337,
-            "sha256": "2b8eec29c59a613b5b8556dbfb2c5df672482c9099f0b517144cb3d3e422b600",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "e9270e4b32165b4497573c985c4abda87b46e87fe74bf616fd552076a4d946b1"
-            }
-          },
-          "claims": [
-            "E-DRAGOS26-OT-CONTAIN"
-          ],
-          "acquisition_url": "https://www.dragos.com/resources/press-release/dragos-2026-year-in-review-new-ot-threats-ransomware",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import dragos2026yir=/path/to/raw-document"
         },
         {
           "id": "flpsc2024fplorder",
@@ -6416,30 +5537,6 @@
           "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import lbnl2026ice2=/path/to/raw-document"
         },
         {
-          "id": "nerc_cip008_6",
-          "title": "CIP-008-6 \u2014 Cyber Security \u2014 Incident Reporting and Response Planning",
-          "publication_url": "https://www.nerc.com/pa/Stand/Reliability%20Standards/CIP-008-6.pdf",
-          "retrieval": {
-            "requested_url": "https://www.nerc.com/pa/Stand/Reliability%20Standards/CIP-008-6.pdf",
-            "final_url": "https://www.nerc.com/globalassets/standards/reliability-standards/cip/cip-008-6.pdf",
-            "http_status": 200,
-            "retrieved_at": "2026-10-17T18:26:38Z",
-            "tool": "curl",
-            "media_type": "application/pdf",
-            "bytes": 326431,
-            "sha256": "74642c2e4ceb905a719e81f59913aefc7a77a9c33b0022e9cf21bdfa0ac63365",
-            "text": {
-              "extractor": "gs-10.07.1 txtwrite-pages",
-              "sha256": "81f47f60e09f3d232a4f08d84c860e28454a953483e947473d5f0d3bae2a3d09"
-            }
-          },
-          "claims": [
-            "E-CIP008-R4"
-          ],
-          "acquisition_url": "https://www.nerc.com/globalassets/standards/reliability-standards/cip/cip-008-6.pdf",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import nerc_cip008_6=/path/to/raw-document"
-        },
-        {
           "id": "noaa_ghcnd_phx2006",
           "title": "Global Historical Climatology Network - Daily: Phoenix Airport, AZ (USW00023183), 18-26 July 2006",
           "publication_url": "https://www.ncei.noaa.gov/access/services/data/v1?dataset=daily-summaries&stations=USW00023183&startDate=2006-07-18&endDate=2006-07-26&dataTypes=TMAX,TMIN,TAVG&units=metric&format=csv&includeStationName=true",
@@ -6510,54 +5607,6 @@
           ],
           "acquisition_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4749077/",
           "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import petitti2016heat=/path/to/raw-document"
-        },
-        {
-          "id": "sans2025ics",
-          "title": "New SANS Report Warns of Rising Gap Between Fast Detection and Slow Recovery Across Critical Infrastructure",
-          "publication_url": "https://www.sans.org/press/announcements/sans-report-warns-rising-gap-fast-detection-slow-recovery-critical-infrastructure",
-          "retrieval": {
-            "requested_url": "https://www.sans.org/press/announcements/sans-report-warns-rising-gap-fast-detection-slow-recovery-critical-infrastructure",
-            "final_url": "https://www.sans.org/press/announcements/sans-report-warns-rising-gap-fast-detection-slow-recovery-critical-infrastructure",
-            "http_status": 200,
-            "retrieved_at": "2026-10-17T18:27:18Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 194185,
-            "sha256": "edeef00bf4d4990d6d160923a97ebfa22523a82917baeda9f81b35d6963e513f",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "36fe1fb106f8429389da3fc7f745846e5417577598b461fe4b1406f29a4a8167"
-            }
-          },
-          "claims": [
-            "E-SANS25-OT-CONTAIN"
-          ],
-          "acquisition_url": "https://www.sans.org/press/announcements/sans-report-warns-rising-gap-fast-detection-slow-recovery-critical-infrastructure",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import sans2025ics=/path/to/raw-document"
-        },
-        {
-          "id": "skarha2021irma",
-          "title": "Association of Power Outage With Mortality and Hospitalizations Among Florida Nursing Home Residents After Hurricane Irma",
-          "publication_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8796882/",
-          "retrieval": {
-            "requested_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8796882/",
-            "final_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8796882/",
-            "http_status": 200,
-            "retrieved_at": "2026-10-17T18:26:08Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 179264,
-            "sha256": "0669d7c9580a6dcab2b25d5c60b6e1026ddd67e752028eeff1f343203613840e",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "a142d3d1f5c8840de9e95efdf18179e6f6d31fbab90be13c64f5e0e2b796d861"
-            }
-          },
-          "claims": [
-            "E-SKARHA21-IRMA"
-          ],
-          "acquisition_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8796882/",
-          "import_command": "python -m tools.evidence.manifest --scenario heat_wave_blackout --import skarha2021irma=/path/to/raw-document"
         },
         {
           "id": "skarha2022prisons",
@@ -6684,7 +5733,7 @@
     {
       "scenario": "iv_fluid_shortage",
       "manifest_version": "1.0",
-      "library_source_count": 94,
+      "library_source_count": 81,
       "normalization": "nfkc-lig-v2",
       "extractors": [
         "gs-10.07.1 txtwrite-pages",
@@ -6692,55 +5741,6 @@
         "utf8-decode-v1"
       ],
       "sources": [
-        {
-          "id": "inl2022cyote_ukraine2015",
-          "title": "Precursor Analysis Report: Ukraine Energy Sector Cyber Attack 2015",
-          "publication_url": "https://cyote.inl.gov/content/uploads/24/2025/12/CyOTE-Case-Study_Ukraine-2015.pdf",
-          "retrieval": {
-            "requested_url": "https://cyote.inl.gov/content/uploads/24/2025/12/CyOTE-Case-Study_Ukraine-2015.pdf",
-            "final_url": "https://web.archive.org/web/20251223124619id_/https://cyote.inl.gov/content/uploads/24/2025/12/CyOTE-Case-Study_Ukraine-2015.pdf",
-            "archived_url": "https://web.archive.org/web/20251223124619id_/https://cyote.inl.gov/content/uploads/24/2025/12/CyOTE-Case-Study_Ukraine-2015.pdf",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:36:22Z",
-            "tool": "archive",
-            "media_type": "application/pdf",
-            "bytes": 1225505,
-            "sha256": "e27be8927c60d19c84b2cf2627d3a9581b57ab35482b70630d72bb2a48218f80",
-            "text": {
-              "extractor": "gs-10.07.1 txtwrite-pages",
-              "sha256": "7b4be3f2e693c38aca36aec2c7278f7abbc0af6ebfb482c57247c2963e3f9618"
-            }
-          },
-          "claims": [
-            "E-CYOTE15-TIMING"
-          ],
-          "acquisition_url": "https://web.archive.org/web/20251223124619id_/https://cyote.inl.gov/content/uploads/24/2025/12/CyOTE-Case-Study_Ukraine-2015.pdf",
-          "import_command": "python -m tools.evidence.manifest --scenario iv_fluid_shortage --import inl2022cyote_ukraine2015=/path/to/raw-document"
-        },
-        {
-          "id": "nist_sp800_61r3",
-          "title": "Incident Response Recommendations and Considerations for Cybersecurity Risk Management",
-          "publication_url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-61r3.pdf",
-          "retrieval": {
-            "requested_url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-61r3.pdf",
-            "final_url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-61r3.pdf",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:37:15Z",
-            "tool": "curl",
-            "media_type": "application/pdf",
-            "bytes": 1040566,
-            "sha256": "e5593d6bb85daecec7e8d9549400c7b3473bcc3f06e469c82218073afa7fba2d",
-            "text": {
-              "extractor": "gs-10.07.1 txtwrite-pages",
-              "sha256": "bbcfd4c852d7ce77d02f86d0670cfc4c6edba78c5f57a9b005e0fe238b912054"
-            }
-          },
-          "claims": [
-            "V-PA-IR01"
-          ],
-          "acquisition_url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-61r3.pdf",
-          "import_command": "python -m tools.evidence.manifest --scenario iv_fluid_shortage --import nist_sp800_61r3=/path/to/raw-document"
-        },
         {
           "id": "neprash2026hacked",
           "title": "Hacked to Pieces? The Effects of Ransomware Attacks on Hospitals and Patients",
@@ -6813,54 +5813,6 @@
           ],
           "acquisition_url": "https://web.archive.org/web/2022id_/https://www.hsgac.senate.gov/wp-content/uploads/imo/media/doc/Testimony-Blount-2021-06-08.pdf",
           "import_command": "python -m tools.evidence.manifest --scenario iv_fluid_shortage --import blount2021testimony=/path/to/raw-document"
-        },
-        {
-          "id": "mandiant2023sandworm",
-          "title": "Sandworm Disrupts Power in Ukraine Using a Novel Attack Against Operational Technology",
-          "publication_url": "https://cloud.google.com/blog/topics/threat-intelligence/sandworm-disrupts-power-ukraine-operational-technology",
-          "retrieval": {
-            "requested_url": "https://cloud.google.com/blog/topics/threat-intelligence/sandworm-disrupts-power-ukraine-operational-technology",
-            "final_url": "https://cloud.google.com/blog/topics/threat-intelligence/sandworm-disrupts-power-ukraine-operational-technology",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:45:02Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 409329,
-            "sha256": "02b3c0196b238608be011aa93df051338261e15fa809b821a41b85c35ab54469",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "a769ced2f37ae30587f5886ba18a57b6d6527a2bb2ac0fa54ea8667b84f994c3"
-            }
-          },
-          "claims": [
-            "E-MANDIANT22"
-          ],
-          "acquisition_url": "https://cloud.google.com/blog/topics/threat-intelligence/sandworm-disrupts-power-ukraine-operational-technology",
-          "import_command": "python -m tools.evidence.manifest --scenario iv_fluid_shortage --import mandiant2023sandworm=/path/to/raw-document"
-        },
-        {
-          "id": "mtrends2026",
-          "title": "M-Trends 2026 (Special Report: Mandiant M-Trends 2026)",
-          "publication_url": "https://www.gstatic.com/security-marketing/m-trends-2026-en.pdf",
-          "retrieval": {
-            "requested_url": "https://www.gstatic.com/security-marketing/m-trends-2026-en.pdf",
-            "final_url": "https://www.gstatic.com/security-marketing/m-trends-2026-en.pdf",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:45:32Z",
-            "tool": "curl",
-            "media_type": "application/pdf",
-            "bytes": 6829434,
-            "sha256": "113d4562f61edbf2332efae81e48b9d66d44e4cb1bf42e153077a5a8b1f16f56",
-            "text": {
-              "extractor": "gs-10.07.1 txtwrite-pages",
-              "sha256": "01f9ac5b9e908ed26f795ef161b3374d91abb6f197959e79e17253dbe43a4122"
-            }
-          },
-          "claims": [
-            "E-MTRENDS26"
-          ],
-          "acquisition_url": "https://www.gstatic.com/security-marketing/m-trends-2026-en.pdf",
-          "import_command": "python -m tools.evidence.manifest --scenario iv_fluid_shortage --import mtrends2026=/path/to/raw-document"
         },
         {
           "id": "baxter2024fluidconservation",
@@ -7106,54 +6058,6 @@
           "import_command": "python -m tools.evidence.manifest --scenario iv_fluid_shortage --import mitre_t0828=/path/to/raw-document"
         },
         {
-          "id": "mitre_t1078",
-          "title": "ATT&CK Enterprise technique T1078: Valid Accounts",
-          "publication_url": "https://attack.mitre.org/techniques/T1078/",
-          "retrieval": {
-            "requested_url": "https://attack.mitre.org/techniques/T1078/",
-            "final_url": "https://attack.mitre.org/techniques/T1078/",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:34:00Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 187103,
-            "sha256": "445c9c225d6c2695584fbd13f46ce3847cccefb42da357661244ac6208a71393",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "9aebaf9038cb4a2ed8eabee87c7b16bcbfdacd33589df67adef779102f0bb94b"
-            }
-          },
-          "claims": [
-            "ATTACK-T1078"
-          ],
-          "acquisition_url": "https://attack.mitre.org/techniques/T1078/",
-          "import_command": "python -m tools.evidence.manifest --scenario iv_fluid_shortage --import mitre_t1078=/path/to/raw-document"
-        },
-        {
-          "id": "mitre_t1133",
-          "title": "ATT&CK Enterprise technique T1133: External Remote Services",
-          "publication_url": "https://attack.mitre.org/techniques/T1133/",
-          "retrieval": {
-            "requested_url": "https://attack.mitre.org/techniques/T1133/",
-            "final_url": "https://attack.mitre.org/techniques/T1133/",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:34:02Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 130821,
-            "sha256": "d3caed8f8ac8c4413300a5f45e3a37ee3912177d6aa8147be2b173754882714e",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "13d74e7a1c50b6ace93532c7232694b5bd9b98198805025f88bb4d01fc9efab1"
-            }
-          },
-          "claims": [
-            "ATTACK-T1133"
-          ],
-          "acquisition_url": "https://attack.mitre.org/techniques/T1133/",
-          "import_command": "python -m tools.evidence.manifest --scenario iv_fluid_shortage --import mitre_t1133=/path/to/raw-document"
-        },
-        {
           "id": "mitre_t1486",
           "title": "ATT&CK Enterprise technique T1486: Data Encrypted for Impact",
           "publication_url": "https://attack.mitre.org/techniques/T1486/",
@@ -7178,54 +6082,6 @@
           "import_command": "python -m tools.evidence.manifest --scenario iv_fluid_shortage --import mitre_t1486=/path/to/raw-document"
         },
         {
-          "id": "mitre_t1489",
-          "title": "ATT&CK Enterprise technique T1489: Service Stop",
-          "publication_url": "https://attack.mitre.org/techniques/T1489/",
-          "retrieval": {
-            "requested_url": "https://attack.mitre.org/techniques/T1489/",
-            "final_url": "https://attack.mitre.org/techniques/T1489/",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:34:07Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 148988,
-            "sha256": "8b3cd2763746d45e405a077f92904f4543d635437c8ad684ee4c57e7804f7b3f",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "55346304d10f93a72bc23fe7fb92ec7f8c2a912047e513dbca78956f8a2af51b"
-            }
-          },
-          "claims": [
-            "ATTACK-T1489"
-          ],
-          "acquisition_url": "https://attack.mitre.org/techniques/T1489/",
-          "import_command": "python -m tools.evidence.manifest --scenario iv_fluid_shortage --import mitre_t1489=/path/to/raw-document"
-        },
-        {
-          "id": "mitre_t1490",
-          "title": "ATT&CK Enterprise technique T1490: Inhibit System Recovery",
-          "publication_url": "https://attack.mitre.org/techniques/T1490/",
-          "retrieval": {
-            "requested_url": "https://attack.mitre.org/techniques/T1490/",
-            "final_url": "https://attack.mitre.org/techniques/T1490/",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:34:05Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 182671,
-            "sha256": "23d5f9f690107bb6780e80e486ce6fb27d4ec98b7f05aece03fa0278695e7609",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "a63dddacb331a29b71140ff973556ca9214392f292f3e49b1c310d98069b5340"
-            }
-          },
-          "claims": [
-            "ATTACK-T1490"
-          ],
-          "acquisition_url": "https://attack.mitre.org/techniques/T1490/",
-          "import_command": "python -m tools.evidence.manifest --scenario iv_fluid_shortage --import mitre_t1490=/path/to/raw-document"
-        },
-        {
           "id": "mitre_t1565_001",
           "title": "ATT&CK Enterprise sub-technique T1565.001: Data Manipulation: Stored Data Manipulation",
           "publication_url": "https://attack.mitre.org/techniques/T1565/001/",
@@ -7248,30 +6104,6 @@
           ],
           "acquisition_url": "https://attack.mitre.org/techniques/T1565/001/",
           "import_command": "python -m tools.evidence.manifest --scenario iv_fluid_shortage --import mitre_t1565_001=/path/to/raw-document"
-        },
-        {
-          "id": "cisa2018_ta18_074a",
-          "title": "Russian Government Cyber Activity Targeting Energy and Other Critical Infrastructure Sectors",
-          "publication_url": "https://www.cisa.gov/news-events/alerts/2018/03/15/russian-government-cyber-activity-targeting-energy-and-other-critical-infrastructure-sectors",
-          "retrieval": {
-            "requested_url": "https://www.cisa.gov/news-events/alerts/2018/03/15/russian-government-cyber-activity-targeting-energy-and-other-critical-infrastructure-sectors",
-            "final_url": "https://www.cisa.gov/news-events/alerts/2018/03/15/russian-government-cyber-activity-targeting-energy-and-other-critical-infrastructure-sectors",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T02:57:57Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 109612,
-            "sha256": "8d8f726dd2ff9954b4ff334e6266075a43ef5cbf9e271e7ad44502e03bf60478",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "0e784349dd8bb00efb25141ecfddc26d2d9342ec47c909da6e44b66e16f28dc1"
-            }
-          },
-          "claims": [
-            "E-TA18-ACCESS"
-          ],
-          "acquisition_url": "https://www.cisa.gov/news-events/alerts/2018/03/15/russian-government-cyber-activity-targeting-energy-and-other-critical-infrastructure-sectors",
-          "import_command": "python -m tools.evidence.manifest --scenario iv_fluid_shortage --import cisa2018_ta18_074a=/path/to/raw-document"
         },
         {
           "id": "bostonscientific2026sep03",
@@ -7645,31 +6477,6 @@
           "import_command": "python -m tools.evidence.manifest --scenario iv_fluid_shortage --import clorox2024_q2results=/path/to/raw-document"
         },
         {
-          "id": "henryschein2023_8k_orders",
-          "title": "Form 8-K Current Report, Item 7.01 Regulation FD Disclosure: update on order processing following the cybersecurity incident",
-          "publication_url": "https://www.sec.gov/Archives/edgar/data/1000228/000119312523261152/d559192d8k.htm",
-          "retrieval": {
-            "requested_url": "https://www.sec.gov/Archives/edgar/data/1000228/000119312523261152/d559192d8k.htm",
-            "final_url": "https://web.archive.org/web/20231104203223id_/https://www.sec.gov/Archives/edgar/data/1000228/000119312523261152/d559192d8k.htm",
-            "archived_url": "https://web.archive.org/web/20231104203223id_/https://www.sec.gov/Archives/edgar/data/1000228/000119312523261152/d559192d8k.htm",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T04:39:46Z",
-            "tool": "archive",
-            "media_type": "text/html",
-            "bytes": 25720,
-            "sha256": "08a61d9f5d05977ea27141450b24aeafafb645e2f90e3b63fe8f341a501a43f5",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "f48764b8564aafd9bccd33c66b355fed14b55442b4203381eaae6fae9a159ab6"
-            }
-          },
-          "claims": [
-            "E-HSIC23-ORDERS"
-          ],
-          "acquisition_url": "https://web.archive.org/web/20231104203223id_/https://www.sec.gov/Archives/edgar/data/1000228/000119312523261152/d559192d8k.htm",
-          "import_command": "python -m tools.evidence.manifest --scenario iv_fluid_shortage --import henryschein2023_8k_orders=/path/to/raw-document"
-        },
-        {
           "id": "henryschein2024_q4results",
           "title": "Henry Schein Reports Fourth-Quarter and Full-Year 2023 Financial Results and Introduces 2024 Financial Guidance (press release, Exhibit 99.1 to Form 8-K)",
           "publication_url": "https://www.sec.gov/Archives/edgar/data/1000228/000100022824000008/exhibit991.htm",
@@ -7694,32 +6501,6 @@
           ],
           "acquisition_url": "https://web.archive.org/web/20240227115545id_/https://www.sec.gov/Archives/edgar/data/1000228/000100022824000008/exhibit991.htm",
           "import_command": "python -m tools.evidence.manifest --scenario iv_fluid_shortage --import henryschein2024_q4results=/path/to/raw-document"
-        },
-        {
-          "id": "henryschein_10q_2023q3",
-          "title": "Quarterly Report on Form 10-Q for the quarterly period ended September 30, 2023",
-          "publication_url": "https://www.sec.gov/Archives/edgar/data/1000228/000100022823000052/hsic-20230930.htm",
-          "retrieval": {
-            "requested_url": "https://www.sec.gov/Archives/edgar/data/1000228/000100022823000052/hsic-20230930.htm",
-            "final_url": "https://web.archive.org/web/20231205110154id_/https://www.sec.gov/Archives/edgar/data/1000228/000100022823000052/hsic-20230930.htm",
-            "archived_url": "https://web.archive.org/web/20231205110154id_/https://www.sec.gov/Archives/edgar/data/1000228/000100022823000052/hsic-20230930.htm",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T04:39:46Z",
-            "tool": "archive",
-            "media_type": "text/html",
-            "bytes": 1835879,
-            "sha256": "47902aab7c36a02c9822ca3bfbc1e0d300bdfb5a6c58b48f60356ba95b3d6e35",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "2b320d8d7dc0b876db4aa98c043e96d0ac0f6263e1e92c41beb03f00e9055373"
-            }
-          },
-          "claims": [
-            "E-HSIC23-SCOPE",
-            "E-HSIC23-REDISRUPT"
-          ],
-          "acquisition_url": "https://web.archive.org/web/20231205110154id_/https://www.sec.gov/Archives/edgar/data/1000228/000100022823000052/hsic-20230930.htm",
-          "import_command": "python -m tools.evidence.manifest --scenario iv_fluid_shortage --import henryschein_10q_2023q3=/path/to/raw-document"
         },
         {
           "id": "unfi2025_8k_jun21",
@@ -8213,8 +6994,7 @@
             }
           },
           "claims": [
-            "E-KREBS20-FRESENIUS-LIMITED",
-            "E-KREBS20-SNAKE-ICS"
+            "E-KREBS20-FRESENIUS-LIMITED"
           ],
           "acquisition_url": "https://krebsonsecurity.com/2020/05/europes-largest-private-hospital-operator-fresenius-hit-by-ransomware/",
           "import_command": "python -m tools.evidence.manifest --scenario iv_fluid_shortage --import krebs2020fresenius=/path/to/raw-document"
@@ -8688,30 +7468,6 @@
           "import_command": "python -m tools.evidence.manifest --scenario iv_fluid_shortage --import stacks2026salineshortage=/path/to/raw-document"
         },
         {
-          "id": "therecord2024octapharma",
-          "title": "Plasma donation company Octapharma slowly reopening as BlackSuit gang claims attack",
-          "publication_url": "https://therecord.media/plasma-donation-company-cyberattack-blacksuit",
-          "retrieval": {
-            "requested_url": "https://therecord.media/plasma-donation-company-cyberattack-blacksuit",
-            "final_url": "https://therecord.media/plasma-donation-company-cyberattack-blacksuit",
-            "http_status": 200,
-            "retrieved_at": "2026-09-18T04:52:34Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 80685,
-            "sha256": "533b884f2612b7df4dbca5024761bab68e3a0f758604d6bee67f1590a15900a6",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "4b195b53f2dc0ea71b3c08e468ace49e56642ff9ce12a6effda99169b90c6985"
-            }
-          },
-          "claims": [
-            "E-RECORD24-OCTA-CLOSURE"
-          ],
-          "acquisition_url": "https://therecord.media/plasma-donation-company-cyberattack-blacksuit",
-          "import_command": "python -m tools.evidence.manifest --scenario iv_fluid_shortage --import therecord2024octapharma=/path/to/raw-document"
-        },
-        {
           "id": "truveta2024ivfluid",
           "title": "Hurricane Helene: Impact of IV fluid shortage on patients",
           "publication_url": "https://www.truveta.com/blog/research/iv-fluid-shortage/",
@@ -8900,8 +7656,7 @@
             }
           },
           "claims": [
-            "E-UNH24-PHARMACY-RESTORE",
-            "E-UNH24-ACCESS-WORKAROUNDS"
+            "E-UNH24-PHARMACY-RESTORE"
           ],
           "acquisition_url": "https://www.unitedhealthgroup.com/newsroom/2024/2024-03-07-uhg-update-change-healthcare-cyberattack.html",
           "import_command": "python -m tools.evidence.manifest --scenario iv_fluid_shortage --import unitedhealth2024mar07update=/path/to/raw-document"
@@ -8954,30 +7709,6 @@
           ],
           "acquisition_url": "https://www.anthropic.com/threat-intelligence-report-september-2026",
           "import_command": "python -m tools.evidence.manifest --scenario iv_fluid_shortage --import anthropic2026_ai_orchestration=/path/to/raw-document"
-        },
-        {
-          "id": "aisi2026_agent_trust",
-          "title": "Incident Report: unsanctioned agent behaviour during cyber testing",
-          "publication_url": "https://www.aisi.gov.uk/blog/incident-report-unsanctioned-agent-behaviour-during-cyber-testing",
-          "retrieval": {
-            "requested_url": "https://www.aisi.gov.uk/blog/incident-report-unsanctioned-agent-behaviour-during-cyber-testing",
-            "final_url": "https://www.aisi.gov.uk/blog/incident-report-unsanctioned-agent-behaviour-during-cyber-testing",
-            "http_status": 200,
-            "retrieved_at": "2026-10-04T18:10:07Z",
-            "tool": "curl",
-            "media_type": "text/html; charset=utf-8",
-            "bytes": 41426,
-            "sha256": "d877ecd7c74dcf9b667aadb79c49e784e11f4a87eda89f287089038b8584350c",
-            "text": {
-              "extractor": "html.parser-py3.14 blocks-v1",
-              "sha256": "05182a1ea872b8a51aefed0d307d1f6a5fe2ffcc739f7b1416e9ec816412f648"
-            }
-          },
-          "claims": [
-            "AI-AGENT-TRUST-2026"
-          ],
-          "acquisition_url": "https://www.aisi.gov.uk/blog/incident-report-unsanctioned-agent-behaviour-during-cyber-testing",
-          "import_command": "python -m tools.evidence.manifest --scenario iv_fluid_shortage --import aisi2026_agent_trust=/path/to/raw-document"
         },
         {
           "id": "who2021uganda_idsr_dehydration",
@@ -17879,5 +16610,5 @@
       ]
     }
   ],
-  "library_source_count": 733
+  "library_source_count": 681
 }
