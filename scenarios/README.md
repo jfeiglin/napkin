@@ -1,8 +1,21 @@
-# Scenario briefs
+# Scenario catalogue
 
-Each brief tells one case as a story: what the AI does, why that is an AI threat, what changes at human pace, and what the model computes. Start here.
+The current packages model recovery and defensive response. Each package guide gives a runnable
+command, its inputs and the quantities the model computes.
 
-## The AI's edge in each case
+| Package | Inputs and modeled response |
+|---|---|
+| [Water service](water_controls_wipe/README.md) | A reported controls outage and subsequent field reports add work. The models follow storage, supply, crew queues and water-quality clearance in 16 places. |
+| [Electricity restoration during heat](heat_wave_blackout/README.md) | A reported outage and safety or inspection orders determine the work available to crews. The model follows restoration, cooling response and health effects. |
+| [IV-fluid supply](iv_fluid_shortage/README.md) | The response settings and reported condition of a lot affect qualification and shipments. Hospital reserves, holds and substitutions determine service over time. |
+| [Defensive attention](cyber_learning_loop/README.md) | Observed incident volume and measured tooling uptake drive a security team's attention, hardening and remediation indices. |
+
+## Historical briefs from revision `8488047`
+
+The comparisons below come from the earlier full studies and describe their original model
+assumptions and runs. [Historical catalogue at 8488047](https://github.com/jfeiglin/napkin/tree/8488047/scenarios)
+
+### The AI's edge in each case
 
 Each case compares its AI pathway with a matched pathway under the same defender response: a human team at the documented pace, or, where the AI's conduct is the point, the same AI acting differently. The AI's edge is measured on recovery and service; deaths are reported alongside as an outcome of the model, never a design target. Figures are model outputs from each case's default study.
 
@@ -28,7 +41,7 @@ Each case compares its AI pathway with a matched pathway under the same defender
 | [water_controls_wipe:richmond](water_controls_wipe/variants/richmond/results/brief.md) Water systems' controls wiped through a shared remote-support platform: Richmond, Virginia | Person-days without normal water service | 9,740 | 9,740 | not estimated / not estimated |
 | [water_controls_wipe:washington_dc](water_controls_wipe/variants/washington_dc/results/brief.md) Water systems' controls wiped through a shared remote-support platform: Washington, DC | Person-days without normal water service | 903,000 | 444,000 | not estimated / not estimated |
 
-## The cases
+### The cases
 
 - [cyber_learning_loop — A country's cyber attacks and the learning loop](cyber_learning_loop/results/brief.md): A country splits its scarce cyber operators between surveillance and attacks, and its researchers and analysts serve both.
 - [heat_wave_blackout — Blackout in a heat wave, caused by a contractor's AI that will not stop](heat_wave_blackout/results/brief.md): A contractor's AI agent switches off a criminal group's electricity supply, which also serves the people around it, as a heat wave begins.

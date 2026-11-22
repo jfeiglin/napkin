@@ -14,14 +14,16 @@ evidence the run exercised at each time. Featured runs come first. A package wit
 one default run. A value described in the model's `not_estimated` notes appears with its stated reason.
 
 ```sh
-python -m tools.publish --model scenarios/cyber_learning_loop/defensive_response --write
-python -m tools.publish --model scenarios/cyber_learning_loop/defensive_response --check
+python -m tools.publish --model scenarios/cyber_learning_loop --write
+python -m tools.publish --model scenarios/cyber_learning_loop --check
 ```
 
 `--check` compares the generated page byte for byte. The public record and its compiler side table
 supply the values, units and citations. An incomplete run or a compiler evidence diagnostic
 (`no_record` or `datum`) prevents publication. The existing historical briefs, methods pages, spread
-summaries and run tables remain separate published artifacts. [Example readings](../cyber_learning_loop/defensive_response/results/readings.md)
+summaries and run tables remain separate published artifacts. A scoped `--scenario ID` check
+verifies both readings and the current source dossier. A whole-catalogue check adds the source
+manifest. [Publication scope](../../tools/publish/README.md) · [Example readings](../cyber_learning_loop/results/readings.md)
 
 ## Folders and names
 
