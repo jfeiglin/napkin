@@ -7,6 +7,16 @@ The remote Claude tip and the audited baseline were both `6202824d6d567c34ac46da
 | Kind | Owner | Readers, pattern search and evidence |
 |---|---|---|
 | POINT | Publisher selection fixture in `tests/publish/test_publish_selection.py` | The invalid `East` directory shared a file with `east` on the case-insensitive Mac volume. `North` gives the invalid variant its own file. The test checks the contents of every surviving file and the rejection of the mixed-case selector. A search of the tests for case-colliding variant paths found one other `East` path in `test_locator.py`, which tests path spelling without creating both directories. The original assertion failed on macOS. All 10 publisher selection tests passed after the fixture change. |
+| STRUCTURAL S1 | `Run.definition` and the transaction-aware reader in `timeline/run.py:532`, with `Value.redefined` in `timeline/plan.py:237` | Baseline `e449649`; fix `ddd7801`. The direct read, comparison binding, expression evaluator, exact move, stage guard, near-tie explanation, occurrence lookup and broadcast selection/order now read the definition visible at that statement. [Baseline and reproductions](owner-fixes/s1/baseline.md) and [900 verified outcomes](owner-fixes/s1/verified.jsonl.gz). |
+
+For S1, the following line numbers refer to the baseline and fix commits, respectively. Paths are under `napkin/engine/timeline/`.
+
+| Previous copy or caller | Replacement in ddd7801 |
+|---|---|
+| `run.py:553`, `run.py:674` and `plan.py:651` independently chose staged values or committed operands. | `run.py:532`, `run.py:540`, `run.py:561` and `run.py:701` supply the transaction to `plan.py:640`. Literal operands, exact gaps and inferred floors in `napkin/core/comparisons.py` read that binding. |
+| `plan.py:1399` and `plan.py:1435` constructed formula and capture metadata separately. | `plan.py:237` constructs it for stage reads, commit, and historical replay. |
+| `moment.py:503`, `moment.py:565`, `moment.py:742`, `moment.py:773` and `moment.py:1047` used the committed comparison or definition in a stage. | `moment.py:508`, `moment.py:581`, `moment.py:761`, `moment.py:789` and `moment.py:1071` use the effective definition and comparison policy. |
+| `run.py:879` filtered broadcast entries by their initial values; `moment.py:808` ordered recipients by committed keys. | The broadcast in `moment.py:813` supplies the same stage reads to filtering and ordering. `Run.kept_entries` was removed. Dynamic filtered reads receive the caller's units in `collections.py:190`. |
 
 ## Follow a transfer
 
