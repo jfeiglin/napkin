@@ -12,3 +12,5 @@ At engine and reference revision `7f308d15d2813ef4d68c2fd5615d6b34aab58987`, 1,1
 The reference resolved a filter’s sink and a new key’s request on the originating pump after projecting to its flow. The dedicated builder reproduction failed twice and passed the control that sets the key before projecting. [Pytest failures](reference-projected-red.log.gz).
 
 Tracing other readers of the same filter cache exposed an additional case. A flow whose filter reads a continuously filling stock tries to read the stock before its integration method is installed. Both Component and Sparse raised AttributeError on a clean export of the pinned baseline. [Two failing methods](moving-filter-red.log.gz).
+
+A lookup whose numeric key and eligibility both move retained its opening row after 1 h. With a fixed key, the solver skipped a 0.02 h eligibility interval altogether. The pinned source failed three direct cases and passed two single-transition controls. [Lookup failures and controls](keyed-filter-red.log.gz).
