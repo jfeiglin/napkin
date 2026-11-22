@@ -532,6 +532,7 @@ class Triggers:
         run = self.run
         now, earliest, window = run.now, math.inf, math.inf
         witnesses = []
+        node = walked(self._reachable(node))
         atoms = self._atoms(node)
         moving_atoms = []
         for atom in atoms:
@@ -615,6 +616,32 @@ class Triggers:
                 if physical:
                     witnesses.append((left, right))
         return earliest, window, tuple(witnesses)
+
+    def _reachable(self, node):
+        """Remove a held short-circuit prefix for this prediction. A discrete write
+        rebuilds the prediction from the original expression and its full dependencies."""
+        if isinstance(node, nodes.Ref):
+            found = self.plan.values.get(node.name)
+            if (
+                found is not None
+                and found.kind == FORMULA
+                and found.boolean
+                and node.name not in self.run.frozen
+            ):
+                return (yield self._reachable(found.node))
+        if not isinstance(node, nodes.BoolOp):
+            return node
+        decides = node.op == 'or'
+        for i, operand in enumerate(node.values):
+            part = yield self._reachable(operand)
+            if self.moving_reads(part) or self._moving_lookups(part):
+                if i == 0 and part == operand:
+                    return node
+                remaining = (part, *node.values[i + 1 :])
+                return nodes.boolean(node.op, remaining) if len(remaining) > 1 else part
+            if self.holds(part) == decides:
+                return nodes.const(decides)
+        return nodes.const(not decides)
 
     def _continued_root(self, left, right, moving, end):
         """A separate stock threshold may land a few ulps after the dense endpoint
