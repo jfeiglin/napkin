@@ -22,6 +22,7 @@ of the rows of every rank nearest other targets, and farther from these, is neve
 
 from __future__ import annotations
 
+from copy import copy
 from fractions import Fraction
 
 import numpy as np
@@ -30,6 +31,7 @@ import pytest
 from napkin.engine import read, run
 from napkin.engine.errors import SimulationError
 from napkin.engine.timeline import Plan, Run, declared, selection
+from napkin.engine.timeline import network as local_network
 from napkin.program.build import (
     SINK,
     SOURCE,
@@ -291,10 +293,28 @@ def sharing(monkeypatch, seed, routes):
         found.append((rows, lower, upper, target, claims, answer, rest, np.array(made)))
         return made
 
-    monkeypatch.setattr(selection, '_kept', spy)
-    source, _ = network(seed, routes)
-    run(source, Configuration(Request(3)))
-    monkeypatch.setattr(selection, '_kept', kept)  # the checks after the run call it themselves
+    def published(rows, lower, upper, tiers, prefs, target, units, scales, measure):
+        before = len(found)
+        made = selection.select(rows, lower, upper, tiers, prefs, target, units, scales, measure)
+        if len(found) == before:
+            # A fully served feasible target needs no projection or rounding candidates.
+            # Rank 2 fixes each served fraction to one. An alternative may exceed its
+            # requested amount, but must keep that entire fraction on every tier.
+            assert not prefs and np.array_equal(made, target)
+            claims = [claim for tier in tiers for claim in tier]
+            locked = copy(rows)
+            locked.upper = rows.upper.copy()
+            for a, wanted in claims:
+                locked.at_least(a, wanted)
+            assert selection._holds(locked, selection._plain(locked, lower, upper), made, target)
+            found.append((locked, lower, upper, target, claims, target, (scales,), made))
+        return made
+
+    with monkeypatch.context() as observe:
+        observe.setattr(selection, '_kept', spy)
+        observe.setattr(local_network, 'select', published)
+        source, _ = network(seed, routes)
+        run(source, Configuration(Request(3)))
     return found
 
 
