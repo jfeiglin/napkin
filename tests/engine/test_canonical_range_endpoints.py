@@ -57,3 +57,35 @@ def test_the_same_physical_endpoint_is_admitted_once_in_canonical_units(scope, b
     record = run(compiled.program, compiled.configuration)
     assert record.failure is None, record.failure
     assert read(record, compiled.program, [key], [1])[0].values == (float(value),)
+
+
+@pytest.mark.parametrize(
+    ('bounds', 'objective', 'value'),
+    [
+        ('0 kL, 0.10000000000000001 kL', 'maximize', '100.00000000000001'),
+        ('-0.10000000000000001 kL, 0 kL', 'minimize', '-100.00000000000001'),
+        ('0 kL, 0.125 kL', 'maximize', '125'),
+        ('0 kL, this.limit', 'maximize', '100.00000000000001'),
+    ],
+    ids=['upper', 'lower', 'representable', 'dynamic'],
+)
+def test_a_solver_uses_the_same_physical_endpoints_as_a_stored_field(bounds, objective, value):
+    source = f'''scenario "Solver endpoint"
+    horizon 1 h
+yard:
+    limit: L = 100.00000000000001 L
+    choose = solver:
+        solve_for:
+            level: kL in [{bounds}]
+        objective:
+            {objective}(level)
+observed: formula(L) = formula(yard.choose.level)
+'''
+    compiled = compile_text(source, UNITS)
+    oracle, failure = run_of(compiled.program, compiled.configuration)
+    assert failure is None, failure
+    key = Key('', ('observed',))
+    assert values_at(oracle, compiled.program, [key], [0])[key] == [Fraction(value)]
+    record = run(compiled.program, compiled.configuration)
+    assert record.failure is None, record.failure
+    assert read(record, compiled.program, [key], [0])[0].values == (float(value),)
