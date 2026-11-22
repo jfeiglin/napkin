@@ -20,9 +20,8 @@ python -m tools.publish --model scenarios/cyber_learning_loop --check
 
 `--check` compares the generated page byte for byte. The public record and its compiler side table
 supply the values, units and citations. An incomplete run or a compiler evidence diagnostic
-(`no_record` or `datum`) prevents publication. The existing historical briefs, methods pages, spread
-summaries and run tables remain separate published artifacts. A scoped `--scenario ID` check
-verifies both readings and the current source dossier. A whole-catalogue check adds the source
+(`no_record` or `datum`) prevents publication. A scoped `--scenario ID` check verifies the named-run readings, the
+comparison brief and the current source dossier. A whole-catalogue check adds the source
 manifest. [Publication scope](../../tools/publish/README.md) · [Example readings](../cyber_learning_loop/results/readings.md)
 
 ## Folders and names
@@ -66,19 +65,23 @@ what a serious casualty is (a record `convention HAZUS-SEVERITY`). The pages rea
 
 ## The brief settings: brief.toml
 
-Beside `show`, `drivers` and `featured`, `brief.toml` gives the pages two texts that the model does
-not hold. The calculation never reads them.
+The active brief uses `show` to select readings and `featured` to order the opening comparison.
+Give each additional pair its own table. Both names must identify runs in the same model.
 
-| Key | What it gives | Without it |
-| --- | --- | --- |
-| `attack = "…"` | The name of the attack on the pages, which names the first move (`event start`) | No name: the pages describe the first move |
-| `choice_group = "…"` | The group of options that holds the defenders' responses. The pages and the methods show its options as the responses. It is a group of the model's options, and it changes no run | No group of responses |
+```toml
+[[comparison]]
+run = "followup_quality_review"
+against = "fixed_quality_review"
+```
+
+The publisher writes each pair's horizon readings to `results/brief.md` and includes units.
+The readings page has the evidence exercised by each run. The historical format also used
+`attack` and `choice_group` to annotate a narrative. [Publication formats and commands](../../tools/publish/README.md)
 
 ### The sweeps: `[[sweep]]`
 
-Each `[[sweep]]` table is a row of the scenario's run table (`results/runs.csv` and `results/runs.json`),
-after the rows of its runs. A sweep runs one run of the model with other values of some inputs, and
-only that run runs. A scenario without sweeps has no run table.
+A sweep specifies one run with alternative input values. Historical run tables used these declarations
+to produce rows in `results/runs.csv` and `results/runs.json`.
 
 | Key | What it holds |
 | --- | --- |
@@ -101,13 +104,11 @@ value as it checks every edit (docs/engine.md, "The edit document").
 
 ### The spreads: `[[spread]]`
 
-A brief shows the spread of its outcomes only where a `[[spread]]` table defines one. The brief
-calculates each spread when it is published: the engine's Monte Carlo study of the spread's runs
-(docs/engine.md, "Monte Carlo studies"), in the processes of `napkin/spread.py`. Its edit document,
+Each `[[spread]]` table declares a seeded Monte Carlo study. Run the publisher with
+`--sample-spreads` to execute it. Its edit document,
 `spreads/<id>.json` in the folder of the model file, gives the inputs their distributions. It is an
 edit document of version 0.0.1, for the model's revision (`schema_version`, `model_hash`, and `set`,
-`options` or `runs`). No distribution of a spread goes into the model, so the spread changes no
-result of a run.
+`options` or `runs`). The edit applies to the sampled study.
 
 | Key | What it holds | Without it |
 | --- | --- | --- |
@@ -115,7 +116,7 @@ result of a run.
 | `description` | What the spread changes, in words | No text |
 | `runs` | The runs that the spread samples, each once. The brief shows them in the order of the model file | Necessary |
 | `samples`, `seed` | The number of samples, from 1 to 100,000, and the seed of the draws, from 0 to 2^63 − 1 | Necessary |
-| `method` | `random`, `latin` or `sobol`. With `sobol` the samples are 8 blocks of a power of two each: 8, 16, 32, … | `random` |
+| `method` | The engine uses seeded random sampling | `random` |
 | `outputs` | The outputs that the brief shows for the spread | The brief's measures |
 
 ```toml

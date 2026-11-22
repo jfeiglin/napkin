@@ -17,7 +17,7 @@ computes, which a datum, being a number, cannot be.
 --all retains the complete tests and catalogue publication comparison.
 --all --deep also runs exhaustive admission tests and replays three stored simulations.
 --release adds release metadata, current declared spread studies and wheel checks and uses an
-empty run store. The current publication check covers readings, source dossiers and the source manifest.
+empty run store. The current publication check covers briefs, readings, source dossiers and the source manifest.
 
 The run store reuses simulations, not compilation or rendering. A cache hit is not a
 promise of a fast full-catalogue check. Use targeted tests during development and run
@@ -121,7 +121,7 @@ def stored_runs_again(number):
 
 
 def summaries(scope=None, jobs=4, spreads=False):
-    """Check current readings and dossiers. A full check also verifies the manifest. Sampling
+    """Check current briefs, readings and dossiers. A full check also verifies the manifest. Sampling
     replays the current declared spreads at their authored sizes when requested."""
     if scope == ():
         return 0
