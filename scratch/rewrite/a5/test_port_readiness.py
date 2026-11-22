@@ -13,7 +13,7 @@ from napkin.program.config import InputValue, Quantity
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 PIANO = ROOT / 'examples' / 'piano_tuners' / 'model.scn'
-RESERVOIR = HERE / 'translated' / 'now' / 'examples' / 'reservoir' / 'model.scn'
+RESERVOIR = ROOT / 'examples' / 'reservoir' / 'model.scn'
 
 
 @pytest.mark.parametrize('seed', range(12))

@@ -22,7 +22,6 @@ HERE = Path(__file__).resolve()
 PIANO = Path('examples/piano_tuners/model.scn')
 RESERVOIR = Path('examples/reservoir/model.scn')
 A5 = Path('scratch/rewrite/a5')
-TRANSLATED = A5 / 'translated/now' / RESERVOIR
 PIANO_TIMES = (0, 4380, 8760)
 RESERVOIR_TIMES = (0, 24, 40, 60, 80, 96, 120)
 SWEEP = tuple(product(('0.03', '0.06'), ('0.06', '0.15'), ('0.6', '0.7', '0.8')))
@@ -162,7 +161,7 @@ def compare_new(root, old):
                     interval_rate,
                 )
 
-    reservoir = napkin.load_scenario(root / TRANSLATED)
+    reservoir = napkin.load_scenario(root / RESERVOIR)
     for conditions, previous in zip(SWEEP, old['reservoir'], strict=True):
         inflow, spillway, risk = map(F, conditions)
         incoming, outgoing = inflow / 24, spillway / 24
@@ -211,7 +210,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='napkin-migration-') as folder:
         old, new = (Path(folder) / side for side in ('legacy', 'candidate'))
         archive(repo, LEGACY, old, ['napkin', 'examples/piano_tuners', 'examples/reservoir'])
-        archive(repo, commit, new, ['napkin', 'examples/piano_tuners', A5, 'pyproject.toml'])
+        archive(repo, commit, new, ['napkin', 'examples/piano_tuners', 'examples/reservoir', A5, 'pyproject.toml'])
 
         def invoke(root, *command, payload=None, expected_code=0):
             env = {**os.environ, 'PYTHONPATH': str(root), 'NAPKIN_BASE': str(old), 'NAPKIN_STORE': 'off'}
@@ -233,7 +232,7 @@ def main():
         piano = old / PIANO
         for source, target, times in [
             (piano, new / PIANO, [4380]),
-            (old / RESERVOIR, new / TRANSLATED, RESERVOIR_TIMES[1:-1]),
+            (old / RESERVOIR, new / RESERVOIR, RESERVOIR_TIMES[1:-1]),
         ]:
             invoke(new, new / A5 / 'check.py', source, target, *(v for t in times for v in ('--at', str(t))))
         for suffix, message in [
