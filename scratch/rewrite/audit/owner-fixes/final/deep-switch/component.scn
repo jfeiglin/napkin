@@ -1,0 +1,9 @@
+scenario "Linear crossing"
+    horizon 1 h
+plant:
+    level: L = 6 L
+    delivery: L = 0 L
+    flow drive: SOURCE -> this.level
+        request = 2.4 L/h
+    flow meter: SOURCE -> this.delivery
+        request = formula(1 L/h if this.level >= 5.25 L + t * 3.6 L/h else 0 L/h)
