@@ -123,7 +123,7 @@ from .plan import (
     Plan,
     name_of,
 )
-from .reads import Reads
+from .reads import Reads, lazily
 
 # What evaluating a formula can raise: it then holds `Unavailable` with the reason.
 FAILURES = (ExpressionError, ArithmeticError, ValueError, LookupError, SimulationError)
@@ -1575,6 +1575,22 @@ class Reader:
         except LookupError as problem:
             stopped = self.record.stopped()
             return Unavailable(str(problem) + (f': {stopped}' if stopped else ''))
+
+    def comparison_floor(self, key, t):
+        """The comparison scale of a record key's value at a time, in canonical units (PLAN, change
+        29): its declared scale or one declared unit, or for a formula the largest contribution of
+        the quantities that it reads. None for a value that is no number then, or for a ledger."""
+        t = float(t)
+        if key.store is not None or not isinstance(self.value(key, t), (int, float)):
+            return None
+
+        def read(node):
+            return lazily(node, lambda name: self.at(name, t), self.units, t)
+
+        try:
+            return float(self.units.comparisons.floor(nodes.ref(name_of(key)), nodes.const(0.0), read))
+        except (*FAILURES, TypeError):
+            return None
 
     def refusal(self, key, t):
         """Why the reader gives no value of a record key at a time before it reads one: a time or a

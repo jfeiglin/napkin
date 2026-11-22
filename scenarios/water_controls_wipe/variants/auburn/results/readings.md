@@ -25,18 +25,18 @@ Model revision `4a5f0a2d8f388595125f7954e640dd7402081d0055db64bf0877b9d0188cbb6d
 | people_followed | 0 | 107655 | people | population_basis, auburn_homes_population, counts_people_once |
 | wider_loss | 0 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 0 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
-| person_days_lost | 2160 | 3139.9375 | person*days | service_share, population_basis, auburn_homes_population, counts_people_once, demand_basis, auburn_demand, stored_water_bridges |
-| unserved_volume | 2160 | 0.325564167 | Mgal | clearance, bulk_dependence, auburn_bought, counts_stocks_flows, stored_water_bridges, demand_basis, auburn_demand, depth, room_identity, storage_hours, losses, auburn_nameplate, auburn_sold, manual, auburn_storage |
+| person_days_lost | 2160 | 3139.94 | person*days | service_share, population_basis, auburn_homes_population, counts_people_once, demand_basis, auburn_demand, stored_water_bridges |
+| unserved_volume | 2160 | 0.325564 | Mgal | clearance, bulk_dependence, auburn_bought, counts_stocks_flows, stored_water_bridges, demand_basis, auburn_demand, depth, room_identity, storage_hours, losses, auburn_nameplate, auburn_sold, manual, auburn_storage |
 | rework_caused | 2160 | 0 | work_h | keeps_count_limited, service_incident |
 | deaths | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
 | casualties | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
-| economic_loss | 2160 | 0.000241322485 | USD2025_bn | activity_transfer, economy, demand_basis, auburn_demand, counts_stocks_flows, stored_water_bridges, auburn_va_rate |
+| economic_loss | 2160 | 0.000241322 | USD2025_bn | activity_transfer, economy, demand_basis, auburn_demand, counts_stocks_flows, stored_water_bridges, auburn_va_rate |
 | people_interrupted_now | 2160 | 0 | people | population_basis, auburn_homes_population, counts_people_once, service_share, clearance, bulk_dependence, auburn_bought, stored_water_bridges, demand_basis, auburn_demand, depth, room_identity, storage_hours, losses, auburn_nameplate, auburn_sold, manual, auburn_storage, counts_stocks_flows |
 | people_under_advisory | 2160 | 0 | people | advisory, counts_people_once |
 | restored_share | 2160 | 1 | fraction | population_basis, auburn_homes_population, service_share, counts_people_once, clearance, bulk_dependence, auburn_bought, stored_water_bridges, demand_basis, auburn_demand, depth, room_identity, storage_hours, losses, auburn_nameplate, auburn_sold, manual, auburn_storage, counts_stocks_flows |
-| emergency_water_deficit | 2160 | 0.0031399375 | Mgal | counts_stocks_flows, ration_basis, population_basis, auburn_homes_population, counts_people_once, service_share, demand_basis, auburn_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis |
+| emergency_water_deficit | 2160 | 0.00313994 | Mgal | counts_stocks_flows, ration_basis, population_basis, auburn_homes_population, counts_people_once, service_share, demand_basis, auburn_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis |
 | hospital_hours_constrained | 2160 | 0 | facility_hours | constraint_basis, hospital_join, auburn_hospitals_facilities, demand_basis, auburn_demand, stored_water_bridges, start_basis |
-| work_remaining | 2160 | -2.14894769e-12 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| work_remaining | 2160 | 0 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
 | people_followed | 2160 | 107655 | people | population_basis, auburn_homes_population, counts_people_once |
 | wider_loss | 2160 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 2160 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
@@ -60,18 +60,18 @@ Model revision `4a5f0a2d8f388595125f7954e640dd7402081d0055db64bf0877b9d0188cbb6d
 | people_followed | 0 | 107655 | people | population_basis, auburn_homes_population, counts_people_once |
 | wider_loss | 0 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 0 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
-| person_days_lost | 2160 | 3139.9375 | person*days | service_share, population_basis, auburn_homes_population, counts_people_once, demand_basis, auburn_demand, stored_water_bridges |
-| unserved_volume | 2160 | 0.325564167 | Mgal | clearance, bulk_dependence, auburn_bought, counts_stocks_flows, stored_water_bridges, demand_basis, auburn_demand, depth, room_identity, storage_hours, losses, auburn_nameplate, auburn_sold, manual, auburn_storage |
+| person_days_lost | 2160 | 3139.94 | person*days | service_share, population_basis, auburn_homes_population, counts_people_once, demand_basis, auburn_demand, stored_water_bridges |
+| unserved_volume | 2160 | 0.325564 | Mgal | clearance, bulk_dependence, auburn_bought, counts_stocks_flows, stored_water_bridges, demand_basis, auburn_demand, depth, room_identity, storage_hours, losses, auburn_nameplate, auburn_sold, manual, auburn_storage |
 | rework_caused | 2160 | 0 | work_h | keeps_count_limited, service_incident |
 | deaths | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
 | casualties | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
-| economic_loss | 2160 | 0.000241322476 | USD2025_bn | activity_transfer, economy, demand_basis, auburn_demand, counts_stocks_flows, stored_water_bridges, auburn_va_rate |
+| economic_loss | 2160 | 0.000241322 | USD2025_bn | activity_transfer, economy, demand_basis, auburn_demand, counts_stocks_flows, stored_water_bridges, auburn_va_rate |
 | people_interrupted_now | 2160 | 0 | people | population_basis, auburn_homes_population, counts_people_once, service_share, clearance, bulk_dependence, auburn_bought, stored_water_bridges, demand_basis, auburn_demand, depth, room_identity, storage_hours, losses, auburn_nameplate, auburn_sold, manual, auburn_storage, counts_stocks_flows |
 | people_under_advisory | 2160 | 0 | people | advisory, counts_people_once |
 | restored_share | 2160 | 1 | fraction | population_basis, auburn_homes_population, service_share, counts_people_once, clearance, bulk_dependence, auburn_bought, stored_water_bridges, demand_basis, auburn_demand, depth, room_identity, storage_hours, losses, auburn_nameplate, auburn_sold, manual, auburn_storage, counts_stocks_flows |
-| emergency_water_deficit | 2160 | 0.0031399375 | Mgal | counts_stocks_flows, ration_basis, population_basis, auburn_homes_population, counts_people_once, service_share, demand_basis, auburn_demand, stored_water_bridges, min_of_capacities, start_basis, priority_basis |
+| emergency_water_deficit | 2160 | 0.00313994 | Mgal | counts_stocks_flows, ration_basis, population_basis, auburn_homes_population, counts_people_once, service_share, demand_basis, auburn_demand, stored_water_bridges, min_of_capacities, start_basis, priority_basis |
 | hospital_hours_constrained | 2160 | 0 | facility_hours | constraint_basis, hospital_join, auburn_hospitals_facilities, demand_basis, auburn_demand, stored_water_bridges, start_basis |
-| work_remaining | 2160 | -1.10844667e-12 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| work_remaining | 2160 | 0 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
 | people_followed | 2160 | 107655 | people | population_basis, auburn_homes_population, counts_people_once |
 | wider_loss | 2160 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 2160 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
@@ -95,18 +95,18 @@ Model revision `4a5f0a2d8f388595125f7954e640dd7402081d0055db64bf0877b9d0188cbb6d
 | people_followed | 0 | 107655 | people | population_basis, auburn_homes_population, counts_people_once |
 | wider_loss | 0 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 0 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
-| person_days_lost | 2160 | 3139.9375 | person*days | service_share, population_basis, auburn_homes_population, counts_people_once, demand_basis, auburn_demand, stored_water_bridges |
-| unserved_volume | 2160 | 0.325564167 | Mgal | clearance, bulk_dependence, auburn_bought, counts_stocks_flows, stored_water_bridges, demand_basis, auburn_demand, depth, room_identity, storage_hours, losses, auburn_nameplate, auburn_sold, manual, auburn_storage |
+| person_days_lost | 2160 | 3139.94 | person*days | service_share, population_basis, auburn_homes_population, counts_people_once, demand_basis, auburn_demand, stored_water_bridges |
+| unserved_volume | 2160 | 0.325564 | Mgal | clearance, bulk_dependence, auburn_bought, counts_stocks_flows, stored_water_bridges, demand_basis, auburn_demand, depth, room_identity, storage_hours, losses, auburn_nameplate, auburn_sold, manual, auburn_storage |
 | rework_caused | 2160 | 0 | work_h | keeps_count_limited, service_incident |
 | deaths | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
 | casualties | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
-| economic_loss | 2160 | 0.000241322481 | USD2025_bn | activity_transfer, economy, demand_basis, auburn_demand, counts_stocks_flows, stored_water_bridges, auburn_va_rate |
+| economic_loss | 2160 | 0.000241322 | USD2025_bn | activity_transfer, economy, demand_basis, auburn_demand, counts_stocks_flows, stored_water_bridges, auburn_va_rate |
 | people_interrupted_now | 2160 | 0 | people | population_basis, auburn_homes_population, counts_people_once, service_share, clearance, bulk_dependence, auburn_bought, stored_water_bridges, demand_basis, auburn_demand, depth, room_identity, storage_hours, losses, auburn_nameplate, auburn_sold, manual, auburn_storage, counts_stocks_flows |
 | people_under_advisory | 2160 | 0 | people | advisory, counts_people_once |
 | restored_share | 2160 | 1 | fraction | population_basis, auburn_homes_population, service_share, counts_people_once, clearance, bulk_dependence, auburn_bought, stored_water_bridges, demand_basis, auburn_demand, depth, room_identity, storage_hours, losses, auburn_nameplate, auburn_sold, manual, auburn_storage, counts_stocks_flows |
-| emergency_water_deficit | 2160 | 0.0031399375 | Mgal | counts_stocks_flows, ration_basis, population_basis, auburn_homes_population, counts_people_once, service_share, demand_basis, auburn_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis |
+| emergency_water_deficit | 2160 | 0.00313994 | Mgal | counts_stocks_flows, ration_basis, population_basis, auburn_homes_population, counts_people_once, service_share, demand_basis, auburn_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis |
 | hospital_hours_constrained | 2160 | 0 | facility_hours | constraint_basis, hospital_join, auburn_hospitals_facilities, demand_basis, auburn_demand, stored_water_bridges, start_basis |
-| work_remaining | 2160 | -1.93978167e-12 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| work_remaining | 2160 | 0 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
 | people_followed | 2160 | 107655 | people | population_basis, auburn_homes_population, counts_people_once |
 | wider_loss | 2160 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 2160 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |

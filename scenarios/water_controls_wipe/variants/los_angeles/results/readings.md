@@ -16,28 +16,28 @@ Model revision `ecebc0523837d12d80aeed66389acac40fb3f3574ccc19d4857fd31807878a27
 | deaths | 0 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
 | casualties | 0 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
 | economic_loss | 0 | 0 | USD2025_bn | activity_transfer, economy, demand_basis, ladwp_demand, counts_stocks_flows, stored_water_bridges, ladwp_va_rate |
-| people_interrupted_now | 0 | 1937783 | people | population_basis, ladwp_homes_population, counts_people_once, service_share, clearance, bulk_dependence, ladwp_bought, stored_water_bridges, demand_basis, ladwp_demand, depth, room_identity, storage_hours, losses, ladwp_nameplate, manual, ladwp_storage, counts_stocks_flows |
+| people_interrupted_now | 0 | 1.93778e+06 | people | population_basis, ladwp_homes_population, counts_people_once, service_share, clearance, bulk_dependence, ladwp_bought, stored_water_bridges, demand_basis, ladwp_demand, depth, room_identity, storage_hours, losses, ladwp_nameplate, manual, ladwp_storage, counts_stocks_flows |
 | people_under_advisory | 0 | 0 | people | advisory, counts_people_once |
 | restored_share | 0 | 0.5 | fraction | population_basis, ladwp_homes_population, service_share, counts_people_once, clearance, bulk_dependence, ladwp_bought, stored_water_bridges, demand_basis, ladwp_demand, depth, room_identity, storage_hours, losses, ladwp_nameplate, manual, ladwp_storage, counts_stocks_flows |
 | emergency_water_deficit | 0 | 0 | Mgal | counts_stocks_flows, ration_basis, population_basis, ladwp_homes_population, counts_people_once, service_share, demand_basis, ladwp_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis |
 | hospital_hours_constrained | 0 | 0 | facility_hours | constraint_basis, hospital_join, ladwp_hospitals_facilities, demand_basis, ladwp_demand, stored_water_bridges, start_basis |
 | work_remaining | 0 | 720 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
-| people_followed | 0 | 3875566 | people | population_basis, ladwp_homes_population, counts_people_once |
+| people_followed | 0 | 3.87557e+06 | people | population_basis, ladwp_homes_population, counts_people_once |
 | wider_loss | 0 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 0 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
-| person_days_lost | 2160 | 161481.917 | person*days | service_share, population_basis, ladwp_homes_population, counts_people_once, demand_basis, ladwp_demand, stored_water_bridges |
-| unserved_volume | 2160 | 25.5342421 | Mgal | clearance, bulk_dependence, ladwp_bought, counts_stocks_flows, stored_water_bridges, demand_basis, ladwp_demand, depth, room_identity, storage_hours, losses, ladwp_nameplate, manual, ladwp_storage |
+| person_days_lost | 2160 | 161482 | person*days | service_share, population_basis, ladwp_homes_population, counts_people_once, demand_basis, ladwp_demand, stored_water_bridges |
+| unserved_volume | 2160 | 25.5342 | Mgal | clearance, bulk_dependence, ladwp_bought, counts_stocks_flows, stored_water_bridges, demand_basis, ladwp_demand, depth, room_identity, storage_hours, losses, ladwp_nameplate, manual, ladwp_storage |
 | rework_caused | 2160 | 0 | work_h | keeps_count_limited, service_incident |
 | deaths | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
 | casualties | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
-| economic_loss | 2160 | 0.006257069 | USD2025_bn | activity_transfer, economy, demand_basis, ladwp_demand, counts_stocks_flows, stored_water_bridges, ladwp_va_rate |
+| economic_loss | 2160 | 0.00625707 | USD2025_bn | activity_transfer, economy, demand_basis, ladwp_demand, counts_stocks_flows, stored_water_bridges, ladwp_va_rate |
 | people_interrupted_now | 2160 | 0 | people | population_basis, ladwp_homes_population, counts_people_once, service_share, clearance, bulk_dependence, ladwp_bought, stored_water_bridges, demand_basis, ladwp_demand, depth, room_identity, storage_hours, losses, ladwp_nameplate, manual, ladwp_storage, counts_stocks_flows |
 | people_under_advisory | 2160 | 0 | people | advisory, counts_people_once |
 | restored_share | 2160 | 1 | fraction | population_basis, ladwp_homes_population, service_share, counts_people_once, clearance, bulk_dependence, ladwp_bought, stored_water_bridges, demand_basis, ladwp_demand, depth, room_identity, storage_hours, losses, ladwp_nameplate, manual, ladwp_storage, counts_stocks_flows |
-| emergency_water_deficit | 2160 | 0.161481917 | Mgal | counts_stocks_flows, ration_basis, population_basis, ladwp_homes_population, counts_people_once, service_share, demand_basis, ladwp_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis |
+| emergency_water_deficit | 2160 | 0.161482 | Mgal | counts_stocks_flows, ration_basis, population_basis, ladwp_homes_population, counts_people_once, service_share, demand_basis, ladwp_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis |
 | hospital_hours_constrained | 2160 | 0 | facility_hours | constraint_basis, hospital_join, ladwp_hospitals_facilities, demand_basis, ladwp_demand, stored_water_bridges, start_basis |
-| work_remaining | 2160 | -1.16529009e-12 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
-| people_followed | 2160 | 3875566 | people | population_basis, ladwp_homes_population, counts_people_once |
+| work_remaining | 2160 | 0 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| people_followed | 2160 | 3.87557e+06 | people | population_basis, ladwp_homes_population, counts_people_once |
 | wider_loss | 2160 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 2160 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
 
@@ -51,28 +51,28 @@ Model revision `ecebc0523837d12d80aeed66389acac40fb3f3574ccc19d4857fd31807878a27
 | deaths | 0 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
 | casualties | 0 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
 | economic_loss | 0 | 0 | USD2025_bn | activity_transfer, economy, demand_basis, ladwp_demand, counts_stocks_flows, stored_water_bridges, ladwp_va_rate |
-| people_interrupted_now | 0 | 1937783 | people | population_basis, ladwp_homes_population, counts_people_once, service_share, clearance, bulk_dependence, ladwp_bought, stored_water_bridges, demand_basis, ladwp_demand, depth, room_identity, storage_hours, losses, ladwp_nameplate, manual, ladwp_storage, counts_stocks_flows |
+| people_interrupted_now | 0 | 1.93778e+06 | people | population_basis, ladwp_homes_population, counts_people_once, service_share, clearance, bulk_dependence, ladwp_bought, stored_water_bridges, demand_basis, ladwp_demand, depth, room_identity, storage_hours, losses, ladwp_nameplate, manual, ladwp_storage, counts_stocks_flows |
 | people_under_advisory | 0 | 0 | people | advisory, counts_people_once |
 | restored_share | 0 | 0.5 | fraction | population_basis, ladwp_homes_population, service_share, counts_people_once, clearance, bulk_dependence, ladwp_bought, stored_water_bridges, demand_basis, ladwp_demand, depth, room_identity, storage_hours, losses, ladwp_nameplate, manual, ladwp_storage, counts_stocks_flows |
 | emergency_water_deficit | 0 | 0 | Mgal | counts_stocks_flows, ration_basis, population_basis, ladwp_homes_population, counts_people_once, service_share, demand_basis, ladwp_demand, stored_water_bridges, min_of_capacities, start_basis, priority_basis |
 | hospital_hours_constrained | 0 | 0 | facility_hours | constraint_basis, hospital_join, ladwp_hospitals_facilities, demand_basis, ladwp_demand, stored_water_bridges, start_basis |
 | work_remaining | 0 | 720 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
-| people_followed | 0 | 3875566 | people | population_basis, ladwp_homes_population, counts_people_once |
+| people_followed | 0 | 3.87557e+06 | people | population_basis, ladwp_homes_population, counts_people_once |
 | wider_loss | 0 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 0 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
-| person_days_lost | 2160 | 161481.917 | person*days | service_share, population_basis, ladwp_homes_population, counts_people_once, demand_basis, ladwp_demand, stored_water_bridges |
-| unserved_volume | 2160 | 25.5342421 | Mgal | clearance, bulk_dependence, ladwp_bought, counts_stocks_flows, stored_water_bridges, demand_basis, ladwp_demand, depth, room_identity, storage_hours, losses, ladwp_nameplate, manual, ladwp_storage |
+| person_days_lost | 2160 | 161482 | person*days | service_share, population_basis, ladwp_homes_population, counts_people_once, demand_basis, ladwp_demand, stored_water_bridges |
+| unserved_volume | 2160 | 25.5342 | Mgal | clearance, bulk_dependence, ladwp_bought, counts_stocks_flows, stored_water_bridges, demand_basis, ladwp_demand, depth, room_identity, storage_hours, losses, ladwp_nameplate, manual, ladwp_storage |
 | rework_caused | 2160 | 0 | work_h | keeps_count_limited, service_incident |
 | deaths | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
 | casualties | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
-| economic_loss | 2160 | 0.00625706901 | USD2025_bn | activity_transfer, economy, demand_basis, ladwp_demand, counts_stocks_flows, stored_water_bridges, ladwp_va_rate |
+| economic_loss | 2160 | 0.00625707 | USD2025_bn | activity_transfer, economy, demand_basis, ladwp_demand, counts_stocks_flows, stored_water_bridges, ladwp_va_rate |
 | people_interrupted_now | 2160 | 0 | people | population_basis, ladwp_homes_population, counts_people_once, service_share, clearance, bulk_dependence, ladwp_bought, stored_water_bridges, demand_basis, ladwp_demand, depth, room_identity, storage_hours, losses, ladwp_nameplate, manual, ladwp_storage, counts_stocks_flows |
 | people_under_advisory | 2160 | 0 | people | advisory, counts_people_once |
 | restored_share | 2160 | 1 | fraction | population_basis, ladwp_homes_population, service_share, counts_people_once, clearance, bulk_dependence, ladwp_bought, stored_water_bridges, demand_basis, ladwp_demand, depth, room_identity, storage_hours, losses, ladwp_nameplate, manual, ladwp_storage, counts_stocks_flows |
-| emergency_water_deficit | 2160 | 0.161481917 | Mgal | counts_stocks_flows, ration_basis, population_basis, ladwp_homes_population, counts_people_once, service_share, demand_basis, ladwp_demand, stored_water_bridges, min_of_capacities, start_basis, priority_basis |
+| emergency_water_deficit | 2160 | 0.161482 | Mgal | counts_stocks_flows, ration_basis, population_basis, ladwp_homes_population, counts_people_once, service_share, demand_basis, ladwp_demand, stored_water_bridges, min_of_capacities, start_basis, priority_basis |
 | hospital_hours_constrained | 2160 | 0 | facility_hours | constraint_basis, hospital_join, ladwp_hospitals_facilities, demand_basis, ladwp_demand, stored_water_bridges, start_basis |
-| work_remaining | 2160 | 1.90698773e-06 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
-| people_followed | 2160 | 3875566 | people | population_basis, ladwp_homes_population, counts_people_once |
+| work_remaining | 2160 | 0 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| people_followed | 2160 | 3.87557e+06 | people | population_basis, ladwp_homes_population, counts_people_once |
 | wider_loss | 2160 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 2160 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
 
@@ -86,28 +86,28 @@ Model revision `ecebc0523837d12d80aeed66389acac40fb3f3574ccc19d4857fd31807878a27
 | deaths | 0 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
 | casualties | 0 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
 | economic_loss | 0 | 0 | USD2025_bn | activity_transfer, economy, demand_basis, ladwp_demand, counts_stocks_flows, stored_water_bridges, ladwp_va_rate |
-| people_interrupted_now | 0 | 1937783 | people | population_basis, ladwp_homes_population, counts_people_once, service_share, clearance, bulk_dependence, ladwp_bought, stored_water_bridges, demand_basis, ladwp_demand, depth, room_identity, storage_hours, losses, ladwp_nameplate, manual, ladwp_storage, counts_stocks_flows |
+| people_interrupted_now | 0 | 1.93778e+06 | people | population_basis, ladwp_homes_population, counts_people_once, service_share, clearance, bulk_dependence, ladwp_bought, stored_water_bridges, demand_basis, ladwp_demand, depth, room_identity, storage_hours, losses, ladwp_nameplate, manual, ladwp_storage, counts_stocks_flows |
 | people_under_advisory | 0 | 0 | people | advisory, counts_people_once |
 | restored_share | 0 | 0.5 | fraction | population_basis, ladwp_homes_population, service_share, counts_people_once, clearance, bulk_dependence, ladwp_bought, stored_water_bridges, demand_basis, ladwp_demand, depth, room_identity, storage_hours, losses, ladwp_nameplate, manual, ladwp_storage, counts_stocks_flows |
 | emergency_water_deficit | 0 | 0 | Mgal | counts_stocks_flows, ration_basis, population_basis, ladwp_homes_population, counts_people_once, service_share, demand_basis, ladwp_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis |
 | hospital_hours_constrained | 0 | 0 | facility_hours | constraint_basis, hospital_join, ladwp_hospitals_facilities, demand_basis, ladwp_demand, stored_water_bridges, start_basis |
 | work_remaining | 0 | 720 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
-| people_followed | 0 | 3875566 | people | population_basis, ladwp_homes_population, counts_people_once |
+| people_followed | 0 | 3.87557e+06 | people | population_basis, ladwp_homes_population, counts_people_once |
 | wider_loss | 0 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 0 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
-| person_days_lost | 2160 | 161481.917 | person*days | service_share, population_basis, ladwp_homes_population, counts_people_once, demand_basis, ladwp_demand, stored_water_bridges |
-| unserved_volume | 2160 | 25.5342421 | Mgal | clearance, bulk_dependence, ladwp_bought, counts_stocks_flows, stored_water_bridges, demand_basis, ladwp_demand, depth, room_identity, storage_hours, losses, ladwp_nameplate, manual, ladwp_storage |
+| person_days_lost | 2160 | 161482 | person*days | service_share, population_basis, ladwp_homes_population, counts_people_once, demand_basis, ladwp_demand, stored_water_bridges |
+| unserved_volume | 2160 | 25.5342 | Mgal | clearance, bulk_dependence, ladwp_bought, counts_stocks_flows, stored_water_bridges, demand_basis, ladwp_demand, depth, room_identity, storage_hours, losses, ladwp_nameplate, manual, ladwp_storage |
 | rework_caused | 2160 | 0 | work_h | keeps_count_limited, service_incident |
 | deaths | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
 | casualties | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
-| economic_loss | 2160 | 0.006257069 | USD2025_bn | activity_transfer, economy, demand_basis, ladwp_demand, counts_stocks_flows, stored_water_bridges, ladwp_va_rate |
+| economic_loss | 2160 | 0.00625707 | USD2025_bn | activity_transfer, economy, demand_basis, ladwp_demand, counts_stocks_flows, stored_water_bridges, ladwp_va_rate |
 | people_interrupted_now | 2160 | 0 | people | population_basis, ladwp_homes_population, counts_people_once, service_share, clearance, bulk_dependence, ladwp_bought, stored_water_bridges, demand_basis, ladwp_demand, depth, room_identity, storage_hours, losses, ladwp_nameplate, manual, ladwp_storage, counts_stocks_flows |
 | people_under_advisory | 2160 | 0 | people | advisory, counts_people_once |
 | restored_share | 2160 | 1 | fraction | population_basis, ladwp_homes_population, service_share, counts_people_once, clearance, bulk_dependence, ladwp_bought, stored_water_bridges, demand_basis, ladwp_demand, depth, room_identity, storage_hours, losses, ladwp_nameplate, manual, ladwp_storage, counts_stocks_flows |
-| emergency_water_deficit | 2160 | 0.161481917 | Mgal | counts_stocks_flows, ration_basis, population_basis, ladwp_homes_population, counts_people_once, service_share, demand_basis, ladwp_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis |
+| emergency_water_deficit | 2160 | 0.161482 | Mgal | counts_stocks_flows, ration_basis, population_basis, ladwp_homes_population, counts_people_once, service_share, demand_basis, ladwp_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis |
 | hospital_hours_constrained | 2160 | 0 | facility_hours | constraint_basis, hospital_join, ladwp_hospitals_facilities, demand_basis, ladwp_demand, stored_water_bridges, start_basis |
-| work_remaining | 2160 | -1.33582034e-12 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
-| people_followed | 2160 | 3875566 | people | population_basis, ladwp_homes_population, counts_people_once |
+| work_remaining | 2160 | 0 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| people_followed | 2160 | 3.87557e+06 | people | population_basis, ladwp_homes_population, counts_people_once |
 | wider_loss | 2160 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 2160 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
 

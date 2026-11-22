@@ -25,18 +25,18 @@ Model revision `2cb07d4c19fd3580e531421140bddfd5e0f503f6d35bf5437dac8bebd2275dd9
 | people_followed | 0 | 615430 | people | population_basis, raritan_homes_population, counts_people_once |
 | wider_loss | 0 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 0 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
-| person_days_lost | 2160 | 121079.75 | person*days | service_share, population_basis, raritan_homes_population, counts_people_once, demand_basis, raritan_demand, stored_water_bridges |
-| unserved_volume | 2160 | 31.8293979 | Mgal | clearance, bulk_dependence, counts_stocks_flows, stored_water_bridges, demand_basis, raritan_demand, depth, room_identity, storage_hours, losses, raritan_nameplate, raritan_sold, manual, raritan_storage |
+| person_days_lost | 2160 | 121080 | person*days | service_share, population_basis, raritan_homes_population, counts_people_once, demand_basis, raritan_demand, stored_water_bridges |
+| unserved_volume | 2160 | 31.8294 | Mgal | clearance, bulk_dependence, counts_stocks_flows, stored_water_bridges, demand_basis, raritan_demand, depth, room_identity, storage_hours, losses, raritan_nameplate, raritan_sold, manual, raritan_storage |
 | rework_caused | 2160 | 0 | work_h | keeps_count_limited, service_incident |
 | deaths | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
 | casualties | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
-| economic_loss | 2160 | 0.00399636506 | USD2025_bn | activity_transfer, economy, demand_basis, raritan_demand, counts_stocks_flows, stored_water_bridges, raritan_va_rate |
+| economic_loss | 2160 | 0.00399637 | USD2025_bn | activity_transfer, economy, demand_basis, raritan_demand, counts_stocks_flows, stored_water_bridges, raritan_va_rate |
 | people_interrupted_now | 2160 | 0 | people | population_basis, raritan_homes_population, counts_people_once, service_share, clearance, bulk_dependence, stored_water_bridges, demand_basis, raritan_demand, depth, room_identity, storage_hours, losses, raritan_nameplate, raritan_sold, manual, raritan_storage, counts_stocks_flows |
 | people_under_advisory | 2160 | 0 | people | advisory, clearance, counts_people_once |
 | restored_share | 2160 | 1 | fraction | population_basis, raritan_homes_population, service_share, counts_people_once, clearance, bulk_dependence, stored_water_bridges, demand_basis, raritan_demand, depth, room_identity, storage_hours, losses, raritan_nameplate, raritan_sold, manual, raritan_storage, counts_stocks_flows |
-| emergency_water_deficit | 2160 | 0.0377240078 | Mgal | constraint_basis, counts_stocks_flows, ration_basis, population_basis, raritan_homes_population, counts_people_once, service_share, demand_basis, raritan_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis |
+| emergency_water_deficit | 2160 | 0.037724 | Mgal | constraint_basis, counts_stocks_flows, ration_basis, population_basis, raritan_homes_population, counts_people_once, service_share, demand_basis, raritan_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis |
 | hospital_hours_constrained | 2160 | 0 | facility_hours | constraint_basis, hospital_join, raritan_hospitals_facilities, demand_basis, raritan_demand, stored_water_bridges, start_basis |
-| work_remaining | 2160 | -1.16529009e-12 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| work_remaining | 2160 | 0 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
 | people_followed | 2160 | 615430 | people | population_basis, raritan_homes_population, counts_people_once |
 | wider_loss | 2160 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 2160 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
@@ -60,18 +60,18 @@ Model revision `2cb07d4c19fd3580e531421140bddfd5e0f503f6d35bf5437dac8bebd2275dd9
 | people_followed | 0 | 615430 | people | population_basis, raritan_homes_population, counts_people_once |
 | wider_loss | 0 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 0 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
-| person_days_lost | 2160 | 339943.647 | person*days | service_share, population_basis, raritan_homes_population, counts_people_once, demand_basis, raritan_demand, stored_water_bridges |
-| unserved_volume | 2160 | 89.3642541 | Mgal | clearance, bulk_dependence, counts_stocks_flows, stored_water_bridges, demand_basis, raritan_demand, depth, room_identity, storage_hours, losses, raritan_nameplate, raritan_sold, manual, raritan_storage |
+| person_days_lost | 2160 | 339944 | person*days | service_share, population_basis, raritan_homes_population, counts_people_once, demand_basis, raritan_demand, stored_water_bridges |
+| unserved_volume | 2160 | 89.3643 | Mgal | clearance, bulk_dependence, counts_stocks_flows, stored_water_bridges, demand_basis, raritan_demand, depth, room_identity, storage_hours, losses, raritan_nameplate, raritan_sold, manual, raritan_storage |
 | rework_caused | 2160 | 0 | work_h | keeps_count_limited, service_incident |
 | deaths | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
 | casualties | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
-| economic_loss | 2160 | 0.0112558415 | USD2025_bn | activity_transfer, economy, demand_basis, raritan_demand, counts_stocks_flows, stored_water_bridges, raritan_va_rate |
+| economic_loss | 2160 | 0.0112558 | USD2025_bn | activity_transfer, economy, demand_basis, raritan_demand, counts_stocks_flows, stored_water_bridges, raritan_va_rate |
 | people_interrupted_now | 2160 | 0 | people | population_basis, raritan_homes_population, counts_people_once, service_share, clearance, bulk_dependence, stored_water_bridges, demand_basis, raritan_demand, depth, room_identity, storage_hours, losses, raritan_nameplate, raritan_sold, manual, raritan_storage, counts_stocks_flows |
 | people_under_advisory | 2160 | 0 | people | advisory, clearance, counts_people_once |
 | restored_share | 2160 | 1 | fraction | population_basis, raritan_homes_population, service_share, counts_people_once, clearance, bulk_dependence, stored_water_bridges, demand_basis, raritan_demand, depth, room_identity, storage_hours, losses, raritan_nameplate, raritan_sold, manual, raritan_storage, counts_stocks_flows |
-| emergency_water_deficit | 2160 | 0.163465025 | Mgal | constraint_basis, counts_stocks_flows, ration_basis, population_basis, raritan_homes_population, counts_people_once, service_share, demand_basis, raritan_demand, stored_water_bridges, min_of_capacities, start_basis, priority_basis |
+| emergency_water_deficit | 2160 | 0.163465 | Mgal | constraint_basis, counts_stocks_flows, ration_basis, population_basis, raritan_homes_population, counts_people_once, service_share, demand_basis, raritan_demand, stored_water_bridges, min_of_capacities, start_basis, priority_basis |
 | hospital_hours_constrained | 2160 | 0 | facility_hours | constraint_basis, hospital_join, raritan_hospitals_facilities, demand_basis, raritan_demand, stored_water_bridges, start_basis |
-| work_remaining | 2160 | 1.90698773e-06 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| work_remaining | 2160 | 0 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
 | people_followed | 2160 | 615430 | people | population_basis, raritan_homes_population, counts_people_once |
 | wider_loss | 2160 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 2160 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
@@ -95,18 +95,18 @@ Model revision `2cb07d4c19fd3580e531421140bddfd5e0f503f6d35bf5437dac8bebd2275dd9
 | people_followed | 0 | 615430 | people | population_basis, raritan_homes_population, counts_people_once |
 | wider_loss | 0 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 0 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
-| person_days_lost | 2160 | 251232.972 | person*days | service_share, population_basis, raritan_homes_population, counts_people_once, demand_basis, raritan_demand, stored_water_bridges |
-| unserved_volume | 2160 | 66.0440264 | Mgal | clearance, bulk_dependence, counts_stocks_flows, stored_water_bridges, demand_basis, raritan_demand, depth, room_identity, storage_hours, losses, raritan_nameplate, raritan_sold, manual, raritan_storage |
+| person_days_lost | 2160 | 251233 | person*days | service_share, population_basis, raritan_homes_population, counts_people_once, demand_basis, raritan_demand, stored_water_bridges |
+| unserved_volume | 2160 | 66.044 | Mgal | clearance, bulk_dependence, counts_stocks_flows, stored_water_bridges, demand_basis, raritan_demand, depth, room_identity, storage_hours, losses, raritan_nameplate, raritan_sold, manual, raritan_storage |
 | rework_caused | 2160 | 0 | work_h | keeps_count_limited, service_incident |
 | deaths | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
 | casualties | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
-| economic_loss | 2160 | 0.00830753766 | USD2025_bn | activity_transfer, economy, demand_basis, raritan_demand, counts_stocks_flows, stored_water_bridges, raritan_va_rate |
+| economic_loss | 2160 | 0.00830754 | USD2025_bn | activity_transfer, economy, demand_basis, raritan_demand, counts_stocks_flows, stored_water_bridges, raritan_va_rate |
 | people_interrupted_now | 2160 | 0 | people | population_basis, raritan_homes_population, counts_people_once, service_share, clearance, bulk_dependence, stored_water_bridges, demand_basis, raritan_demand, depth, room_identity, storage_hours, losses, raritan_nameplate, raritan_sold, manual, raritan_storage, counts_stocks_flows |
 | people_under_advisory | 2160 | 0 | people | advisory, clearance, counts_people_once |
 | restored_share | 2160 | 1 | fraction | population_basis, raritan_homes_population, service_share, counts_people_once, clearance, bulk_dependence, stored_water_bridges, demand_basis, raritan_demand, depth, room_identity, storage_hours, losses, raritan_nameplate, raritan_sold, manual, raritan_storage, counts_stocks_flows |
-| emergency_water_deficit | 2160 | 0.0796376803 | Mgal | constraint_basis, counts_stocks_flows, ration_basis, population_basis, raritan_homes_population, counts_people_once, service_share, demand_basis, raritan_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis |
+| emergency_water_deficit | 2160 | 0.0796377 | Mgal | constraint_basis, counts_stocks_flows, ration_basis, population_basis, raritan_homes_population, counts_people_once, service_share, demand_basis, raritan_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis |
 | hospital_hours_constrained | 2160 | 0 | facility_hours | constraint_basis, hospital_join, raritan_hospitals_facilities, demand_basis, raritan_demand, stored_water_bridges, start_basis |
-| work_remaining | 2160 | -1.33582034e-12 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| work_remaining | 2160 | 0 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
 | people_followed | 2160 | 615430 | people | population_basis, raritan_homes_population, counts_people_once |
 | wider_loss | 2160 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 2160 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |

@@ -25,18 +25,18 @@ Model revision `eb98de0ed0dd36707a13affff6b5949b50851874635cee2aa86f900cfacf6d46
 | people_followed | 0 | 189673 | people | population_basis, jxn_water_homes_population, counts_people_once |
 | wider_loss | 0 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 0 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
-| person_days_lost | 2160 | 29269.9467 | person*days | service_share, population_basis, jxn_water_homes_population, counts_people_once, demand_basis, jxn_water_demand, stored_water_bridges |
-| unserved_volume | 2160 | 8.41928869 | Mgal | clearance, bulk_dependence, counts_stocks_flows, stored_water_bridges, demand_basis, jxn_water_demand, depth, room_identity, storage_hours, losses, jxn_water_nameplate, manual, jxn_water_storage |
+| person_days_lost | 2160 | 29269.9 | person*days | service_share, population_basis, jxn_water_homes_population, counts_people_once, demand_basis, jxn_water_demand, stored_water_bridges |
+| unserved_volume | 2160 | 8.41929 | Mgal | clearance, bulk_dependence, counts_stocks_flows, stored_water_bridges, demand_basis, jxn_water_demand, depth, room_identity, storage_hours, losses, jxn_water_nameplate, manual, jxn_water_storage |
 | rework_caused | 2160 | 0 | work_h | keeps_count_limited, service_incident |
 | deaths | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
 | casualties | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
-| economic_loss | 2160 | 0.00080486578 | USD2025_bn | activity_transfer, economy, demand_basis, jxn_water_demand, counts_stocks_flows, stored_water_bridges, jxn_water_va_rate |
+| economic_loss | 2160 | 0.000804866 | USD2025_bn | activity_transfer, economy, demand_basis, jxn_water_demand, counts_stocks_flows, stored_water_bridges, jxn_water_va_rate |
 | people_interrupted_now | 2160 | 0 | people | population_basis, jxn_water_homes_population, counts_people_once, service_share, clearance, bulk_dependence, stored_water_bridges, demand_basis, jxn_water_demand, depth, room_identity, storage_hours, losses, jxn_water_nameplate, manual, jxn_water_storage, counts_stocks_flows |
 | people_under_advisory | 2160 | 0 | people | advisory, clearance, counts_people_once |
 | restored_share | 2160 | 1 | fraction | population_basis, jxn_water_homes_population, service_share, counts_people_once, clearance, bulk_dependence, stored_water_bridges, demand_basis, jxn_water_demand, depth, room_identity, storage_hours, losses, jxn_water_nameplate, manual, jxn_water_storage, counts_stocks_flows |
-| emergency_water_deficit | 2160 | 0.00790304167 | Mgal | constraint_basis, counts_stocks_flows, ration_basis, population_basis, jxn_water_homes_population, counts_people_once, service_share, demand_basis, jxn_water_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis |
+| emergency_water_deficit | 2160 | 0.00790304 | Mgal | constraint_basis, counts_stocks_flows, ration_basis, population_basis, jxn_water_homes_population, counts_people_once, service_share, demand_basis, jxn_water_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis |
 | hospital_hours_constrained | 2160 | 0 | facility_hours | constraint_basis, hospital_join, jxn_water_hospitals_facilities, demand_basis, jxn_water_demand, stored_water_bridges, start_basis |
-| work_remaining | 2160 | -1.16529009e-12 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| work_remaining | 2160 | 0 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
 | people_followed | 2160 | 189673 | people | population_basis, jxn_water_homes_population, counts_people_once |
 | wider_loss | 2160 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 2160 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
@@ -60,18 +60,18 @@ Model revision `eb98de0ed0dd36707a13affff6b5949b50851874635cee2aa86f900cfacf6d46
 | people_followed | 0 | 189673 | people | population_basis, jxn_water_homes_population, counts_people_once |
 | wider_loss | 0 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 0 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
-| person_days_lost | 2160 | 200251.412 | person*days | service_share, population_basis, jxn_water_homes_population, counts_people_once, demand_basis, jxn_water_demand, stored_water_bridges |
-| unserved_volume | 2160 | 57.6008718 | Mgal | clearance, bulk_dependence, counts_stocks_flows, stored_water_bridges, demand_basis, jxn_water_demand, depth, room_identity, storage_hours, losses, jxn_water_nameplate, manual, jxn_water_storage |
+| person_days_lost | 2160 | 200251 | person*days | service_share, population_basis, jxn_water_homes_population, counts_people_once, demand_basis, jxn_water_demand, stored_water_bridges |
+| unserved_volume | 2160 | 57.6009 | Mgal | clearance, bulk_dependence, counts_stocks_flows, stored_water_bridges, demand_basis, jxn_water_demand, depth, room_identity, storage_hours, losses, jxn_water_nameplate, manual, jxn_water_storage |
 | rework_caused | 2160 | 0 | work_h | keeps_count_limited, service_incident |
 | deaths | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
 | casualties | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
-| economic_loss | 2160 | 0.00552529068 | USD2025_bn | activity_transfer, economy, demand_basis, jxn_water_demand, counts_stocks_flows, stored_water_bridges, jxn_water_va_rate |
+| economic_loss | 2160 | 0.00552529 | USD2025_bn | activity_transfer, economy, demand_basis, jxn_water_demand, counts_stocks_flows, stored_water_bridges, jxn_water_va_rate |
 | people_interrupted_now | 2160 | 0 | people | population_basis, jxn_water_homes_population, counts_people_once, service_share, clearance, bulk_dependence, stored_water_bridges, demand_basis, jxn_water_demand, depth, room_identity, storage_hours, losses, jxn_water_nameplate, manual, jxn_water_storage, counts_stocks_flows |
 | people_under_advisory | 2160 | 0 | people | advisory, clearance, counts_people_once |
 | restored_share | 2160 | 1 | fraction | population_basis, jxn_water_homes_population, service_share, counts_people_once, clearance, bulk_dependence, stored_water_bridges, demand_basis, jxn_water_demand, depth, room_identity, storage_hours, losses, jxn_water_nameplate, manual, jxn_water_storage, counts_stocks_flows |
-| emergency_water_deficit | 2160 | 0.0623822899 | Mgal | constraint_basis, counts_stocks_flows, ration_basis, population_basis, jxn_water_homes_population, counts_people_once, service_share, demand_basis, jxn_water_demand, stored_water_bridges, min_of_capacities, start_basis, priority_basis |
+| emergency_water_deficit | 2160 | 0.0623823 | Mgal | constraint_basis, counts_stocks_flows, ration_basis, population_basis, jxn_water_homes_population, counts_people_once, service_share, demand_basis, jxn_water_demand, stored_water_bridges, min_of_capacities, start_basis, priority_basis |
 | hospital_hours_constrained | 2160 | 0 | facility_hours | constraint_basis, hospital_join, jxn_water_hospitals_facilities, demand_basis, jxn_water_demand, stored_water_bridges, start_basis |
-| work_remaining | 2160 | 1.90698773e-06 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| work_remaining | 2160 | 0 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
 | people_followed | 2160 | 189673 | people | population_basis, jxn_water_homes_population, counts_people_once |
 | wider_loss | 2160 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 2160 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
@@ -95,18 +95,18 @@ Model revision `eb98de0ed0dd36707a13affff6b5949b50851874635cee2aa86f900cfacf6d46
 | people_followed | 0 | 189673 | people | population_basis, jxn_water_homes_population, counts_people_once |
 | wider_loss | 0 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 0 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
-| person_days_lost | 2160 | 130948.611 | person*days | service_share, population_basis, jxn_water_homes_population, counts_people_once, demand_basis, jxn_water_demand, stored_water_bridges |
-| unserved_volume | 2160 | 37.6664217 | Mgal | clearance, bulk_dependence, counts_stocks_flows, stored_water_bridges, demand_basis, jxn_water_demand, depth, room_identity, storage_hours, losses, jxn_water_nameplate, manual, jxn_water_storage |
+| person_days_lost | 2160 | 130949 | person*days | service_share, population_basis, jxn_water_homes_population, counts_people_once, demand_basis, jxn_water_demand, stored_water_bridges |
+| unserved_volume | 2160 | 37.6664 | Mgal | clearance, bulk_dependence, counts_stocks_flows, stored_water_bridges, demand_basis, jxn_water_demand, depth, room_identity, storage_hours, losses, jxn_water_nameplate, manual, jxn_water_storage |
 | rework_caused | 2160 | 0 | work_h | keeps_count_limited, service_incident |
 | deaths | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
 | casualties | 2160 | Not estimated (The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero.) |  |  |
-| economic_loss | 2160 | 0.00360826085 | USD2025_bn | activity_transfer, economy, demand_basis, jxn_water_demand, counts_stocks_flows, stored_water_bridges, jxn_water_va_rate |
+| economic_loss | 2160 | 0.00360826 | USD2025_bn | activity_transfer, economy, demand_basis, jxn_water_demand, counts_stocks_flows, stored_water_bridges, jxn_water_va_rate |
 | people_interrupted_now | 2160 | 0 | people | population_basis, jxn_water_homes_population, counts_people_once, service_share, clearance, bulk_dependence, stored_water_bridges, demand_basis, jxn_water_demand, depth, room_identity, storage_hours, losses, jxn_water_nameplate, manual, jxn_water_storage, counts_stocks_flows |
 | people_under_advisory | 2160 | 0 | people | advisory, clearance, counts_people_once |
 | restored_share | 2160 | 1 | fraction | population_basis, jxn_water_homes_population, service_share, counts_people_once, clearance, bulk_dependence, stored_water_bridges, demand_basis, jxn_water_demand, depth, room_identity, storage_hours, losses, jxn_water_nameplate, manual, jxn_water_storage, counts_stocks_flows |
-| emergency_water_deficit | 2160 | 0.00790304167 | Mgal | constraint_basis, counts_stocks_flows, ration_basis, population_basis, jxn_water_homes_population, counts_people_once, service_share, demand_basis, jxn_water_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis |
+| emergency_water_deficit | 2160 | 0.00790304 | Mgal | constraint_basis, counts_stocks_flows, ration_basis, population_basis, jxn_water_homes_population, counts_people_once, service_share, demand_basis, jxn_water_demand, stored_water_bridges, min_of_capacities, relief_by_response, start_basis, priority_basis |
 | hospital_hours_constrained | 2160 | 0 | facility_hours | constraint_basis, hospital_join, jxn_water_hospitals_facilities, demand_basis, jxn_water_demand, stored_water_bridges, start_basis |
-| work_remaining | 2160 | -1.33582034e-12 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
+| work_remaining | 2160 | 0 | work_h | work_completion, keeps_count_limited, work, sees_controls_fail |
 | people_followed | 2160 | 189673 | people | population_basis, jxn_water_homes_population, counts_people_once |
 | wider_loss | 2160 | Not estimated (Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero.) |  |  |
 | people_beyond_week | 2160 | Not estimated (The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero.) |  |  |
