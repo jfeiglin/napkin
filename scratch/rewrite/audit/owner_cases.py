@@ -12,6 +12,7 @@ from pathlib import Path
 from tests.engine import (
     authored_number_cases,
     comparison_band_cases,
+    cross_rate_cases,
     reversible_bound_cases,
     simultaneous_bound_cases,
     stage_broadcast_cases,
@@ -40,6 +41,7 @@ FAMILIES = {
     's4/edit': stock_edit_cases.check_stock_edit,
     's9/reversible': reversible_bound_cases.check_reversible_bounds,
     's9/simultaneous': simultaneous_bound_cases.check_simultaneous_bounds,
+    'p1/rate': cross_rate_cases.check_cross_rate,
 }
 
 
@@ -78,6 +80,7 @@ def run_cases(ids, destination):
         's4/edit': stock_edit_cases,
         's9/reversible': reversible_bound_cases,
         's9/simultaneous': simultaneous_bound_cases,
+        'p1/rate': cross_rate_cases,
     }
     sources_by_module = {
         module: {module.__name__: hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()}

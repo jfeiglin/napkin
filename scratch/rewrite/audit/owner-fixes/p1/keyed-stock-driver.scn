@@ -1,0 +1,20 @@
+scenario "Rates across two sets"
+    horizon 1 h
+Band:
+    input cutoff: L/h = 0 L/h
+    input rate: L/h = 0.5 L/h
+low: Band
+high: Band
+    cutoff = 0.875 L/h
+    rate = 2 L/h
+yard:
+    meter: L = 0 L
+    water: L = 0 L
+    driver: L = 0 L
+    flow wind: SOURCE -> this.driver
+        request = 1 L/h
+    flow tap: SOURCE -> this.meter
+        request = formula(1.25 L/h + (-0.5 * this.driver / (1 h)))
+    flow pipe: SOURCE -> this.water
+        request = 2 L/h
+        capacity = formula(Band.instances.by(cutoff).at(this.tap.actual_rate).rate)

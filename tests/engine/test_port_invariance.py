@@ -16,6 +16,7 @@ from napkin.program.config import Configuration, Request
 from napkin.program.record import Key, Unavailable
 from tests.engine.authored_number_cases import check_authored_number
 from tests.engine.comparison_band_cases import check_comparison_band
+from tests.engine.cross_rate_cases import check_cross_rate
 from tests.engine.port_cases import HORIZON, Case, Spelling, builder_program, text_program
 from tests.engine.reversible_bound_cases import check_reversible_bounds
 from tests.engine.simultaneous_bound_cases import check_simultaneous_bounds
@@ -58,6 +59,7 @@ TRANSFORMS = (
     'stock_edit',
     'reversible_bounds',
     'simultaneous_bounds',
+    'cross_rate',
 )
 GUARD = 'plant.observe.step[0]'
 
@@ -319,6 +321,9 @@ def plant_baseline(seed):
 
 
 def check_transform(seed, name, record_property):
+    if name == 'cross_rate':
+        check_cross_rate(seed)
+        return
     if name == 'reversible_bounds':
         check_reversible_bounds(seed)
         return

@@ -1,0 +1,13 @@
+scenario "Earlier rate"
+    horizon 2 h
+yard:
+    meter: L = 0 L
+    water: L = 0 L
+    flow tap: SOURCE -> this.meter
+        request = formula(2 * t / 1 h * 1 L/h)
+    middle: L = 0 L
+    flow relay: SOURCE -> this.middle
+        request = formula(2 * this.tap.actual_rate)
+    flow pipe: SOURCE -> this.water
+        request = 2 L/h
+        capacity = formula(0.25 L/h if this.relay.actual_rate > 1 L/h else 2 L/h)
