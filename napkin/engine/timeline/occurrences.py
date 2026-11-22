@@ -216,7 +216,7 @@ class Occurrences:
         bounds = [None, None]
         for k, bound in enumerate((value.lower, value.upper)):
             if bound is not None:
-                bounds[k] = float(run.truth(bound))
+                bounds[k] = run.range_endpoint(bound, run.truth)
         if bounds != [None, None] or name in made.stores:
             low, high, number = run.initial_range(name, *bounds, number)
             run.bounds[name] = low, high

@@ -97,6 +97,7 @@ import copy
 import hashlib
 import heapq
 import math
+from fractions import Fraction
 
 import numpy as np
 import scipy.sparse as sp
@@ -471,15 +472,19 @@ class Former:
         value = plan.values[name]
         reader = self._reader()
 
-        def number(node, what):
+        def current(node):
+            return self._known_value(node, reader)
+
+        def number(node, what, *, endpoint=False):
             if node is None:
                 return None
-            found = self._known_value(node, reader)
-            if isinstance(found, bool) or not isinstance(found, int | float) or math.isnan(found):
+            found = run.range_endpoint(node, current) if endpoint else current(node)
+            if isinstance(found, bool) or not isinstance(found, int | float | Fraction) or math.isnan(found):
                 raise SimulationError(f'{name}: {what} is {found!r}, not a number')
             return float(found)
 
-        low, high = number(value.lower, 'its lower bound'), number(value.upper, 'its upper bound')
+        low = number(value.lower, 'its lower bound', endpoint=True)
+        high = number(value.upper, 'its upper bound', endpoint=True)
         references = run.ways.references
         if name not in references or self._own_unknown(name):
             references[name] = number(value.node, 'its reference')

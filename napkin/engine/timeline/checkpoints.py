@@ -35,7 +35,6 @@ from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
 
-from ...core import expr as nodes
 from ...core.units import rational
 from ...program import parts as p
 from ...program.artifact import Artifact
@@ -304,14 +303,8 @@ class Breaks:
         elif isinstance(value, Fraction):
             # Authored literal endpoints retain their exact values. A bound that read the
             # initial state, or a reversed interval collapsed at setup, keeps the run's snapshot.
-            def endpoint(node, snapshot):
-                if node is None or nodes.names(node):
-                    return snapshot
-                exact = plan.units.comparisons.literal_value(node)
-                return snapshot if exact is None else exact
-
-            lo = endpoint(found.lower, lower)
-            hi = endpoint(found.upper, upper)
+            lo = run.range_endpoint(found.lower, lambda _: lower)
+            hi = run.range_endpoint(found.upper, lambda _: upper)
             if lo <= hi:
                 lower, upper = lo, hi
         if not lower <= value <= upper:

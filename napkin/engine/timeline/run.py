@@ -425,7 +425,8 @@ class Run:
                         scale_of(name, value.scale)
                     continue
                 found = self.value_of(name)
-                lower, upper = number(value.lower), number(value.upper)
+                lower = self.range_endpoint(value.lower, number)
+                upper = self.range_endpoint(value.upper, number)
                 self.scales[name] = None if value.scale is None else scale_of(name, value.scale)
                 low, high, initial = self.initial_range(name, lower, upper, found)
                 self.bounds[name] = low, high
@@ -480,10 +481,18 @@ class Run:
         end = low if value < low else high
         return abs(value - end) <= self.comparison_band(name, value, end)
 
+    def range_endpoint(self, node, fallback):
+        """The exact canonical quantity of a literal bound, or its evaluated snapshot."""
+        if node is not None and not nodes.names(node):
+            exact = self.plan.units.comparisons.literal_value(node)
+            if exact is not None:
+                return exact
+        return fallback(node)
+
     def initial_range(self, name, lower, upper, value):
         """Form a hard range: two slightly inverted authored ends describe a single point."""
-        low = -math.inf if lower is None else lower
-        high = math.inf if upper is None else upper
+        low = -math.inf if lower is None else float(lower)
+        high = math.inf if upper is None else float(upper)
         if low > high:
             point = collapsed_interval(self.plan.units.comparisons.factor, self.own_scale(name), low, high)
             if point is None:
