@@ -44,14 +44,28 @@ def test_a_declared_face_with_balanced_through_flow_keeps_its_stock(moving):
         assert run.stock_balance('t0.water', 6) == 0
         residue = run.stock_balance('t1.water', 6)
         if moving:
-            # Taking the last fraction through the capped outlet would exceed its
-            # integrated capacity. The accepted stock stays in its own comparison band.
-            (placement,) = [entry for entry in record.entries('settle') if entry.detail('placements')]
-            assert 't1.f0.capacity' in placement.detail('reason')
-            (_, observed, target) = next(p for p in placement.detail('placements') if p[0] == 't1.water')
-            assert target == 0 and 0 < float(residue) == observed <= run.comparison_band(
-                't1.water', observed, 0
-            )
+            # The integrated leg amounts leave a residue of a few last places at t1's empty
+            # face, and its sign is roundoff (it differs between platforms). Above zero,
+            # taking it through the outlet at its capacity would exceed that capacity, so the
+            # placement is skipped and recorded and the stock keeps the residue in its band.
+            # Below zero, the correction sends a little less through the outlet, which no
+            # hard rule forbids, so the stock is placed at zero. Either way the books balance.
+            # The same holds wherever a residue meets an outlet at its capacity: every skipped
+            # placement names that capacity and leaves its stock within its band of the target.
+            skipped = [entry for entry in record.entries('settle') if entry.detail('placements')]
+            for entry in skipped:
+                assert 'capacity' in entry.detail('reason')
+                for name, observed, target in entry.detail('placements'):
+                    assert abs(observed - target) <= run.comparison_band(name, observed, target)
+            on_t1 = [
+                (entry, p) for entry in skipped for p in entry.detail('placements') if p[0] == 't1.water'
+            ]
+            if residue == 0:
+                assert not on_t1
+            else:
+                ((placement, (_, observed, target)),) = on_t1
+                assert 't1.f0.capacity' in placement.detail('reason')
+                assert target == 0 and 0 < float(residue) == observed
         else:
             assert residue == 0
         for key, row in zip(keys, read(record, model, keys, list(map(float, times))), strict=True):
