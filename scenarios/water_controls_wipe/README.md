@@ -49,7 +49,11 @@ containment is filtered. The existing early and standard response choices supply
 containment times and their relief resources. The exercise assumes a 25% dispatch reservation, 2 work-hours
 processed per hour and 100 US gallons per work-hour. These are illustrative capacity-planning assumptions.
 
-Lumberton’s `dispatch` spread compares the recovery-linked response policies under the same 12 draws of spacing and workload, using seed 17. The distribution inputs are `support.interval_factor` and `support.severity_factor`. [Lumberton study](variants/lumberton/README.md#regional-dispatch-study)
+Lumberton’s `dispatch` spread compares the recovery-linked response policies under the same 12 draws of
+spacing and workload, using seed 17. The distribution inputs are `support.interval_factor` and
+`support.severity_factor`. Each sampled interval must be at least one hour and each sampled workload must
+be nonnegative. [Lumberton study](variants/lumberton/README.md#regional-dispatch-study)
+
 The original three response runs leave the regional exercise off.
 
 ## The places

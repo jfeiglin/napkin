@@ -84,7 +84,11 @@ def test_open_cases_compete_for_actual_emergency_water_dispatch(monkeypatch, pro
     assert ordinary['relief.throughput'] > 0
     assert surge['relief.throughput'] == pytest.approx(0)
     assert surge['support.delivered'] > ordinary['support.delivered']
-    assert surge['emergency_water_deficit'] > ordinary['emergency_water_deficit']
+    # One hour of household demand goes unserved while all dispatch slots are reserved.
+    deficit_change_gallons = 1_000_000 * (
+        surge['emergency_water_deficit'] - ordinary['emergency_water_deficit']
+    )
+    assert deficit_change_gallons == pytest.approx(509.58, abs=0.01)
 
 
 def test_paired_tempo_draws_use_the_same_sampled_spacing_and_workload():

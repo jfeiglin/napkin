@@ -39,6 +39,15 @@ The regular package check runs through hour 1.01 at constant temperature. It mov
 
 `standard`, `early_cooling` and `powered_places` retain their supplied-incident behavior. `delayed_cooling` uses the historical outreach and site-opening times of 36 hours and the transport rate of 150 people per hour. Its three protection variants enable powered sites, access through the compound's gates, or greater household backup and private moves. These variants use the supplied outage and keep the physical switching workload constant. The historical initiating actions and autonomous interference are outside these runs.
 
+The four delayed-response runs below share the same 1,950,000 resident-hours without service. The facilities open at hour 36, four hours before electricity returns. At 150 people per hour they admit 600 people when powered. Opening the gates makes places available to confined residents within that same transport capacity.
+
+| Delayed-response run | Powered-site admissions | Thermal exposure (resident-hours) | Expected deaths |
+|---|---:|---:|---:|
+| `delayed_cooling` | 0 | 1,681,100 | 34.0916 |
+| `delayed_cooling_with_power` | 600 | 1,680,990 | 34.0888 |
+| `delayed_cooling_with_access` | 600 | 1,680,990 | 34.0888 |
+| `delayed_cooling_with_backup` | 0 | 1,310,100 | 26.2137 |
+
 | Run | First inspection | Further inspections | Containment |
 |---|---|---|---|
 | `fixed_inspections` | 26 h | Every 4 h, until the exercise window ends or switching completes | 4 h to detect and another 8 h to contain |

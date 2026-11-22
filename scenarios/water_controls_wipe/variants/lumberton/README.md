@@ -30,6 +30,15 @@ napkin run scenarios/water_controls_wipe/variants/lumberton --run delayed_none -
 
 The `dispatch` study compares `support_recovery_rapid` against `support_recovery` over 12 paired draws using seed 17. Each pair uses the same spacing and workload draw. The published differences cover accepted and filtered notices, work completed, supplemental gallons delivered in millions, and unmet household water in millions of gallons. [Study definition](brief.toml) · [Sampling inputs](spreads/dispatch.json) · [Paired results](results/paired-spreads.json)
 
+Rapid response accepted one batch in every draw. Standard response averaged 6.67. Rapid response reduced
+the average workload completed by 88.17 work-hours. Both policies left the same 1,019 gallons of household
+demand unmet over the study horizon. [Paired results](results/paired-spreads.json)
+
+Dispatch capacity matters when regular deliveries compete for the last available slots. In a separate
+four-hour check, recognition takes one hour and emergency deliveries open immediately afterward. Reserving
+all slots for one supplemental batch leaves 1,019 gallons of household demand unmet. With those slots
+available, 510 gallons go unmet. [Dispatch capacity check](../../tests/test_regional_support.py)
+
 To check the published study, run this command from the checkout root.
 
 ```sh
