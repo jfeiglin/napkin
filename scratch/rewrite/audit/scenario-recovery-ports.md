@@ -33,7 +33,18 @@ In Washington, DC, a full downstream store kept a positive residual on its books
 
 Lehigh uncovered a second branch issue. The advisory was already active, yet the scheduler kept forecasting the stock comparison in a pressure-loss guard that first required potable status. This advanced the clock one representable tick at a time. Ignoring a branch while a held condition rules it out lets the run reach its horizon. Changing the held condition re-enables the forecast. [Trigger regression](../../../tests/engine/test_inactive_guard_contacts.py)
 
-Artifact-only runs of the reservoir and Juneau recovered 15 source readings and the same 27 ordered event starts in fresh processes with scenario-file access disabled. The water dashboard reads the selected time from the same run, including fractional hours. [Dashboard](../../../scenarios/water_controls_wipe/ui/README.md)
+Run `python scratch/rewrite/a5/artifact_parity.py` from the checkout to compare source execution with five fresh artifact consumers. Each consumer has only the binary and the serialized run configuration in its working directory. File-access controls reject scenario text and package data, including local units and evidence. The check compares each reading’s value, unit and exercised citations, the evidence definitions, and ordered event names and times. [Executable parity check](../a5/artifact_parity.py)
+
+| Case | Readings | Ordered event starts |
+|---|---:|---:|
+| Reservoir through 120 h | 6 | 1 |
+| Juneau recovery through 220 h | 9 | 26 |
+| IV release, product review and confirmed lot discrepancy through 32 h | 15 | 9 |
+| Defensive pressure through 4 h, with formula switches at 1 and 3 h | 10 | 0 |
+| Heat recovery through 0.75 h, with a safety hold from 0.25 to 0.5 h | 10 | 3 |
+| **Total matched** | **50** | **39** |
+
+The water dashboard reads the selected time from the same run, including fractional hours. [Dashboard](../../../scenarios/water_controls_wipe/ui/README.md)
 
 ## Reproducing the example migration gate
 
