@@ -1,0 +1,23 @@
+scenario "Occurrence arguments"
+    horizon 4 h
+yard:
+    input first: L = 2 L @first_read
+    input second: L = 9 L @second_read
+    input idle_meter: L = 7 L @idle_read
+    saved: L = 0 L
+    job = event(amount: L):
+        derived = formula(amount * 2)
+        after 2 h
+    launch = event():
+        after 1 h:
+            this.job.start(this.second)
+    idle = event():
+        captured: L = this.idle_meter
+        derived = formula(this.idle_meter)
+        after 1 h:
+            this.saved = this.idle_meter
+yard.job.start(yard.first)
+yard.launch.start()
+record first_read: source "First independent measurement."
+record second_read: source "Second independent measurement."
+record idle_read: source "Unused measurement."

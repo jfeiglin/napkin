@@ -21,6 +21,9 @@ from tests.engine.collection_scope_cases import check_collection_scope
 from tests.engine.comparison_band_cases import check_comparison_band
 from tests.engine.cross_rate_cases import check_cross_rate
 from tests.engine.port_cases import HORIZON, Case, Spelling, builder_program, text_program
+from tests.engine.proof_event_cases import check_proof_arguments, check_proof_reach
+from tests.engine.proof_network_cases import check_proof_network
+from tests.engine.proof_solver_cases import check_proof_solver
 from tests.engine.record_history_cases import check_record_history
 from tests.engine.record_identity_cases import check_record_identity
 from tests.engine.record_numerics_cases import check_record_numerics
@@ -50,6 +53,10 @@ OWNER_CHECKS = {
     'record_history': check_record_history,
     'record_identity': check_record_identity,
     'record_numerics': check_record_numerics,
+    'proof_network': check_proof_network,
+    'proof_solver': check_proof_solver,
+    'proof_arguments': check_proof_arguments,
+    'proof_reach': check_proof_reach,
 }
 TRANSFORMS = (
     'empty_event',

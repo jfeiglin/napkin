@@ -1,0 +1,39 @@
+scenario "Route and batch meters"
+    horizon 2 h
+west:
+    water: L = 200 L
+    incoming = formula(sum(this.water.inflow.flows.actual_rate))
+    outgoing = formula(sum(this.water.outflow.flows.actual_rate))
+east:
+    water: L = 200 L
+    incoming = formula(sum(this.water.inflow.flows.actual_rate))
+    outgoing = formula(sum(this.water.outflow.flows.actual_rate))
+channel:
+    input meter: L/h = 3 L/h @meter
+    input unrelated: L/h = 7 L/h @independent
+    control = formula(this.unrelated)
+    flow link: west.water <-> east.water
+        request = formula(this.meter)
+    noted: L/h = 0 L/h
+    inspect = event():
+        forward = formula(channel.link.forward.actual_rate)
+        backward = formula(channel.link.backward.actual_rate)
+        included = formula(sum(west.water.outflow.flows.actual_rate))
+        endpoint = formula(west.water.inflow.actual_rate)
+        after 0.5 h:
+            this.noted = west.water.outflow.actual_rate - west.water.inflow.actual_rate
+works:
+    input quota: L/h = 2.0 L/h @quota
+    stock: L = 200 L
+    supply: L = 200 L
+    flow batch:
+        flow use: this.stock -> SINK
+            request = 4 L/h
+            capacity = formula(this.quota)
+        flow pair: this.supply -> SINK
+            request = 8 L/h
+    scale_reading = formula(this.batch.served_fraction)
+channel.inspect.start()
+record meter: source "Route meter."
+record quota: source "Batch quota."
+record independent: source "Independent control."

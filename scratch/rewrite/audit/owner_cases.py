@@ -16,6 +16,9 @@ from tests.engine import (
     collection_scope_cases,
     comparison_band_cases,
     cross_rate_cases,
+    proof_event_cases,
+    proof_network_cases,
+    proof_solver_cases,
     record_history_cases,
     record_identity_cases,
     record_numerics_cases,
@@ -59,6 +62,10 @@ FAMILIES = {
     's8/history': record_history_cases.check_record_history,
     's8/identity': record_identity_cases.check_record_identity,
     's8/numerics': record_numerics_cases.check_record_numerics,
+    's10/network': proof_network_cases.check_proof_network,
+    's10/solver': proof_solver_cases.check_proof_solver,
+    's10/arguments': proof_event_cases.check_proof_arguments,
+    's10/reach': proof_event_cases.check_proof_reach,
 }
 
 
@@ -107,6 +114,10 @@ def run_cases(ids, destination):
         's8/history': record_history_cases,
         's8/identity': record_identity_cases,
         's8/numerics': record_numerics_cases,
+        's10/network': proof_network_cases,
+        's10/solver': proof_solver_cases,
+        's10/arguments': proof_event_cases,
+        's10/reach': proof_event_cases,
     }
     sources_by_module = {
         module: {module.__name__: hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()}
