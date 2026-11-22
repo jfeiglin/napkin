@@ -45,7 +45,7 @@ from dataclasses import fields, is_dataclass, replace
 from fractions import Fraction
 
 from ..core import expr as nodes
-from ..core.units import dimension_power, finite_number
+from ..core.units import dimension_power, finite_number, scale_of
 from . import check as checking
 from . import parts as p
 from .parts import BOOL, PROPORTIONAL, TEXT
@@ -939,7 +939,7 @@ class Builder:
             self._base[name] = p.Unit(
                 name,
                 tuple(sorted((k, dimension_power(v)) for k, v in dimension.items() if v)),
-                Fraction(scale),
+                scale_of(scale),
             )
         self._enums = {}
         self._templates = {}  # name -> [parts]

@@ -25,6 +25,7 @@ from napkin.model.language.problems import LanguageError
 from napkin.model.library import PRELUDE, empty_library, prelude_units
 from napkin.model.load import schema_errors
 from napkin.model.semantic import Units
+from napkin.program import build
 
 # Declared units, name: (dimensions, scale), with scales that are not all exact in binary.
 DECLARED = {
@@ -185,13 +186,31 @@ DIMENSIONS = {'time': {'time': 1}, 'volume': {'volume': 1}, 'share': {}}
 SPELLED = {
     name: (DIMENSIONS[family], scale) for family, units in FAMILIES.items() for name, scale in units.items()
 }
-# The same units as a units file holds them: each scale the JSON number of its float, so a minute is
-# 0.016666666666666666 (`core.units.scale_of` reads it as 1/60 again).
+# A caller who already decoded these numbers as floats has lost their original spelling.
+# The registry recovers the simple ratio for such a minute; authored JSON retains its exact decimal.
 FILED = {
     name: (dimension, json.loads(json.dumps(float(scale)))) for name, (dimension, scale) in SPELLED.items()
 }
 # A canonical step of each family whose multiples are finite decimals in every unit of the family.
 STEPS = {'time': Fraction(24, 100), 'volume': Fraction(1, 1000), 'share': Fraction(1, 100)}
+
+
+@pytest.mark.parametrize(
+    ('scale', 'expected'),
+    [
+        (float(Fraction(1, 60)), Fraction(1, 60)),
+        (Decimal('0.016666666666666666'), Fraction('0.016666666666666666')),
+        (Fraction(1, 60), Fraction(1, 60)),
+    ],
+    ids=['bare-float', 'written-decimal', 'exact-fraction'],
+)
+def test_both_authors_store_the_exact_unit_scale(scale, expected):
+    units = {'tick': ({'time': 1}, scale)}
+    builder = build.Builder(units)
+    builder.root(build.input_('x', 'tick', build.q(1, 'tick')))
+    text = compile_text('input x: tick = 1 tick\n', units)
+    for program in (builder.finish(), text.program):
+        assert program.unit('tick').scale == expected
 
 
 def written(value, unit):
@@ -271,7 +290,7 @@ def test_respelling_a_unit_never_changes_a_check_or_a_value(table, texts):
     rule of a distribution and the support of a drawn input) and no value: the configuration's
     horizon and each value that the run reads, in canonical units. A yes/no that compares two
     quantities is the same, so a test of `0.1 day` against `2.4 h` is decided as if both were 2.4 h.
-    It holds with the units as exact fractions and as a units file holds them, as floats (`FILED`)."""
+    It holds with unit scales supplied as exact fractions or as decoded bare floats (`FILED`)."""
     first, second = (checked(text, table) for text in texts)
     assert first[0] == second[0], texts
     event('refused' if first[0] is not None else 'compiled and ran')
