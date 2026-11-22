@@ -43,7 +43,12 @@ def render(model, *, jobs=1):
         lines.extend([cell(scenario.summary), ''])
     if scenario.scope:
         lines.extend([cell(scenario.scope), ''])
-    lines.extend([f'Model revision `{model.model_hash}`. All times are in hours.', ''])
+    lines.extend(
+        [
+            f'Model revision `{model.model_hash}`. Readings are instantaneous, without reporting lags. All times are in hours.',
+            '',
+        ]
+    )
     cited = {}
     for name, record in completed.items():
         lines.extend(
