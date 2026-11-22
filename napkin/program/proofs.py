@@ -450,6 +450,12 @@ class Proofs:
                 selection.expression(start.key, at)
                 source = replace(selection, keys=True)
             found = yield self._points(start.source, at, moving, source)
+            if not moving and any(point[0] == 'occurrences' for point, _ in found):
+                # A fixed cutoff fixes the time sought, not the set of occurrences already
+                # created at that time. A later start below the cutoff can change the selection.
+                return [
+                    (('other', 'an occurrence lookup that can select a smaller value after a start'), True)
+                ]
             return [
                 (
                     ('occurrence', *point[1:4]) if point[0] == 'occurrences' and point[4] is None else point,
@@ -1004,7 +1010,12 @@ class Proofs:
         elif isinstance(node, nodes.Ref):
             read = reads.get(node.name)
             if isinstance(read, Reduce) and read.op in ('min', 'max', 'sum'):
-                return self.rises(self.points(read.source, at))
+                points = self.points(read.source, at)
+                if read.op == 'sum':
+                    return self.rises(points)
+                # A transfer can conserve the sum while the smallest or largest member falls.
+                # An extremum is monotone when each of its members is monotone on its own.
+                return '; '.join(dict.fromkeys(self.rises([entry]) for entry in points))
             if isinstance(read, Path):
                 return self.rises(self.points(read, at))
         if parts is None:
@@ -1244,6 +1255,10 @@ class Proofs:
         if not ends:
             return 0.0, 0.0
         found = [form.get(key, (0.0, 0.0)) for key, _ in ends]
+        if any(not one and key[0].endswith('#') for key, one in ends):
+            # One declaration describes every live occurrence. An endpoint reached through
+            # a saved reference or lookup can designate a sibling of the one being reported.
+            found.append((0.0, 0.0))
         return min(lo for lo, _ in found), max(hi for _, hi in found)
 
     def writer(self, writer, form):
