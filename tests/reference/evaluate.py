@@ -487,9 +487,13 @@ class Ev:
             raise RunFailed(f'no member is named {id!r}')
         return self.run.ents[id]
 
+    def natural_collection(self, members):
+        """A collection with the natural key that the run gives each member."""
+        return Coll((self.run.key_of(m, self.view), m, m) for m in members)
+
     def _instances(self, template):
         """`Template.instances`, keyed by creation number."""
-        return Coll((x.number, x, x) for x in self.run.ents.values() if x.template.name == template)
+        return self.natural_collection(x for x in self.run.ents.values() if x.template.name == template)
 
     def _occurrence(self, receiver, event, n):
         """The start number n, from 0, of an event on a receiver: `tank.receive#0` in a key."""
@@ -541,10 +545,7 @@ class Ev:
                 return run.flow_at[obj, name]
         elif isinstance(obj, Bound):
             if name == 'occurrences':
-                return Coll(
-                    (view.cells[Cell(o, 'started')], o, o)
-                    for o in view.occs.get((obj.ent, obj.event.name), ())
-                )
+                return self.natural_collection(view.occs.get((obj.ent, obj.event.name), ()))
         elif isinstance(obj, FlowRT):
             if name in obj.legs:
                 return obj.legs[name]
@@ -575,7 +576,7 @@ class Ev:
                 return obj.src if name == 'source' else obj.dst
         elif isinstance(obj, End):
             if name == 'flows':
-                return Coll((x.number, x, x) for x, _ in run.incident(view.live, obj))
+                return self.natural_collection(x for x, _ in run.incident(view.live, obj))
             if name == 'actual_rate':
                 return Res(('rate', obj))
             if name in ('capacity', 'request', 'allocation'):
@@ -588,7 +589,7 @@ class Ev:
         elif isinstance(obj, Dist):
             return run.describe(obj, name)
         elif isinstance(obj, tuple) and obj[0] == 'template' and name == 'instances':
-            return Coll((x.number, x, x) for x in run.ents.values() if x.template.name == obj[1])
+            return self._instances(obj[1])
         elif isinstance(obj, tuple) and obj[0] == 'table' and f'{obj[1]}.{name}' in run.ents:
             return run.ents[f'{obj[1]}.{name}']
         raise RunFailed(f'{label(obj)} has no {name}')
@@ -914,8 +915,7 @@ class Ev:
         return FormulaV(expr, self.scope)
 
     def _coll(self, items):
-        members = [self.val(i) for i in items]
-        return Coll((self.run.key_of(m, self.view), m, m) for m in members)
+        return self.natural_collection(self.val(i) for i in items)
 
     def _dist(self, kind, params):
         return Dist(kind, tuple(self.num(p) for p in params))

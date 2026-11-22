@@ -192,7 +192,7 @@ class Run:
         self.contacts, self.bound_contacts, self.contact_levels = [], [], {}
         self.contact_targets = {}
         self.departures = {}
-        self.flow_numbers, self.occ_numbers = itertools.count(1), itertools.count(1)
+        self.flow_numbers, self.occ_numbers = itertools.count(), itertools.count(1)
         self.sites = _sites(model)
         self.error = self.paused = None
         self.held = None  # the rest of a round that a prompt paused, its paused stage first
@@ -211,10 +211,12 @@ class Run:
 
     def _setup(self):
         m, cells = self.model, self.view.cells
-        for i, inst in enumerate(m.instances, 1):
+        created = Counter()
+        for inst in m.instances:
             if inst.id in self.ents:
                 raise Diagnostic(f'two instances are named {inst.id}')
-            self.ents[inst.id] = Ent(inst.id, m.templates[inst.template], i)
+            self.ents[inst.id] = Ent(inst.id, m.templates[inst.template], created[inst.template])
+            created[inst.template] += 1
             if '.' in inst.id:
                 self.tables.add(inst.id.split('.')[0])
         for inst in m.instances:  # starting values follow their dependencies, not the written order
@@ -1602,7 +1604,7 @@ class Run:
         return network.incident(flows, end)
 
     def key_of(self, member, view):
-        """The natural key of a member: the start time of an occurrence, else its creation number."""
+        """The natural key of a member: its occurrence's start time, or its zero-based creation number."""
         return view.cells[Cell(member, 'started')] if isinstance(member, Occ) else member.number
 
     def entered(self, cell, tx, view):
