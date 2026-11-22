@@ -24,21 +24,13 @@ def places():
 
 def made_by(model, template):
     """The entities of a model that a template makes, in the order of the file."""
-    return [e.name for e in model.scenario.entities if e.template == template]
+    return [member.path for member in model.declared.members if member.template == template]
 
 
-def reads(model, entity):
-    """The values of other entities that an entity reads, over every structure of the model."""
-    found = set()
-    for structure in model.whole.values():
-        found |= set(structure.links.get(entity, {}))
-    return found
-
-
-def owner(model, entity, member):
-    """The one entity whose `member` the entity reads."""
-    (found,) = {name.rsplit('.', 1)[0] for name in reads(model, entity) if name.rsplit('.', 1)[1] == member}
-    return found
+def links(model, entity):
+    """The member links supplied by this instance in its variant."""
+    member = next(member for member in model.declared.members if member.path == entity)
+    return {given.name: given.init for given in member.links}
 
 
 def systems(sid):
@@ -48,16 +40,16 @@ def systems(sid):
 def homes(sid):
     """{system: its homes} for each system that serves people."""
     model = catalogue_model(sid)
-    return {owner(model, home, 'service'): home for home in made_by(model, 'Households')}
+    return {links(model, home)['utility']: home for home in made_by(model, 'Households')}
 
 
 def hospitals(sid):
     """{system: its hospitals} for each system that supplies hospitals."""
     model = catalogue_model(sid)
-    return {owner(model, h, 'service'): h for h in made_by(model, 'Hospitals')}
+    return {links(model, h)['utility']: h for h in made_by(model, 'Hospitals')}
 
 
 def ties(sid):
     """{tie: (seller, buyer)}."""
     model = catalogue_model(sid)
-    return {t: (owner(model, t, 'sales_share'), owner(model, t, 'need')) for t in made_by(model, 'Tie')}
+    return {t: (links(model, t)['seller'], links(model, t)['buyer']) for t in made_by(model, 'Tie')}

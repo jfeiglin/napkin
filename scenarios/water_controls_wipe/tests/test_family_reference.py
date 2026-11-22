@@ -8,7 +8,7 @@ import math
 
 import pytest
 
-from napkin.engine import sample_result
+import napkin
 from scenarios.tests.sources import oracle_inputs
 from scenarios.water_controls_wipe.tests import family
 from scenarios.water_controls_wipe.tests.water_service import (
@@ -18,30 +18,44 @@ from scenarios.water_controls_wipe.tests.water_service import (
     shared_completion_times,
     store_empty_time,
 )
-from tests.helpers import catalogue_study
+from tests.helpers import catalogue_model, catalogue_study
 
 pytestmark = pytest.mark.deep
 
-RUN = 'delayed_kept'
 QUIET = 'delayed_none'
 PLACES = family.places()
 ONE_SYSTEM = [sid for sid in PLACES if len(family.systems(sid)) == 1]
 MANY_SYSTEMS = [sid for sid in PLACES if len(family.systems(sid)) >= 3]
 
 
-def solved(sid, edits, run=RUN):
-    study = catalogue_study(sid, edits, runs=[run]) if edits else catalogue_study(sid)
-    assert study.admissible, [d for d in study.diagnostics if d.get('severity') == 'error']
-    values = study.runs[run]['resolved'].values
-    return study, values, oracle_inputs(sid, values), sample_result(study)['runs'][run]
+class Quantities(dict):
+    """The original oracles use execution units. The public reader returns authored units."""
+
+    def __init__(self, model, record, at):
+        super().__init__()
+        self.model, self.record, self.at = model, record, at
+        self.scales = {unit.name: float(unit.scale) for unit in model.program.units}
+
+    def __missing__(self, key):
+        (row,) = napkin.read(self.record, self.model.program, [key], [self.at])
+        value = row.values[0] * self.scales.get(row.unit, 1)
+        self[key] = value
+        return value
 
 
-def first_time(report, name):
-    """The time of the first occurrence of an event's outcome (`x.e.done`) in a run's story."""
-    for entry in report['trace']:
-        if entry.get('semantic') and entry.get('event') == name:
-            return entry['t']
-    raise AssertionError(f'{name} did not occur')
+def solved(sid, edits):
+    model = catalogue_model(sid)
+    record = catalogue_study(sid, edits, runs=[QUIET])[QUIET]
+    assert record.failure is None and record.end == model.configuration.request.horizon
+    values = Quantities(model, record, 0)
+    return record, values, oracle_inputs(sid, values), Quantities(model, record, record.end)
+
+
+def first_time(record, path):
+    for entry in record.entries('start'):
+        if entry.owner.split('#')[0] == path:
+            return entry.t
+    raise AssertionError(f'{path} did not occur')
 
 
 @pytest.mark.parametrize('sid', ONE_SYSTEM[:3])
@@ -51,7 +65,7 @@ def test_the_stored_water_runs_out_as_the_balance_says(sid):
     outside, until the balance empties it."""
     (system,) = family.systems(sid)
     edits = {'set': {f'{system}.manual_ready': False, f'{system}.pump_disabled': 0}}
-    _study, values, _inputs, report = solved(sid, edits, run=QUIET)
+    record, values, _inputs, _end = solved(sid, edits)
     inflow = (
         values[f'{system}.nameplate'] * (1 - values[f'{system}.treat_disabled']) + values[f'{system}.bought']
     )
@@ -63,7 +77,7 @@ def test_the_stored_water_runs_out_as_the_balance_says(sid):
         inflow,
     )
     assert math.isfinite(expected)
-    assert first_time(report, f'{system}.pressure_lost.done') == pytest.approx(expected, rel=1e-6)
+    assert first_time(record, f'{system}.pressure_lost') == pytest.approx(expected, rel=1e-6)
 
 
 @pytest.mark.parametrize('sid', MANY_SYSTEMS[:2])
@@ -73,7 +87,7 @@ def test_the_shared_crews_finish_the_systems_as_processor_sharing_says(sid):
     finishes first and each system's controls come back when its last job is done."""
     systems = family.systems(sid)
     edits = {'set': {**{f'{s}.operator_duty': 0 for s in systems}, 'parts.spares_on_hand': 1000}}
-    _study, values, inputs, report = solved(sid, edits, run=QUIET)
+    record, values, inputs, _end = solved(sid, edits)
 
     def start(pool):
         return inputs['recognition_time'] + sum(
@@ -92,9 +106,7 @@ def test_the_shared_crews_finish_the_systems_as_processor_sharing_says(sid):
     for i, system in enumerate(systems):
         done = [start('controls') + controls[i]]
         done += [start('field') + t for (s, _kind), t in zip(field_jobs, field, strict=True) if s == system]
-        assert first_time(report, f'{system}.controls_back.done') == pytest.approx(max(done), rel=1e-6), (
-            system
-        )
+        assert first_time(record, f'{system}.controls_back') == pytest.approx(max(done), rel=1e-6), system
 
 
 @pytest.mark.parametrize('sid', ONE_SYSTEM[:3])
@@ -104,9 +116,8 @@ def test_the_value_added_loss_follows_the_closed_form(sid):
     businesses can make up decays from the moment its controls come back."""
     (system,) = family.systems(sid)
     edits = {'set': {f'{system}.manual_ready': False, f'{system}.pump_disabled': 0}}
-    study, values, _inputs, report = solved(sid, edits, run=QUIET)
-    horizon = study.model.time['horizon']
-    env = study.runs[QUIET]['trajectory'].env_at(horizon)
+    record, values, _inputs, env = solved(sid, edits)
+    horizon = record.end
     interrupted = env[f'{system}.unserved'] / values[f'{system}.demand']
     assert interrupted > 0
     gross = gross_loss(
@@ -116,14 +127,12 @@ def test_the_value_added_loss_follows_the_closed_form(sid):
         values[f'{system}.recovery_factor'],
         interrupted,
     )
-    back = first_time(report, f'{system}.controls_back.done')
+    back = first_time(record, f'{system}.controls_back')
     expected = net_loss(
         gross, values[f'{system}.catch_up_share'], values[f'{system}.catch_up_time'], horizon - back
     )
     assert env[f'{system}.direct_loss'] + env[f'{system}.recoverable'] == pytest.approx(expected, rel=1e-6)
-    assert report['reporting_points']['final']['values']['economic_loss'] * 1e9 == pytest.approx(
-        expected, rel=1e-6
-    )
+    assert env['economic_loss'] == pytest.approx(expected, rel=1e-6)
 
 
 @pytest.mark.parametrize('sid', MANY_SYSTEMS[:2])
@@ -131,9 +140,8 @@ def test_emergency_water_moves_at_the_smallest_capacity(sid):
     """Emergency water starts after the start delay and never moves faster than the smallest of the
     approved supply, the tankers, the receiving points and the staff; what the people without service needed
     and did not get is the deficit."""
-    study, _values, inputs, report = solved(sid, None)
-    horizon = study.model.time['horizon']
-    env = study.runs[RUN]['trajectory'].env_at(horizon)
+    record, _values, inputs, env = solved(sid, None)
+    horizon = record.end
     homes = list(family.homes(sid).values())
     received = sum(env[f'{h}.trucked'] for h in family.hospitals(sid).values())
     received += sum(env[f'{home}.received'] for home in homes)
@@ -144,7 +152,6 @@ def test_emergency_water_moves_at_the_smallest_capacity(sid):
     assert 0 <= received <= throughput * active * (1 + 1e-9)
     need = sum(env[f'{home}.need_total'] for home in homes)
     households = sum(env[f'{home}.received'] for home in homes)
-    values = report['reporting_points']['final']['values']
-    assert values['emergency_water_deficit'] == pytest.approx(
-        (need - households) / 3785411.784, rel=1e-6, abs=1e-9
+    assert env['emergency_water_deficit'] == pytest.approx(
+        need - households, rel=1e-6, abs=1e-9 * 3785411.784
     )
