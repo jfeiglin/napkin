@@ -27,7 +27,7 @@ session went on to the end with no other edit. The run store keeps the run of a 
 goes on from it in a fresh process: the run is made again from the checkpoint's saved state, and
 nothing before the stop runs again (`napkin/engine/timeline/saved.py`). A checkpoint of another
 program, of another version of the engine or of another configuration is refused by name. The log
-of a session that goes on from a checkpoint starts at the checkpoint's stop.
+of a restored session retains the stop identities saved with the checkpoint.
 
 **What a stop shows.** The values at a stop are those of the checkpoint's state, and any other value
 (a formula, a rate) is read from the record so far at the time of the stop (`napkin.engine.read`),
@@ -63,8 +63,7 @@ SHOWN = (p.INPUT, p.STATE, p.FORMULA, p.LINK)
 @dataclass(frozen=True)
 class Log:
     """What a session did (see the module): its breakpoints, each stop at which it waited (the stop
-    of hit k is the k-th of the run, so the log of a session that went on from a checkpoint starts at
-    its hit), and each edit, at the stop of its hit, in order."""
+    of hit k is the k-th of the run), and each edit, at the stop of its hit, in order."""
 
     breakpoints: tuple[Breakpoint, ...] = ()
     stops: tuple[Stop, ...] = ()
@@ -115,7 +114,7 @@ class Session:
     its place in the source and a value its label. An unknown location, or one in a trigger's body,
     is refused when the session is made (`CheckpointError`), and so is a part that the engine does not
     run (`Outside`), a configuration that the program cannot take, and a log with an edit after its
-    last stop.
+    last stop or at a hit with no recorded stop.
 
     - `checkpoint`: the checkpoint at which the run waits, or None;
     - `record`: the record of the run once it reached its end, else None;
@@ -132,6 +131,8 @@ class Session:
         for edit in log.edits:
             if edit.hit > self._last:
                 raise CheckpointError(f'an edit of the log at the stop {edit.hit}, after its last stop')
+            if edit.hit not in self._expected:
+                raise CheckpointError(f'an edit of the log at stop {edit.hit} has no recorded stop')
             self._edits_at.setdefault(edit.hit, []).append(edit)
 
     def _begin(self, program, table, run, log):
@@ -171,6 +172,7 @@ class Session:
         session = cls.__new__(cls)
         run = Run.restored(Plan.of(program, checkpoint.configuration), checkpoint)
         session._begin(program, table, run, Log(checkpoint.breakpoints))
+        session.stops.extend(checkpoint.stops[:-1])
         session._waits(checkpoint)
         return session
 

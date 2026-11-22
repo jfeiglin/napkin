@@ -138,6 +138,7 @@ class Breaks:
                 raise CheckpointError(
                     f'{breakpoint.at}: no event, stage or statement of the program has this origin'
                 )
+        self.stops = []  # actual pauses, including earlier stops of a restored run
         self.hits = 0  # the hits so far
         self.passing = passing
         self.start = 0  # the hits before the stage that runs (or the setup)
@@ -339,6 +340,7 @@ class Breaks:
         run, plan = self.run, self.run.plan
         recorder, arrival = self.prefix
         self.prefix = None
+        self.stops.append(stop)
         return Checkpoint(
             program_digest(plan.program),
             engine_version(),
@@ -349,6 +351,7 @@ class Breaks:
             self.recorded,
             tuple(self.edits),
             save(run, recorder, arrival),
+            stops=tuple(self.stops),
         )
 
     def state(self):
@@ -396,6 +399,7 @@ class Breaks:
                 f'({_difference(found, checkpoint.state)})'
             )
         stop = checkpoint.stop
+        self.stops = list(checkpoint.stops or (stop,))
         self.edits = list(checkpoint.edits)
         for k, edit in enumerate(self.edits):
             if edit.hit == stop.hit and stop.at == stop.next and k not in self.done:

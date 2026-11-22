@@ -20,6 +20,7 @@ occurrence. The engine stops before the stage or the statement and gives a `Chec
 - `program` and `engine`: the SHA-256 of the program's canonical bytes (`canonical.py`) and the
   version of the engine (the SHA-256 of its code), `configuration` and `breakpoints`: what the run
   ran with.
+- `stops` (`Stop`): each stop reached through the current one, to verify edits on replay.
 - `edits` (`Edit`): every edit of the run so far, each at the stop where it was made, in order.
 - `saved`: the state of the engine at the stop, as data (`napkin/engine/timeline/saved.py`).
 
@@ -179,6 +180,7 @@ class Checkpoint:
     record: record.Record
     edits: tuple[Edit, ...] = ()
     saved: tuple = ()
+    stops: tuple[Stop, ...] = ()  # older checkpoints identify only their current stop
 
     def edit(self, target, value, key=False):
         """This checkpoint with one more edit at its stop: `target` a record key, or its path as text
