@@ -95,9 +95,8 @@ class Vector:
         self.run, self.plan = run, run.plan
         self.place = {name: k for k, name in enumerate(stores)}
         self.held = {} if held is None else held
-        # The rates that the instance gives as it evaluates its levels: the rates of a level that a
-        # later level reads, at the same time and state (`Sparse`).
-        self.rates = {} if rates is None else rates
+        # Names supplied by earlier levels. Their values belong to a particular evaluation.
+        self.rates = frozenset(rates or ())
         self.given = given
         self.following, self.defined = following or {}, defined
         self.constants = {}  # name -> (value, None), or (nan, the reason why it has no value)
@@ -180,8 +179,8 @@ class Vector:
             stack.extend(read for read in self._reads(name) if read not in self._met)
         plan = self._plan(names)
 
-        def values(t, y):
-            return self._gathered(plan, _Evaluation(self, t, y))
+        def values(t, y, rates=None):
+            return self._gathered(plan, _Evaluation(self, t, y, rates))
 
         return values
 
@@ -271,15 +270,6 @@ class Vector:
                 evaluation.compute(plan.derived, plan)
             found[plan.read_at] = [evaluation.read(name) for name in plan.read]
         return found[plan.back]
-
-    def _reader(self):
-        """A function (name, t, y) -> its value: a keyed read reads its key and the member that it
-        selects, not every member."""
-
-        def read(name, t, y):
-            return _plain(self.compiled([name])(t, y)[0])
-
-        return read
 
     def choose(self, signs):
         """Keep branch choices only on expressions that read their switching operands."""
@@ -414,11 +404,18 @@ class _Evaluation:
     """One evaluation of a vector at a time `t` and a state `y` (see `Vector`): the derived values
     that it computed, each once, or the error that each raised, which a read of it raises again."""
 
-    __slots__ = ('known', 't', 'vector', 'y')
+    __slots__ = ('known', 'rates', 't', 'vector', 'y')
 
-    def __init__(self, vector, t, y):
+    def __init__(self, vector, t, y, rates=None):
         self.vector, self.t, self.y = vector, t, y
+        self.rates = rates
         self.known = {}
+
+    def value(self, name):
+        """Compute a requested formula or read its leaf in this probe's time, state and rate map."""
+        if self.vector.derived(name) and name not in self.known:
+            self.compute([name])
+        return self.read(name)
 
     def read(self, name):
         """The value of a name: a leaf at once, a derived value that this evaluation computed, or
@@ -433,7 +430,7 @@ class _Evaluation:
                 raise ExpressionError(reason)
             return value
         if kind == 'rate':
-            return vector.rates[name]
+            return self.rates[name]
         if kind == 'trajectory':
             way = vector.following[name]
             if name in way.stores or name in vector.run.ways.result_of:
@@ -561,12 +558,6 @@ class _Evaluation:
             plan.order = tuple(completed)
 
 
-def _plain(value):
-    """A value of an array as a Python value: a number as a float, a yes/no, an enum member or a text
-    as it is."""
-    return value if isinstance(value, bool | str) else float(value)
-
-
 def identifiable_network(net, connections, plan):
     """In an acyclic network with a fixed split at each source, every leg is
     determined by stock increments. In topological order the known gross inflow
@@ -662,10 +653,9 @@ class Sparse(MovingTransfers, Way):
                         level_of.append(levels[int(self.net.store_sets[place[store]])])
         # A keyed read of the settings that moves holds the entry that it selects through a
         # segment, which ends where it selects another (`_switch`). The rates of a level that a later
-        # level reads are those of this evaluation (`current`).
-        self.selection, self.current = {}, {}
+        # level reads are evaluated on the same trial state (`_prefix`).
+        self.selection = {}
         earlier = [name for k, name in enumerate(self.recorded) if levels[self._set_of_flow(k)] < max(levels)]
-        self.current.update(dict.fromkeys(earlier, 0.0))
         # An empty state reads the installed steps of its producers, including declared answers.
         # No source changes integrator or gains another stock merely because a pipe reads its value.
         self.following = {}
@@ -683,7 +673,7 @@ class Sparse(MovingTransfers, Way):
             run,
             stores,
             self.selection,
-            self.current,
+            earlier,
             given,
             self.following,
             {name for name in formulas if plan._is_rate(name)} | set(defined),
@@ -768,7 +758,7 @@ class Sparse(MovingTransfers, Way):
                     self.switches.setdefault(store, []).append(f)
         self.brief, self.brief_from = 0, None  # the steps in a row shorter than a moment (`_count`)
         self.switching = [
-            (name, self._selector(vector, plan.keyed[name]))
+            (name, self._selector(plan.keyed[name]))
             for name in sorted(plan.expansion_of(names).leaves)
             if name in plan.keyed and not plan.stepped(name) and plan.lookup_moves(name, place)
         ]
@@ -787,7 +777,7 @@ class Sparse(MovingTransfers, Way):
             if stores and vector.defined:
                 found = plan.field_inputs(found)
             return found.time or any(
-                leaf in place or leaf in self.current or leaf in self.following for leaf in found.leaves
+                leaf in place or leaf in vector.rates or leaf in self.following for leaf in found.leaves
             )
 
         def nodes_of(settings):
@@ -838,14 +828,15 @@ class Sparse(MovingTransfers, Way):
         self.contacts = []  # located contacts on the pending smooth step
         self.next_clock = math.inf  # the next switch of the time against a fixed value
 
-    def _selector(self, vector, keyed):
+    def _selector(self, keyed):
         """A function (t, y) -> the entry that a keyed read selects there (None below its first
         key), from what its key, its members' keys and their tests read."""
         plan = self.plan
-        index, read = self.run.index_for(keyed.name), vector._reader()
+        index = self.run.index_for(keyed.name)
 
         def select(t, y):
-            return selected(keyed, lambda name: read(name, t, y), plan.units, t, index)
+            trial = self._probe(t, y)
+            return selected(keyed, trial.value, plan.units, t, index)
 
         return select
 
@@ -900,9 +891,29 @@ class Sparse(MovingTransfers, Way):
 
     def asked(self, t, y):
         """What the connections and the endpoints ask at time t and state y."""
+        if self.levels:
+            found, rates = self._prefix(t, y)
+            at, settings, _ = self.levels[-1]
+            found[at] = settings(t, y, rates)
+            return self._asked(found, t, y, rates)
         return self._asked(self.settings(t, y), t, y)
 
-    def _asked(self, found, t, y):
+    def _prefix(self, t, y):
+        """Settle upstream levels in order at this time and state. The returned rates belong
+        to this probe even when another evaluation runs before a later operand is read."""
+        found, rates = np.zeros(self.size), {}
+        for at, settings, gives in self.levels[:-1]:
+            found[at] = settings(t, y, rates)
+            asked = self._asked(found, t, y, rates)
+            values = Instant(self.net, asked, self.lower_flags, self.upper_flags).values()
+            rates.update((name, float(values[k])) for k, name in gives)
+        return found, rates
+
+    def _probe(self, t, y):
+        rates = self._prefix(t, y)[1] if self.levels else None
+        return _Evaluation(self.vector, t, y, rates)
+
+    def _asked(self, found, t, y, rates=None):
         """What the connections and the endpoints ask, from the values of their settings."""
         count, size = len(self.stores), len(self.net.source)
         if self.vector.nodes and np.any(found < 0):
@@ -913,9 +924,9 @@ class Sparse(MovingTransfers, Way):
             held = vector.nodes, vector.shapes, vector._groups
             try:
                 vector.nodes, vector.shapes, vector._groups = {}, {}, {}
-                read = vector._reader()
+                trial = _Evaluation(vector, t, y, rates)
                 for k in np.flatnonzero(found < 0):
-                    if read(self.setting_names[k], t, y) >= 0:
+                    if trial.value(self.setting_names[k]) >= 0:
                         found[k] = 0.0
             finally:
                 vector.nodes, vector.shapes, vector._groups = held
@@ -963,24 +974,10 @@ class Sparse(MovingTransfers, Way):
         if self.outputs is not None:
             values = self.outputs(t, trial)
             return values, values
-        if not self.levels:
-            asked = self.asked(t, trial)
-            instant = Instant(self.net, asked, self.lower_flags, self.upper_flags)
-            values = instant.values()
-            self.measured = instant if instant.rate_errors else None
-            return values, self.net.carried(values, asked)
-        # Level by level: the sets share no store, so the local sharing of a level is its own, and
-        # the settings of the next read the rates that it gave (the later ones ask nothing yet).
-        found = np.zeros(self.size)
-        for at, settings, gives in self.levels:
-            found[at] = settings(t, trial)
-            asked = self._asked(found, t, trial)
-            instant = Instant(self.net, asked, self.lower_flags, self.upper_flags)
-            values = instant.values()
-            self.measured = instant if instant.rate_errors else None
-            for k, name in gives:
-                if name in self.current:
-                    self.current[name] = float(values[k])
+        asked = self.asked(t, trial)
+        instant = Instant(self.net, asked, self.lower_flags, self.upper_flags)
+        values = instant.values()
+        self.measured = instant if instant.rate_errors else None
         return values, self.net.carried(values, asked)
 
     def field(self, t, y, *, allocation=False):
@@ -1035,17 +1032,15 @@ class Sparse(MovingTransfers, Way):
 
     def _side(self, t, y):
         """A function: the value of a side of a switch (a node of `surfaces`) at time t and state y."""
-        found = dict(zip(self.sided, self._sides_of(t, y))) if self._sides_of is not None else {}
+        trial = self._probe(t, y)
+        found = dict(zip(self.sided, self._sides_of(t, y, trial.rates))) if self._sides_of else {}
         units = self.plan.units
-        trial = _Evaluation(self.vector, t, y)
 
         def read(name):
             if name not in found:
                 # The selected arm of a named formula can ask for a comparison-scale
                 # dependency outside the switch operands. Use the same trial state.
-                if self.vector.derived(name):
-                    trial.compute([name])
-                found[name] = trial.read(name)
+                found[name] = trial.value(name)
             return found[name]
 
         return lambda node: float(lazily(self.region.expression(node), read, units, t))
@@ -1478,7 +1473,6 @@ class Sparse(MovingTransfers, Way):
             return self.values(t, solution(t))[1]
 
         evaluations = self.evaluations
-        previous = self.current.copy() if self.levels else None
         try:
             return checked_amount(
                 solution,
@@ -1489,8 +1483,6 @@ class Sparse(MovingTransfers, Way):
             )
         finally:
             self.evaluations = evaluations
-            if previous is not None:
-                self.current.update(previous)
 
     def _accept(self, solution, start, end):
         if self.stores and start < end:
@@ -1632,13 +1624,10 @@ class Sparse(MovingTransfers, Way):
         # old face constraints while the outgoing branch is being selected.
         y = self.y if self.pending is None or t <= self.pending[0] else self.pending[2](t)
         evaluated = self.evaluations
-        previous = self.current.copy() if self.levels else None
         try:
             carried = self.values(t, y)[1]
         finally:
             self.evaluations = evaluated
-            if previous is not None:
-                self.current.update(previous)
         return lambda name: float(carried[self.leg_rows[name]])
 
     def level_at(self, store, t):
