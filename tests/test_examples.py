@@ -1,4 +1,4 @@
-"""Run both example packages and compare their public readings with independent calculations."""
+"""Run the example packages and compare their public readings with independent calculations."""
 
 import json
 import math
@@ -25,6 +25,7 @@ FOLDERS = sorted(folder for folder in EXAMPLES.iterdir() if (folder / ENTRY).is_
 PRELUDE = json.loads((ROOT / 'napkin/std/units.json').read_text())
 YEAR = PRELUDE['year']['scale']
 OUTPUTS = {
+    'incident_response_tempo': ('attack.admitted', 'attack.blocked', 'queue.pending', 'queue.completed'),
     'piano_tuners': ('tunings_done',),
     'reservoir': ('reservoir.spilled', 'reservoir.risk_time'),
 }
@@ -53,11 +54,16 @@ def test_an_example_compiles_and_its_default_study_finishes_with_finite_outputs(
     model = models[folder.name]
     assert not model.reports
     records = napkin.study(model)
-    assert len(records) == 1
-    for record in records.values():
+    assert set(records) == ({r.name for r in model.declared.runs} or {None})
+    for name, record in records.items():
         assert record.failure is None and record.end == model.configuration.request.horizon
         reported = napkin.report(
-            record, model.program, model.configuration, OUTPUTS[folder.name], [record.end], table=model.table
+            record,
+            model.program,
+            model.configure(name),
+            OUTPUTS[folder.name],
+            [record.end],
+            table=model.table,
         )
         assert all(math.isfinite(row.values[0]) for row in reported.values)
 
@@ -247,3 +253,51 @@ def test_an_operator_who_waits_lets_no_water_out_and_is_at_risk_for_longer():
     assert risk.values == pytest.approx((0, 0, 40), abs=1e-6)
     (usual_risk,) = napkin.read(default, model.program, ['reservoir.risk_time'], times)
     assert all(a <= b + 1e-6 for a, b in zip(usual_risk.values, risk.values, strict=True))
+
+
+@pytest.mark.parametrize(
+    ('name', 'contained_at', 'admitted', 'blocked', 'work_at_containment'),
+    [
+        ('standard', 9, 3, 4, 1),
+        ('rapid_response', 3, 1, 6, 0),
+        ('frequent_attempts', 9, 9, 16, 12),
+        ('frequent_with_rapid_response', 3, 3, 22, 4),
+    ],
+)
+def test_attack_and_response_clocks_set_the_workload(
+    name, contained_at, admitted, blocked, work_at_containment
+):
+    model = napkin.load_scenario(EXAMPLES / 'incident_response_tempo')
+    record = napkin.run(model.program, model.configure(name))
+    assert record.failure is None
+    paths = ['response.phase', *OUTPUTS['incident_response_tempo']]
+    phase, arrived, stopped, pending, completed = napkin.read(
+        record, model.program, paths, [contained_at, 24]
+    )
+    assert phase.values == ('CONTAINED', 'CONTAINED')
+    assert arrived.values == (admitted, admitted)
+    assert stopped.values[-1] == blocked
+    assert pending.values == pytest.approx((work_at_containment, 0))
+    assert completed.values[-1] == pytest.approx(2 * admitted)
+
+
+@pytest.mark.parametrize(
+    ('run', 'work', 'attempts', 'admitted'),
+    [
+        ('recovery_linked', 2, [0, 6, 9], 2),
+        ('recovery_linked', 3, [0, 7, 11], 2),
+        ('recovery_linked_rapid', 2, [0, 4], 1),
+    ],
+)
+def test_recovery_timing_determines_when_the_next_attempt_arrives(run, work, attempts, admitted):
+    from napkin.engine import edits_for
+
+    model = napkin.load_scenario(EXAMPLES / 'incident_response_tempo')
+    edits = edits_for(model, {'set': {'attack.work_per_attempt': f'{work} h'}})
+    record = napkin.run(model.program, model.configure(run, edits))
+    assert record.failure is None
+    assert [entry.t for entry in record.entries('start') if entry.part == 'attack.attempt'] == attempts
+    results = napkin.read(
+        record, model.program, ['attack.admitted', 'attack.blocked', 'queue.completed'], [24]
+    )
+    assert [row.values[0] for row in results] == [admitted, 1, work * admitted]

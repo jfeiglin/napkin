@@ -1,0 +1,91 @@
+scenario "Attack tempo and incident response"
+    summary "Repeated attempts create incident work until defenders contain the incident. A response crew
+        clears that work after detection."
+    horizon 24 h
+    scope "One hypothetical incident queue. All durations and workloads are illustrative."
+
+attack: @exercise
+    input interval = 4 h in [0.25 h, 24 h]
+        @assumption "Attempts recur every four hours in the standard exercise."
+    input follows_recovery = false
+        @assumption "In the recovery-linked exercise the return clock starts when the incident queue clears."
+    input work_per_attempt = 2 h in [0 h, 24 h]
+        @assumption "Each admitted attempt creates two hours of incident work."
+    admitted = 0
+        @identity "Attempts that create incident work, initially zero."
+    blocked = 0
+        @identity "Attempts stopped by containment, initially zero."
+    attempt = event(): @exercise
+        when not this.follows_recovery and t >= 0 h:
+            this.attempt.start()
+            reset after this.interval
+        when this.follows_recovery and t >= 0 h:
+            this.attempt.start()
+        after 0 h:
+            if response.phase == CONTAINED or response.phase == RESPONDING and since(response.detect) >= response.containment_delay:
+                this.blocked += 1
+            else:
+                this.admitted += 1
+                queue.pending += this.work_per_attempt
+                if this.follows_recovery:
+                    queue.recover.start()
+
+response: @exercise
+    input detection_delay = 3 h in [0 h, 24 h]
+        @assumption "In the standard exercise the first incident takes three hours to detect."
+    input containment_delay = 6 h in [0 h, 24 h]
+        @assumption "Standard containment takes six hours after detection."
+    phase: enum[UNDETECTED, RESPONDING, CONTAINED] = UNDETECTED
+    first_incident = event(): @exercise
+        when attack.admitted >= 1:
+            this.first_incident.start()
+        after this.detection_delay:
+            this.detect.start()
+    detect = event(): @exercise
+        after 0 h:
+            this.phase = RESPONDING
+        after this.containment_delay:
+            this.phase = CONTAINED
+
+queue: @exercise
+    pending: h = 0 h in [0 h,] scale 24 h
+        @identity "Initial incident workload is zero."
+    completed: h = 0 h scale 24 h
+        @identity "Cumulative completed work starts at zero."
+    recover = event(): @exercise
+        until this.pending <= 0 h
+        after attack.interval:
+            attack.attempt.start()
+    flow repair: this.pending -> this.completed @exercise
+        request = formula(1 if response.phase != UNDETECTED else 0)
+        capacity = formula(1 if response.phase != UNDETECTED else 0)
+
+options "Attack tempo":
+    "Four-hour attempts":
+        attack.interval = 4 h @exercise
+    "Hourly attempts":
+        attack.interval = 1 h @exercise
+
+    "Return one hour after recovery":
+        attack.interval = 1 h @exercise
+        attack.follows_recovery = true @exercise
+
+options "Defender tempo":
+    "Standard response":
+        response.detection_delay = 3 h @exercise
+        response.containment_delay = 6 h @exercise
+    "Rapid response":
+        response.detection_delay = 1 h @exercise
+        response.containment_delay = 2 h @exercise
+
+runs:
+    standard = "Four-hour attempts" + "Standard response"
+    rapid_response = "Four-hour attempts" + "Rapid response"
+    frequent_attempts = "Hourly attempts" + "Standard response"
+    frequent_with_rapid_response = "Hourly attempts" + "Rapid response"
+
+    recovery_linked = "Return one hour after recovery" + "Standard response"
+    recovery_linked_rapid = "Return one hour after recovery" + "Rapid response"
+
+record exercise: assumption "Illustrative incident counts, clock times and repair workload for a tabletop
+    exercise."
