@@ -186,24 +186,37 @@ def _first_arrival(initial, level, sign, c, b, a, start, end, last):
     before = start
     first = d if start == 0 else gap(start)
     stops = [(x, minimum) for x, minimum in _turns(c, b, a) if start < x < end]
-    # A step that never leaves its starting coordinate cannot rearm the same
-    # face. Inspect the extrema and the dense endpoint even if an independently
-    # accepted endpoint rounds back to the face.
-    if (
-        start == 0
-        and initial == level
-        and last in (None, 0)
-        and not any(_distinct_turn(level, sign, c, b, a, minimum) for _, minimum in stops)
-    ):
-        x = Fraction(end)
-        distance = ((Fraction(a) * x + Fraction(b)) * x + Fraction(c)) * x
-        try:
-            ends_on_face = float(Fraction(level) + int(sign) * distance) == level
-        except OverflowError:
-            ends_on_face = False
-        if ends_on_face:
-            return None
     stops.append((end, None))
+    if start == 0 and initial == level:
+        # A cubic fitted at an existing contact can turn outward by less than
+        # half a representable stock value before really leaving inward. Arm a
+        # return only after a distinguishable departure. For a true outward
+        # departure, keep the mathematical root of the lobe that reaches it.
+        interior = None
+        for i, (x, minimum) in enumerate(stops):
+            if minimum is None and last is not None:
+                value, distinct = last, last != 0
+            else:
+                value = gap(x, minimum)
+                if minimum is not None:
+                    distinct = _distinct_turn(level, sign, c, b, a, minimum)
+                else:
+                    at = Fraction(x)
+                    distance = ((Fraction(a) * at + Fraction(b)) * at + Fraction(c)) * at
+                    try:
+                        distinct = float(Fraction(level) + int(sign) * distance) != level
+                    except OverflowError:
+                        distinct = True
+            if value < 0:
+                interior = i, x, value
+            if distinct:
+                if interior is None:
+                    return start
+                index, before, first = interior
+                stops = stops[index + 1 :]
+                break
+        else:
+            return None
     for after, minimum in stops:
         final = last if after == end and last is not None else gap(after, minimum)
         if before == start and first == 0 and final > 0:

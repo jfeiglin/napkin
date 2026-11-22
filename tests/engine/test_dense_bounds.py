@@ -116,3 +116,35 @@ def test_monotone_departure_without_a_separate_endpoint_requires_a_distinct_coor
         output = step([coordinate], [[delta, 0.0, 0.0]])
         assert bound_crossings(output, 2, 3, [0], [coordinate], [1]) == []
         assert bound_crossings(output, 2, 6, [0], [coordinate], [1]) == [(2, 0)]
+
+
+@pytest.mark.parametrize('direction', [-1, 1])
+@pytest.mark.parametrize('accepted_end', [False, True])
+def test_initial_rounding_excursion_does_not_hide_a_later_real_return(direction, accepted_end):
+    level = 4.0
+    epsilon = 2.0**-30
+    for cubic in (0.0, 2.0):
+        # The first maximum of eps*x - x² + a*x³ is far below half an ULP
+        # at the stock's face. Both cubics then go visibly inward. Only the
+        # cubic with a positive last term returns to the face from the interior.
+        output = step([level], [[direction * epsilon, -direction, direction * cubic]])
+        end = [level + direction * (epsilon - 1 + cubic)] if accepted_end else None
+        result = bound_crossings(output, 2, 6, [0], [level], [direction], accepted_end=end)
+        if cubic == 0:
+            assert result == []
+        else:
+            x = (1 + math.sqrt(1 - 8 * epsilon)) / 4
+            assert len(result) == 1 and result[0][1] == 0
+            assert result[0][0] == pytest.approx(2 + 4 * x, rel=0, abs=2e-15)
+    # Increase the first slope until the initial outward lobe is representable.
+    output = step([level], [[direction * 2.0**-20, -direction, 0.0]])
+    assert bound_crossings(output, 2, 6, [0], [level], [direction]) == [(2, 0)]
+
+
+@pytest.mark.parametrize('direction', [-1, 1])
+def test_small_inward_turn_preserves_the_time_of_a_real_outward_crossing(direction):
+    # The stock does not become a separate float on the first inward lobe,
+    # but its genuine outward lobe starts at x=eps, later than the initial time.
+    epsilon = 2.0**-30
+    output = step([4.0], [[-direction * epsilon, direction, 0.0]])
+    assert bound_crossings(output, 2, 6, [0], [4.0], [direction]) == [(2 + 4 * epsilon, 0)]
