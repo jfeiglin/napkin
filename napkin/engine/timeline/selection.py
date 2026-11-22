@@ -428,6 +428,22 @@ def _serves_in_full(rows, lower, upper, tiers, target):
     )
 
 
+def _row_units(a, b, parts=None):
+    """Express a hard row in units of its own terms when all are below one.
+
+    A part may mix rates with dimensionless served fractions. A fraction's unit
+    of one must not make a supply or capacity row of very small rates vanish in
+    the linear program. A common power of two preserves each coefficient.
+    """
+    largest = max(abs(b), float(np.abs(a).max(initial=0)), *(abs(s) for _, s in parts or ()))
+    shift = -math.frexp(largest)[1] if 0 < largest < 0.5 else 0
+    if shift:
+        a, b = np.ldexp(a, shift), math.ldexp(b, shift)
+        if parts is not None:
+            parts = tuple((j, math.ldexp(s, shift)) for j, s in parts)
+    return (a, b) if parts is None else (a, parts, b)
+
+
 def select(rows, lower, upper, tiers, prefs, target, units=None, own_scales=1.0, measure=None):
     """The unknowns of one coupled part: `rows` (`Rows`, in the units of the rates), the bounds of
     each unknown (-inf and inf for none), the tiers of claims in order (each a list of (a,
@@ -453,10 +469,10 @@ def select(rows, lower, upper, tiers, prefs, target, units=None, own_scales=1.0,
     size = float(units.max(initial=1.0))
     # The programs read z = x / units, and each row over the size of the part.
     scaled = Rows(n)
-    scaled.upper = [(a * units / size, b / size) for a, b in rows.upper]
-    scaled.equal = [(a * units / size, b / size) for a, b in rows.equal]
+    scaled.upper = [_row_units(a * units / size, b / size) for a, b in rows.upper]
+    scaled.equal = [_row_units(a * units / size, b / size) for a, b in rows.equal]
     scaled.convex = [
-        (a * units / size, tuple((j, s * units[j] / size) for j, s in parts), b / size)
+        _row_units(a * units / size, b / size, tuple((j, s * units[j] / size) for j, s in parts))
         for a, parts, b in rows.convex
     ]
     limits = [(float(lo / u), float(hi / u)) for lo, hi, u in zip(lower, upper, units)]

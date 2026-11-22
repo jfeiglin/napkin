@@ -252,6 +252,27 @@ def test_local_sharing_keeps_a_small_delivery_in_a_large_part(small):
     assert found == pytest.approx(small / (1 + small), rel=1e-3, abs=0)
 
 
+@pytest.mark.parametrize('supply', [0, 0.375])
+@pytest.mark.parametrize('constraint', ['empty store', 'junction', 'directional capacity'])
+def test_an_idle_served_fraction_keeps_a_tiny_supply_row(supply, constraint):
+    # A fixed inlet supplies a part of the outlet's request. A third flow with
+    # no open legs has a dimensionless fraction, whose unit is one.
+    request = 2.0**-80
+    inlet = supply * request
+    rows = selection.Rows(3)
+    balance = [-1, 1, 0]
+    if constraint == 'empty store':
+        rows.at_most(balance, 0)
+    elif constraint == 'junction':
+        rows.equal_to(balance, 0)
+    else:
+        rows.with_parts([-1, 0, 0], [(1, 1)], 0)
+    target = [inlet, request, 0]
+    claims = [[(np.array([0, 1, 0]), request)]]
+    rates = selection.select(rows, [inlet, 0, 0], target, claims, [], target, [request, request, 1])
+    assert tuple(rates) == (inlet, inlet, 0)
+
+
 # ---- local sharing: every rank, the last included ------------------------------------------------------
 
 
