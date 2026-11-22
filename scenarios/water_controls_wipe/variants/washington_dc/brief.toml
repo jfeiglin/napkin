@@ -1,14 +1,8 @@
 show = ["person_days_lost", "unserved_volume", "rework_caused", "deaths", "casualties", "economic_loss",
     "people_interrupted_now", "people_under_advisory", "restored_share", "emergency_water_deficit",
     "hospital_hours_constrained", "work_remaining", "people_followed", "wider_loss", "people_beyond_week"]
-drivers = ["wssc_water_homes.population", "wssc_water.storage", "wssc_water.treat_disabled",
-    "wssc_water.manual_share", "wssc_water.controls_load", "controls_crew.capacity",
-    "responders.recognition_time", "responders.removal_time", "attacker.reaction_time",
-    "attacker.rework_share"]
-featured = ["delayed_kept", "delayed_kept_human"]
-# The name of the attack on the pages, and the group of options that holds the responses of the
-# defenders.
-attack = "AI operation wipes the controls of the water systems of a place through their integrator's platform"
+drivers = ["wssc_water_homes.population", "wssc_water.storage", "wssc_water.treat_disabled", "wssc_water.manual_share", "wssc_water.controls_load", "controls_crew.capacity", "responders.recognition_time", "responders.removal_time", "incident.begins"]
+featured = ["early", "delayed_none"]
 choice_group = "Response"
 
 # The rows of the run table after the runs: each sweep runs one run with other values of some
@@ -17,37 +11,37 @@ choice_group = "Response"
 [[sweep]]
 id = "capacity_20"
 description = "The controls crews do 20 work hours an hour"
-run = "delayed_kept"
+run = "delayed_none"
 set = {"controls_crew.capacity" = 20}
 
 [[sweep]]
 id = "capacity_160"
 description = "The controls crews do 160 work hours an hour"
-run = "delayed_kept"
+run = "delayed_none"
 set = {"controls_crew.capacity" = 160}
 
 [[sweep]]
 id = "manual_0"
 description = "WSSC Water's operators cannot produce water by hand"
-run = "delayed_kept"
+run = "delayed_none"
 set = {"wssc_water.manual_share" = 0}
 
 [[sweep]]
 id = "manual_1"
 description = "WSSC Water's operators produce all of normal by hand"
-run = "delayed_kept"
+run = "delayed_none"
 set = {"wssc_water.manual_share" = 1}
 
 [[sweep]]
 id = "removal_1d"
-description = "Responders remove the credential a day after recognition"
-run = "delayed_kept"
+description = "Containment is recorded one day after recognition. Later service setbacks follow separate field reports."
+run = "delayed_none"
 set = {"responders.removal_time" = 24}
 
 [[sweep]]
 id = "removal_20d"
-description = "Responders remove the credential twenty days after recognition"
-run = "delayed_kept"
+description = "Containment is recorded twenty days after recognition. Later service setbacks follow separate field reports."
+run = "delayed_none"
 set = {"responders.removal_time" = 480}
 
 # The spreads that the brief shows: each samples its runs under the edit document
@@ -55,10 +49,8 @@ set = {"responders.removal_time" = 480}
 
 [[spread]]
 id = "uncertainty"
-description = """\
-    The spread of the default comparison over the chosen spreads of the attacker's tempo, the crews' \
-    capacity, manual operation and the controls work."""
-runs = ["delayed_kept", "delayed_kept_human"]
+description = "Crew capacity, manual operation and repair workload across two response options."
+runs = ["early", "delayed_none"]
 samples = 50
 seed = 0
-method = "latin"
+method = "random"
