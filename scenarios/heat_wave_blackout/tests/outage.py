@@ -86,86 +86,63 @@ class Profile:
 
 
 class Ledger:
-    """The restoration work ledger (section 1), solved exactly as events on a piecewise linear timeline.
-
-    State: initial work done `c`, the rework left from the attacker's change `a1`, the job rework left
-    `a2`, and the amounts of each done. After the switching starts the crews do one hour of work per hour,
-    unless they are stopped: first the job rework, then the change rework, then the initial work.
-    At equal times a completion goes first, so a job or a change that falls when power is back never acts.
-    """
+    """Solve the work queue from supplied inspection times and durations in hours."""
 
     def __init__(self, p):
         self.p = p
-        work, rho = p['work_h'], p['rework_share']
-        self.work = work
+        self.work = p['work_h']
         self.start = max(p['contain_h'], p['determination_h'] + p['check_h'])
-        order = p['review_h'] + p['order_delay_h'] + p['order_transit_h']
-        self.stop = order if p['obeys'] else max(p['removal_h'], order)
-        self.change_at = self.start + p['react_h']
-        self.job_at = p['job_h']
-        # What happened, for the tests to check that a case is the case it claims to be.
-        self.changed = False
-        self.job_phase = 'not listed'
-        state = [0.0] * 5  # c, a1, a2, a1 done, a2 done
-        pending = []
-        idle = (0.0,) * 5
-        segments = [(0.0, self.start, tuple(state), idle)]
-        if self.job_at < self.stop + p['cleanup_h']:
-            self.job_phase = 'power back'
-            if self.job_at <= self.start:
-                # Nothing is done yet, so the job adds the whole rework when it runs.
-                state[2] = rho * work
-                segments = [
-                    (0.0, self.job_at, (0.0,) * 5, idle),
-                    (self.job_at, self.start, tuple(state), idle),
-                ]
-                self.job_phase = 'before switching'
+        q = [(self.start, 'release')]
+        if p['hold']:
+            q.extend([(p['hold_at'], 'hold'), (p['hold_at'] + p['hold_duration'], 'resume')])
+        if p['extra']:
+            q.append((p['extra_at'], 'extra'))
+        q.sort(key=lambda item: item[0])
+        initial = (0.0,) * 5
+        state = list(initial)
+        self.segments = []
+        active = paused = False
+        now = 0.0
+        while state[0] < self.work:
+            if not active or paused:
+                rates = initial
+            elif state[2] > 0:
+                rates = (0, 0, -1, 0, 1)
+            elif state[1] > 0:
+                rates = (0, -1, 0, 1, 0)
             else:
-                pending.append((self.job_at, 'job'))
-        if self.stop > self.change_at:
-            pending.append((self.change_at, 'change'))
-        pending.sort()
-        now, stopped = self.start, False
-        while True:
-            c, a1, a2, _d1, _d2 = state
-            if stopped:
-                rates, to_clear = (0.0,) * 5, math.inf
-            elif a2 > 0:
-                rates, to_clear = (0.0, 0.0, -1.0, 0.0, 1.0), a2
-            elif a1 > 0:
-                rates, to_clear = (0.0, -1.0, 0.0, 1.0, 0.0), a1
-            else:
-                rates, to_clear = (1.0, 0.0, 0.0, 0.0, 0.0), work - c
-            gap = pending[0][0] - now if pending else math.inf
-            if to_clear <= gap:
-                end = now + to_clear
-                segments.append((now, end, tuple(state), rates))
-                state = [s + r * to_clear for s, r in zip(state, rates)]
-                if rates[0]:
-                    state[0] = work
-                    break
-                state[2 if rates[2] else 1] = 0.0
-                now = end
-                continue
-            when, kind = pending.pop(0)
-            segments.append((now, when, tuple(state), rates))
-            state = [s + r * gap for s, r in zip(state, rates)]
-            now = when
-            if kind == 'job':
-                state[2] += rho * (work - state[0])
-                self.job_phase = 'while stopped' if stopped else 'while working'
-            elif kind == 'change':
-                state[1] += rho * (work - state[0])
-                stopped, self.changed = True, True
-                pending.append((self.stop, 'resume'))
-                pending.sort()
-            else:
-                stopped = False
-        self.full = end
-        segments.append((end, math.inf, tuple(state), (0.0,) * 5))
-        self.segments = segments
-        self._starts = [segment[0] for segment in segments]
-        self.profile = Profile([(t0, s[0] / work) for t0, _t1, s, _r in segments])
+                rates = (1, 0, 0, 0, 0)
+            finish = (
+                self.work - state[0]
+                if rates[0]
+                else state[1]
+                if rates[1]
+                else state[2]
+                if rates[2]
+                else math.inf
+            )
+            at = min(now + finish, q[0][0] if q else math.inf)
+            if at > now:
+                self.segments.append((now, at, tuple(state), rates))
+                state = [x + speed * (at - now) for x, speed in zip(state, rates, strict=True)]
+                now = at
+            if state[0] >= self.work:
+                break
+            while q and q[0][0] == now:
+                _, event = q.pop(0)
+                if event == 'release':
+                    active = True
+                elif event == 'hold':
+                    paused = True
+                    state[1] += p['repeat_work']
+                elif event == 'resume':
+                    paused = False
+                else:
+                    state[2] += p['extra_work']
+        self.full = now
+        self.segments.append((now, math.inf, tuple(state), initial))
+        self._starts = [segment[0] for segment in self.segments]
+        self.profile = Profile([(lo, x[0] / self.work) for lo, _, x, _ in self.segments])
 
     def state(self, t):
         """(c, a1, a2, a1 done, a2 done) at time t; at a jump, the value after it."""
@@ -185,13 +162,13 @@ class Ledger:
             'supply.resident_hours': p['people'] * self.profile.deficit(0.0, t),
             'outstanding_work': self.work - c + a1 + a2,
             'crews.work_left': self.work - c,
-            'job.remaining': a2,
+            'extra.work_left': a2,
             'crews.restoration_cost': (c + d1 + d2) * price,
         }
 
     def marks(self):
         """The times at which the timeline changes: the start, every event and the end."""
-        return sorted({t for t, _s in self.profile.knots} | {self.job_at, self.change_at, self.stop})
+        return sorted(t for t, _s in self.profile.knots)
 
 
 def customer_cost(c24, power, hours):

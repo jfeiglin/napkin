@@ -1,23 +1,10 @@
-"""The scenario's runs against the independent reference mathematics in outage.py.
+"""The recovery model against independent work, temperature, population and cost calculations."""
 
-Every expected value comes from the oracle, applied to the inputs that the run resolved (read through
-the names of the package's tests/oracle-inputs.json) or to explicit edits that the test sets. No value is
-copied from an engine output, and no test reads authored wording.
-
-The oracle reads the run's inputs in execution units (`resolved.values`: hours, people, per-hour
-rates). `resolved.parameter_values` holds the authored units instead (death rates per year, emergency
-visit and heat death rates per day), so it is not used here.
-"""
-
-import json
 import math
-from functools import cache
-from itertools import pairwise
 
 import pytest
 from scipy.integrate import quad
 
-from napkin.engine import edits_for, evaluate_study, sample_result
 from scenarios.heat_wave_blackout.tests.outage import (
     BANDS,
     BUILDINGS,
@@ -31,12 +18,11 @@ from scenarios.heat_wave_blackout.tests.outage import (
     exposure_without_heat,
     interruption_costs,
 )
-from scenarios.tests.sources import oracle_inputs
-from tests.helpers import catalogue_model
+from scenarios.heat_wave_blackout.tests.support import oracle_values, readings, study
 
 pytestmark = pytest.mark.deep
 
-RUN = 'delayed_refuses'
+RUN = 'standard'
 # The engine's solver tolerance is 1e-9 relative. The oracle's closed forms are exact to rounding and its
 # quadratures reach 1e-12, so a relative difference above REL is a disagreement.
 REL = 1e-6
@@ -47,7 +33,7 @@ LEDGER_FLOOR = {
     'supply.resident_hours': 1e-6,
     'outstanding_work': 1e-9,
     'crews.work_left': 1e-9,
-    'job.remaining': 1e-9,
+    'extra.work_left': 1e-9,
     'crews.restoration_cost': 1e-14,
 }
 COST_FLOOR = 1e-12
@@ -55,28 +41,26 @@ GROUPS = ('under_65', 'aged_65_to_74', 'aged_75_and_over')
 AGES = ('under_65', '65_to_74', '75_and_over')
 
 
-@cache
-def _study(run, encoded):
-    model = catalogue_model('heat_wave_blackout')
-    study = evaluate_study(model, edits_for(model, json.loads(encoded)), runs=[run])
-    assert study.admissible, study.diagnostics
-    return study
-
-
 def solve(run, edits):
-    """The completed study of one run under an edit body, and the oracle's names for the run's inputs.
-
-    The inputs are the run's values in execution units (see the module text).
-    """
-    study = _study(run, json.dumps(edits, sort_keys=True))
-    return study, oracle_inputs('heat_wave_blackout', study.runs[run]['resolved'].values)
+    record = study(run, edits.get('set', {}))
+    return record, oracle_values(record)
 
 
-def observe(study, run, times):
-    """{time: the report's values at that time} for one run, and the run's trace."""
-    report = sample_result(study, list(times))['runs'][run]
-    rows = {row['t']: row['values'] for row in report['samples']}
-    return {t: rows[float(t)] for t in times}, report['trace']
+def observe(record, run, times):
+    del run
+    names = (
+        'deaths',
+        'heatstroke_survivors',
+        'casualties',
+        'late_deaths',
+        'device_admissions',
+        'thermal_exposure',
+        *(f'{kind}_{age}.deaths' for kind in ('residents', 'device_users', 'confined') for age in AGES),
+    )
+    columns = readings(record, names, times)
+    return {
+        t: {name: values[i] for name, values in columns.items()} for i, t in enumerate(times)
+    }, record.trace
 
 
 def agrees(value, expected, floor):
@@ -84,223 +68,46 @@ def agrees(value, expected, floor):
 
 
 def default_values(key):
-    """A run's input at its default, to edit another input to the same value."""
-    return catalogue_model('heat_wave_blackout').resolve(RUN).values[key]
+    return readings(study(RUN), [key], [0])[key][0]
 
 
-# --- 1. The restoration ledger ------------------------------------------------------------------------------
-
-# Explicit inputs of the work ledger, so that no case rests on an authored default: the checks end 24 hours
-# after the cause is determined, the crews need 12 hours of work, the attacker reacts after a quarter of an
-# hour and the stop order reaches it after 2.5 hours. An attacker that refuses stops 60 hours in. The
-# timed job is due long after everything else.
-LEDGER_BASE = {
-    'utility.check_time': 24,
-    'crews.work': 12,
-    'ai.reaction_time': 0.25,
-    'ai.rework_share': 0.3,
-    'contractor.review_time': 2,
-    'contractor.order_delay': 0.25,
-    'contractor.order_transit': 0.25,
-    'contractor.removal_time': 60,
-    'contractor.cleanup_time': 2,
-    'job.run_time': 200,
-    'ai.obeys': False,
-}
-# name: (edits to the base, the attacker changes the settings during switching, what the job does)
-LEDGER_CASES = {
-    # The stop comes before the switching starts: nothing disturbs the crews.
-    'obeys_stops_before_switching': ({'ai.obeys': True}, False, 'not listed'),
-    # An attacker that obeys is told late: it changes the settings and the crews stop until it stops.
-    'obeys_changes_during_switching': ({'ai.obeys': True, 'contractor.review_time': 40}, True, 'not listed'),
-    'refuses_removed_before_switching': (
-        {'contractor.removal_time': 6, 'contractor.review_time': 0},
-        False,
-        'not listed',
-    ),
-    'refuses_changes_during_switching': ({}, True, 'not listed'),
-    # Long checks: the job runs before the switching starts, the attacker refuses until after the job.
-    'job_runs_before_switching': (
-        {'contractor.removal_time': 120, 'job.run_time': 10},
-        True,
-        'before switching',
-    ),
-    'job_runs_while_crews_work': (
-        {'ai.obeys': True, 'contractor.cleanup_time': 40, 'job.run_time': 30},
-        False,
-        'while working',
-    ),
-    'job_runs_while_crews_stopped': (
-        {'contractor.removal_time': 120, 'job.run_time': 60},
-        True,
-        'while stopped',
-    ),
-    'job_runs_after_the_stop': (
-        {'contractor.removal_time': 30, 'contractor.cleanup_time': 10, 'job.run_time': 35},
-        True,
-        'while working',
-    ),
-    # Staff would not cancel the job in time, but power is back before it is due.
-    'job_due_after_power_is_back': (
-        {'ai.obeys': True, 'contractor.cleanup_time': 45, 'job.run_time': 40},
-        False,
-        'power back',
-    ),
-    # The attacker's stop comes after its reaction time, but power is back before the reaction.
-    'power_back_before_the_change': (
-        {'crews.work': 6, 'ai.reaction_time': 50, 'contractor.removal_time': 120},
-        False,
-        'not listed',
-    ),
-    # Equal times, in the order that the specification gives: the attacker's stop goes before its change of
-    # the settings, and a cancellation or a completion goes before the job. The next case of each pair is the
-    # control, just on the other side of the tie. The times are exact in binary arithmetic.
-    'stop_at_the_moment_of_the_change': (
-        {'ai.obeys': True, 'contractor.review_time': 24.75},
-        False,
-        'not listed',
-    ),
-    'stop_just_after_the_change': ({'ai.obeys': True, 'contractor.review_time': 24.8}, True, 'not listed'),
-    'cancellation_at_the_moment_the_job_is_due': (
-        {'ai.obeys': True, 'job.run_time': 4.5},
-        False,
-        'not listed',
-    ),
-    'cancellation_just_after_the_job_is_due': (
-        {'ai.obeys': True, 'job.run_time': 4.4},
-        False,
-        'before switching',
-    ),
-    'power_back_at_the_moment_the_job_is_due': (
-        {'ai.obeys': True, 'contractor.cleanup_time': 45, 'job.run_time': 37},
-        False,
-        'power back',
-    ),
-    'job_due_just_before_power_is_back': (
-        {'ai.obeys': True, 'contractor.cleanup_time': 45, 'job.run_time': 36.9},
-        False,
-        'while working',
-    ),
-}
+LEDGER_BASE = {'utility.check_time': 24, 'crews.work': 12}
+HOLD = {'incident.hold': True, 'incident.hold_at': 10, 'incident.hold_duration': 5, 'incident.repeat_work': 3}
+EXTRA = {'extra.recorded': True, 'extra.recorded_at': 8, 'extra.hours': 2}
 
 
-def ledger_study(overrides, base=None):
-    return solve(RUN, {'set': {**(base or LEDGER_BASE), **overrides}})
-
-
-def ledger_times(ledger):
-    """Times just either side of every moment of the timeline, between them, and late."""
-    marks = [t for t in ledger.marks() if t > 0.1]
-    times = {0.0, ledger.full + 5.0, 300.0, 600.0}
-    for t in marks:
-        times |= {t - 0.07, t + 0.07}
-    times |= {(a + b) / 2 for a, b in pairwise(marks)}
-    return sorted(t for t in times if 0.0 <= t <= 1800.0)
-
-
-def test_ledger_closed_forms():
-    # The ledger against closed forms that follow from the specification, on inputs set here. Each regime is
-    # solved by hand. S = 10 is the start of the switching, R = 2 the reaction, X = 40 the stop of an attacker
-    # that refuses, W = 10 the work and rho = 0.5 the rework share.
-    base = {
-        'contain_h': 1.0,
-        'determination_h': 1.0,
-        'check_h': 9.0,
-        'work_h': 10.0,
-        'obeys': 0.0,
-        'react_h': 2.0,
-        'rework_share': 0.5,
-        'review_h': 0.0,
-        'order_delay_h': 0.0,
-        'order_transit_h': 0.0,
-        'removal_h': 40.0,
-        'cleanup_h': 1.0,
-        'job_h': 500.0,
-        'lineworkers': 10.0,
-        'wage': 100.0,
-        'cost_multiplier': 2.0,
-        'people': 1000.0,
-    }
-    # A change, no job: c(12) = 2, so A1 = 0.5 * 8 = 4. The crews stop from 12 to 40, then do A1 and the last 8.
-    ledger = Ledger(base)
-    assert ledger.start == 10.0
-    assert ledger.full == 40.0 + 4.0 + 8.0
-    assert ledger.state(30.0)[:3] == [2.0, 4.0, 0.0]
-    assert ledger.state(42.0)[:3] == [2.0, 2.0, 0.0]
-    # The job runs before the switching (J = 3): A2 = 0.5 * 10 = 5. The crews do A2 from 10 to 12 (3 left),
-    # so c(12) = 0 and A1 = 5. They stop until 40, then do A2 (3), A1 (5) and all the work (10).
-    ledger = Ledger({**base, 'job_h': 3.0})
-    assert ledger.job_phase == 'before switching'
-    assert ledger.full == 40.0 + 3.0 + 5.0 + 10.0
-    assert ledger.state(11.0)[2] == pytest.approx(4.0)
-    # The job runs while the crews work (the stop at 11 comes before S + R, so there is no change): c(14) = 4,
-    # A2 = 0.5 * 6 = 3, and the crews do A2 and then the last 6.
-    ledger = Ledger({**base, 'removal_h': 11.0, 'job_h': 14.0, 'cleanup_h': 5.0})
-    assert not ledger.changed
-    assert ledger.job_phase == 'while working'
-    assert ledger.full == 14.0 + 3.0 + 6.0
-    assert ledger.report(15.0)['job.remaining'] == pytest.approx(2.0)
-    # The job runs while the crews are stopped (J = 20): c(20) = 2, so A2 = 4. After the stop at 40 the crews
-    # do A2 (4), A1 (4) and the last 8.
-    ledger = Ledger({**base, 'job_h': 20.0, 'cleanup_h': 30.0})
-    assert ledger.job_phase == 'while stopped'
-    assert ledger.full == 40.0 + 4.0 + 4.0 + 8.0
-    final = ledger.report(1000.0)
-    # The cost counts every hour of crew work: 10 initial, 4 + 4 rework, at 10 * 100 * 2 per hour.
-    assert final['crews.restoration_cost'] == pytest.approx(18.0 * 10 * 100 * 2 / 1e9)
-    # Service is 0 until 10, 0.2 from 12 to 48 (two hours of work done), then rises to 1 at 56, so the deficit
-    # is 10 + 2 * 0.9 + 36 * 0.8 + 8 * 0.4 = 43.8 hours.
-    assert final['supply.resident_hours'] == pytest.approx(1000.0 * 43.8)
-    assert final['outstanding_work'] == 0.0
-
-
-@pytest.mark.parametrize('case', LEDGER_CASES)
-def test_restoration_ledger(case):
-    overrides, changed, job = LEDGER_CASES[case]
-    study, p = ledger_study(overrides)
+@pytest.mark.parametrize(
+    'edits',
+    [
+        {},
+        HOLD,
+        EXTRA,
+        {**HOLD, **EXTRA},
+        {**EXTRA, 'extra.recorded_at': 37},
+        {**HOLD, 'incident.hold_at': 0},
+        {**HOLD, **EXTRA, 'incident.hold_at': 30, 'extra.recorded_at': 32},
+    ],
+)
+def test_restoration_ledger_and_interruption_cost(edits):
+    record, p = solve(RUN, {'set': {**LEDGER_BASE, **edits}})
     ledger = Ledger(p)
-    # The case is what its name says.
-    assert (ledger.changed, ledger.job_phase) == (changed, job)
-    values, trace = observe(study, RUN, ledger_times(ledger))
-    for key, rule, moment in (
-        ('start', 'crews.repairs_start', ledger.start),
-        ('complete', 'crews.repairs_complete', ledger.full),
-        ('back', 'supply.come_back', ledger.full),
-    ):
-        assert [e['t'] for e in trace if e['rule'] == rule] == [pytest.approx(moment, rel=1e-9, abs=1e-9)], (
-            key
-        )
-    for t, row in values.items():
-        for key, expected in ledger.report(t).items():
-            assert agrees(row[key], expected, LEDGER_FLOOR[key]), (case, t, key)
-
-
-# --- 2. Interruption costs ---------------------------------------------------------------------------------
-
-COST_ONLY_CASES = {
-    # Switching starts at the latest allowed time: the customers wait the longest.
-    'ramp_from_latest_start': {'ai.obeys': True, 'utility.check_time': 72},
-    # The earliest start and the shortest work: a short, early ramp.
-    'earliest_start_short_ramp': {'ai.obeys': True, 'utility.check_time': 6, 'crews.work': 6},
-    # The longest work: customers come back over the longest span.
-    'long_ramp': {'ai.obeys': True, 'utility.check_time': 40, 'crews.work': 30},
-}
-COST_CASES = {**{name: case[0] for name, case in LEDGER_CASES.items()}, **COST_ONLY_CASES}
-
-
-def cost_times(ledger):
-    """The first hours (the cost curve has a corner at 2 hours), then the timeline."""
-    return sorted(set(ledger_times(ledger)) | {1.0, 2.0, 3.0, 6.0})
-
-
-@pytest.mark.parametrize('case', COST_CASES)
-def test_interruption_costs_follow_each_customers_own_outage_duration(case):
-    study, p = ledger_study(COST_CASES[case])
-    ledger = Ledger(p)
-    values, _trace = observe(study, RUN, cost_times(ledger))
-    for t, row in values.items():
-        for key, expected in interruption_costs(p, ledger.profile, t).items():
-            assert agrees(row[key], expected, COST_FLOOR), (case, t, key)
+    times = sorted({0, 1, 8, 10, 15, 24, 25, 28, 37, 70, 1800, *ledger.marks()})
+    names = {**ledger.report(0), **interruption_costs(p, ledger.profile, 0), 'supply.share_restored': 0}
+    actual = readings(record, names, times)
+    for i, t in enumerate(times):
+        expected = {
+            **ledger.report(t),
+            **interruption_costs(p, ledger.profile, t),
+            'supply.share_restored': ledger.service(t),
+        }
+        for name, v in expected.items():
+            assert agrees(actual[name][i], v, LEDGER_FLOOR.get(name, COST_FLOOR)), (t, name)
+    assert [event.t for event in record.entries('fire') if event.part == 'crews.repairs_start.when[0]'] == [
+        ledger.start
+    ]
+    assert [event.t for event in record.entries('start') if event.part == 'crews.repairs_complete'] == [
+        ledger.full
+    ]
 
 
 def test_cost_integral_agrees_with_quadrature_of_the_cost_curve():
@@ -472,11 +279,7 @@ def test_numerical_oracle_matches_closed_form(case):
 # Switching starts at 7 hours; the heat wave lasts 100. Each case restores everything inside the heat wave
 # and bends the return of power differently.
 PARTIAL_BASE = {**LEDGER_BASE, 'utility.check_time': 6, 'heat_wave.length': 100}
-PARTIAL_CASES = {
-    'obeys_without_change': {'ai.obeys': True},
-    'refuses_with_change': {},
-    'job_before_switching_and_change': {'job.run_time': 3},
-}
+PARTIAL_CASES = {'uninterrupted': {}, 'inspection_hold': HOLD, 'queued_inspection': EXTRA}
 PARTIAL_TIMES = [1.0, 5.0, 7.5, 15.0, 30.0, 59.0, 70.0, 80.0, 99.0, 101.0, 200.0]
 
 
@@ -539,7 +342,6 @@ def private(share):
 NO_HEAT_CASES = {
     'move_before_switching': (
         {
-            'ai.obeys': True,
             'utility.check_time': 72,
             'outreach.start_time': 40,
             'moves.start_time': 4,
@@ -550,7 +352,6 @@ NO_HEAT_CASES = {
     ),
     'window_open_when_power_returns': (
         {
-            'ai.obeys': True,
             'utility.check_time': 6,
             'crews.work': 6,
             'moves.start_time': 4,
@@ -563,6 +364,7 @@ NO_HEAT_CASES = {
     ),
     'window_open_when_the_heat_ends': (
         {
+            'utility.check_time': 72,
             'moves.start_time': 4,
             'moves.end_time': 100,
             'heat_wave.length': 48,
@@ -572,25 +374,8 @@ NO_HEAT_CASES = {
         'heat',
         'after',
     ),
-    'change_and_job_rework': (
-        {
-            'contractor.removal_time': 120,
-            'job.run_time': 60,
-            'moves.start_time': 10,
-            'moves.end_time': 90,
-            'heat_wave.length': 200,
-            'outreach.start_time': 60,
-            'outreach.reach': 0.8,
-            'devices.battery_hours': 6,
-            'devices.alternative_share': 0.4,
-            **private(0.7),
-        },
-        'end',
-        'during',
-    ),
     'outreach_after_restoration': (
         {
-            'ai.obeys': True,
             'utility.check_time': 6,
             'crews.work': 6,
             'moves.start_time': 4,
@@ -602,7 +387,6 @@ NO_HEAT_CASES = {
     ),
     'move_before_battery_ends': (
         {
-            'ai.obeys': True,
             'utility.check_time': 72,
             'outreach.start_time': 1,
             'devices.battery_hours': 12,
@@ -648,23 +432,23 @@ def test_device_admissions_moves_and_exposure_without_heat_match_closed_forms(ca
 ALL_TIMES = [0.5, 2.0, 5.0, 10.0, 24.0, 28.0, 36.0, 48.0, 72.0, 100.0, 120.0, 150.0, 200.0, 400.0]
 SHARES_HALF = {f'residents_{age}.private_share': 0.5 for age in AGES}
 ALL_CASES = {
-    'default_delayed_refuses': ('delayed_refuses', {}),
-    'default_standard_obeys': ('standard_obeys', {}),
-    'power_back_inside_heat_wave': ('standard_refuses', {'utility.check_time': 6, 'heat_wave.length': 100}),
-    'job_and_change_inside_heat_wave': (
-        'delayed_refuses',
-        {'utility.check_time': 6, 'heat_wave.length': 100},
+    'default': ('standard', {}),
+    'early_outreach': ('early_cooling', {}),
+    'power_back_inside_heat_wave': ('standard', {'utility.check_time': 6, 'heat_wave.length': 100}),
+    'inspection_and_extra_work_inside_heat_wave': (
+        'standard',
+        {'utility.check_time': 6, 'heat_wave.length': 100, **HOLD, **EXTRA},
     ),
     'window_open_when_the_heat_ends': (
-        'standard_refuses',
+        'standard',
         {'moves.end_time': 100, 'heat_wave.length': 48, **SHARES_HALF},
     ),
     'window_open_when_power_returns': (
-        'early_obeys',
+        'early_cooling',
         {'utility.check_time': 6, 'crews.work': 6, 'moves.end_time': 40, **SHARES_HALF},
     ),
     'outreach_before_battery_ends': (
-        'delayed_refuses',
+        'standard',
         {
             'outreach.start_time': 1,
             'devices.battery_hours': 12,
@@ -673,16 +457,16 @@ ALL_CASES = {
         },
     ),
     'more_device_users_late_outreach': (
-        'delayed_refuses',
+        'standard',
         {
             'outreach.start_time': 96,
             'devices.ventilator_admission': 0.08,
             **{f'{group}.device_share': 0.1 for group in GROUPS},
         },
     ),
-    'thresholds_crossed_during_the_rise': ('delayed_refuses', {'heat_wave.outdoor': 30, 'heat_wave.cap': 60}),
+    'thresholds_crossed_during_the_rise': ('standard', {'heat_wave.outdoor': 30, 'heat_wave.cap': 60}),
     'weighted_curves_and_other_warming': (
-        'delayed_refuses',
+        'standard',
         {
             'heat_wave.gasparrini_weight': 0.4,
             'heat_wave.bobb_weight': 0.3,
@@ -695,12 +479,12 @@ ALL_CASES = {
         },
     ),
     'cap_not_reached': (
-        'delayed_refuses',
+        'standard',
         {'homes.iet_off_mean': 29, 'compound_buildings.iet_off_mean': 28, 'heat_wave.cap': 72},
     ),
     # The people per visit is 1 by default, which would hide a wrong factor of it.
     'other_hospital_and_visit_parameters': (
-        'delayed_refuses',
+        'standard',
         {
             'hospitals.heatstroke_share': 0.08,
             'hospitals.people_per_visit': 0.5,
@@ -712,11 +496,11 @@ ALL_CASES = {
         },
     ),
     'largest_population': (
-        'delayed_refuses',
+        'standard',
         {'supply.people_served': 120000, 'compound.held': 20000, 'heat_wave.length': 240},
     ),
     'all_backup': (
-        'standard_refuses',
+        'standard',
         {
             **{f'residents_{age}.backup_share': 1 for age in AGES},
             **{f'confined_{age}.backup_share': 1 for age in AGES},
@@ -742,7 +526,7 @@ def test_all_mechanisms_match_the_oracle(case):
 def test_oracle_accounts_for_every_person():
     # Each pool's people at home, dead, admitted, moved and gone add up to the pool's size, although the
     # deaths are integrated separately from the survivors.
-    _study, p = solve('delayed_refuses', {'set': {}})
+    _study, p = solve('standard', {'set': {}})
     world = Blackout(p, 400.0)
     for t in (3.0, 30.0, 100.0, 400.0):
         for pool, gap in world.conservation(t).items():
@@ -750,8 +534,8 @@ def test_oracle_accounts_for_every_person():
 
 
 def test_cumulative_hazards_agree_with_adaptive_quadrature():
-    # The Chebyshev antiderivatives in the oracle against quad on the same rates, in a run with a stop and a job.
-    _study, p = solve(RUN, {'set': {**LEDGER_BASE, 'contractor.removal_time': 120, 'job.run_time': 60}})
+    # The Chebyshev antiderivatives in the oracle against quad on the same rates, in a run with a hold and extra work.
+    _study, p = solve(RUN, {'set': {**LEDGER_BASE, **HOLD, **EXTRA}})
     world = Blackout(p, 300.0)
     for building, band in (('homes', 'under_65'), ('homes', '75'), ('compound', '65_74')):
         cumulative = world.death_cum(building, band)

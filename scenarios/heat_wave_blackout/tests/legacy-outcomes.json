@@ -1,0 +1,41 @@
+{
+  "early_cooling": {
+    "deaths": 34.0122,
+    "casualties": 63.1352,
+    "late_deaths": 0.815444,
+    "device_admissions": 15.9787,
+    "places.admissions": 0.0,
+    "economic_loss": 0.0517975,
+    "crews.restoration_cost": 5.4996e-05,
+    "supply.resident_hours": 1950000.0,
+    "thermal_exposure": 1678250.0,
+    "supply.share_restored": 1.0,
+    "outstanding_work": 0.0
+  },
+  "standard": {
+    "deaths": 34.0465,
+    "casualties": 63.1767,
+    "late_deaths": 0.815646,
+    "device_admissions": 23.5491,
+    "places.admissions": 0.0,
+    "economic_loss": 0.0517981,
+    "crews.restoration_cost": 5.4996e-05,
+    "supply.resident_hours": 1950000.0,
+    "thermal_exposure": 1679730.0,
+    "supply.share_restored": 1.0,
+    "outstanding_work": 0.0
+  },
+  "powered_places": {
+    "deaths": 33.2256,
+    "casualties": 61.6518,
+    "late_deaths": 0.795932,
+    "device_admissions": 15.9787,
+    "places.admissions": 1200.0,
+    "economic_loss": 0.0518199,
+    "crews.restoration_cost": 5.4996e-05,
+    "supply.resident_hours": 1950000.0,
+    "thermal_exposure": 1644420.0,
+    "supply.share_restored": 1.0,
+    "outstanding_work": 0.0
+  }
+}

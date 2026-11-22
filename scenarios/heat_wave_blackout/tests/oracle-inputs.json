@@ -34,9 +34,6 @@
       "check_h": {
         "heat_wave_blackout": "utility.check_time"
       },
-      "cleanup_h": {
-        "heat_wave_blackout": "contractor.cleanup_time"
-      },
       "conc_factor": {
         "heat_wave_blackout": "devices.concentrator_factor"
       },
@@ -172,9 +169,6 @@
       "iet_on_homes": {
         "heat_wave_blackout": "homes.iet_on"
       },
-      "job_h": {
-        "heat_wave_blackout": "job.run_time"
-      },
       "late_fatality": {
         "heat_wave_blackout": "hospitals.late_fatality"
       },
@@ -186,15 +180,6 @@
       },
       "moves_start_h": {
         "heat_wave_blackout": "moves.start_time"
-      },
-      "obeys": {
-        "heat_wave_blackout": "ai.obeys"
-      },
-      "order_delay_h": {
-        "heat_wave_blackout": "contractor.order_delay"
-      },
-      "order_transit_h": {
-        "heat_wave_blackout": "contractor.order_transit"
       },
       "outdoor_c": {
         "heat_wave_blackout": "heat_wave.outdoor"
@@ -238,18 +223,6 @@
       "reach": {
         "heat_wave_blackout": "outreach.reach"
       },
-      "react_h": {
-        "heat_wave_blackout": "ai.reaction_time"
-      },
-      "removal_h": {
-        "heat_wave_blackout": "contractor.removal_time"
-      },
-      "review_h": {
-        "heat_wave_blackout": "contractor.review_time"
-      },
-      "rework_share": {
-        "heat_wave_blackout": "ai.rework_share"
-      },
       "severe_share": {
         "heat_wave_blackout": "hospitals.severe_share"
       },
@@ -288,6 +261,27 @@
       },
       "work_h": {
         "heat_wave_blackout": "crews.work"
+      },
+      "hold": {
+        "heat_wave_blackout": "incident.hold"
+      },
+      "hold_at": {
+        "heat_wave_blackout": "incident.hold_at"
+      },
+      "hold_duration": {
+        "heat_wave_blackout": "incident.hold_duration"
+      },
+      "repeat_work": {
+        "heat_wave_blackout": "incident.repeat_work"
+      },
+      "extra": {
+        "heat_wave_blackout": "extra.recorded"
+      },
+      "extra_at": {
+        "heat_wave_blackout": "extra.recorded_at"
+      },
+      "extra_work": {
+        "heat_wave_blackout": "extra.hours"
       }
     },
     "other_names": []

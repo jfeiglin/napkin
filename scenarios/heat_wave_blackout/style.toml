@@ -1,17 +1,14 @@
-# The columns follow the story. First, who starts it and what the AI changes. Then the supply, the help
-# and the conditions that reach people. Then the people, where they go, and the cost to customers.
+# The map follows the observed outage, the utility response and access to cooling.
 [layout]
 stocks = 3
 cards_per_column = 9                     # the nine groups of people stay in one column
 card_width = 180                         # room for the title "Compound buildings"
 
 [place]
-contractor               = { column = 1, row = 1 }
-ai                       = { column = 1, row = 2 }
+incident = { column = 1, row = 1 }
+extra = { column = 2, row = 1 }
 heat_wave                = { column = 1, row = 3 }
-job                      = { column = 2, row = 1 }
 crews                    = { column = 2, row = 2 }
-grid                     = { column = 2, row = 3 }
 utility                  = { column = 2, row = 4 }
 supply                   = { column = 3 }
 compound                 = { column = 4, row = 1 }
@@ -49,23 +46,29 @@ bundle = ["reads", "follows", "fires"]   # places and outreach fire the events o
 
 [icon]
 sun    = ["heat_wave"]
-people = ["contractor"]
 house  = ["Buildings", "places", "compound"]
-bolt   = ["grid", "supply", "devices"]
+bolt   = ["supply", "devices"]
 shield = ["utility"]
-server = ["job"]
 wrench = ["crews"]
 truck  = ["moves"]
 money  = ["Customers"]
 
+# Who plays each thing: the old model's `role` lines (PLAN.md, change 23 after G0).
+[role]
+environment = ["heat_wave", "Buildings", "supply", "devices", "incident", "extra"]
+community = ["AgeBand", "moves", "Customers", "Residents", "DeviceUsers", "Confined"]
+utility = ["crews", "utility"]
+responder = ["places", "compound", "outreach"]
+clinician = ["hospitals"]
+
 [triggers]
-rules = ["ai", "supply"]
+rules = ["supply"]
 lines = 3
-names = ["contractor", "utility", "crews", "job", "outreach", "Residents", "DeviceUsers", "Confined"]
+names = ["utility", "crews", "outreach", "Residents", "DeviceUsers", "Confined"]
 count = ["heat_wave", "places", "moves", "compound", "devices"]
 
 [equations]
-things = ["crews", "supply", "job"]
+things = ["crews", "supply"]
 width = 1000
 
 [references]
@@ -82,9 +85,3 @@ work          = "w_cr"
 [symbol.supply]
 service             = "sigma_s"
 hours_without_power = "H_s"
-
-[symbol.job]
-work_left = "W_j"
-
-[symbol.ai]
-rework_share = "rho_a"

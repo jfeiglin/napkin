@@ -1,22 +1,15 @@
 show = ["deaths", "casualties", "late_deaths", "economic_loss", "supply.resident_hours", "thermal_exposure",
     "device_admissions", "places.admissions", "outstanding_work"]
 # The inputs that the brief lists.
-drivers = ["supply.people_served", "compound.held", "heat_wave.outdoor", "heat_wave.cap", "homes.slope",
-    "homes.heat_up_time", "contractor.review_time", "ai.obeys", "contractor.removal_time",
-    "utility.check_time", "crews.work", "ai.rework_share", "job.run_time"]
-featured = ["delayed_refuses", "delayed_obeys"]
-# The name of the attack on the pages, and the group of options that holds the responses of the
-# defenders.
-attack = "unauthorized interruption of a shared electricity supply by an authorized disruption operation"
-choice_group = "Response"
-
-# The rows of the run table after the runs: each sweep runs one run with other values of some
-# inputs (`set`, by the names that edits give them, in the units of the inputs).
+drivers = ["supply.people_served", "places.powered_share", "places.start_delay", "outreach.start_time",
+    "utility.check_time", "crews.work", "heat_wave.length"]
+featured = ["standard", "early_cooling"]
+choice_group = "Cooling response"
 
 [[sweep]]
 id = "backup_0_private_0"
 description = "Backup cooling for 0% of each group, private moves for 0% of the people in homes without backup"
-run = "delayed_refuses"
+run = "standard"
 [sweep.set]
 "residents_under_65.backup_share" = 0
 "residents_65_to_74.backup_share" = 0
@@ -31,7 +24,7 @@ run = "delayed_refuses"
 [[sweep]]
 id = "backup_0_private_10"
 description = "Backup cooling for 0% of each group, private moves for 10% of the people in homes without backup"
-run = "delayed_refuses"
+run = "standard"
 [sweep.set]
 "residents_under_65.backup_share" = 0
 "residents_65_to_74.backup_share" = 0
@@ -46,7 +39,7 @@ run = "delayed_refuses"
 [[sweep]]
 id = "backup_0_private_25"
 description = "Backup cooling for 0% of each group, private moves for 25% of the people in homes without backup"
-run = "delayed_refuses"
+run = "standard"
 [sweep.set]
 "residents_under_65.backup_share" = 0
 "residents_65_to_74.backup_share" = 0
@@ -61,7 +54,7 @@ run = "delayed_refuses"
 [[sweep]]
 id = "backup_10_private_0"
 description = "Backup cooling for 10% of each group, private moves for 0% of the people in homes without backup"
-run = "delayed_refuses"
+run = "standard"
 [sweep.set]
 "residents_under_65.backup_share" = 0.1
 "residents_65_to_74.backup_share" = 0.1
@@ -76,7 +69,7 @@ run = "delayed_refuses"
 [[sweep]]
 id = "backup_10_private_10"
 description = "Backup cooling for 10% of each group, private moves for 10% of the people in homes without backup"
-run = "delayed_refuses"
+run = "standard"
 [sweep.set]
 "residents_under_65.backup_share" = 0.1
 "residents_65_to_74.backup_share" = 0.1
@@ -91,7 +84,7 @@ run = "delayed_refuses"
 [[sweep]]
 id = "backup_10_private_25"
 description = "Backup cooling for 10% of each group, private moves for 25% of the people in homes without backup"
-run = "delayed_refuses"
+run = "standard"
 [sweep.set]
 "residents_under_65.backup_share" = 0.1
 "residents_65_to_74.backup_share" = 0.1
@@ -106,7 +99,7 @@ run = "delayed_refuses"
 [[sweep]]
 id = "backup_25_private_0"
 description = "Backup cooling for 25% of each group, private moves for 0% of the people in homes without backup"
-run = "delayed_refuses"
+run = "standard"
 [sweep.set]
 "residents_under_65.backup_share" = 0.25
 "residents_65_to_74.backup_share" = 0.25
@@ -121,7 +114,7 @@ run = "delayed_refuses"
 [[sweep]]
 id = "backup_25_private_10"
 description = "Backup cooling for 25% of each group, private moves for 10% of the people in homes without backup"
-run = "delayed_refuses"
+run = "standard"
 [sweep.set]
 "residents_under_65.backup_share" = 0.25
 "residents_65_to_74.backup_share" = 0.25
@@ -136,7 +129,7 @@ run = "delayed_refuses"
 [[sweep]]
 id = "backup_25_private_25"
 description = "Backup cooling for 25% of each group, private moves for 25% of the people in homes without backup"
-run = "delayed_refuses"
+run = "standard"
 [sweep.set]
 "residents_under_65.backup_share" = 0.25
 "residents_65_to_74.backup_share" = 0.25
@@ -151,7 +144,7 @@ run = "delayed_refuses"
 [[sweep]]
 id = "backup_50_private_0"
 description = "Backup cooling for 50% of each group, private moves for 0% of the people in homes without backup"
-run = "delayed_refuses"
+run = "standard"
 [sweep.set]
 "residents_under_65.backup_share" = 0.5
 "residents_65_to_74.backup_share" = 0.5
@@ -166,7 +159,7 @@ run = "delayed_refuses"
 [[sweep]]
 id = "backup_50_private_10"
 description = "Backup cooling for 50% of each group, private moves for 10% of the people in homes without backup"
-run = "delayed_refuses"
+run = "standard"
 [sweep.set]
 "residents_under_65.backup_share" = 0.5
 "residents_65_to_74.backup_share" = 0.5
@@ -181,7 +174,7 @@ run = "delayed_refuses"
 [[sweep]]
 id = "backup_50_private_25"
 description = "Backup cooling for 50% of each group, private moves for 25% of the people in homes without backup"
-run = "delayed_refuses"
+run = "standard"
 [sweep.set]
 "residents_under_65.backup_share" = 0.5
 "residents_65_to_74.backup_share" = 0.5
@@ -196,7 +189,7 @@ run = "delayed_refuses"
 [[sweep]]
 id = "all_cause_equal"
 description = "All-cause deaths from the four all-cause curves with equal weights"
-run = "delayed_refuses"
+run = "standard"
 [sweep.set]
 "heat_wave.gasparrini_weight" = 0.25
 "heat_wave.bobb_weight" = 0.25
@@ -206,7 +199,7 @@ run = "delayed_refuses"
 [[sweep]]
 id = "all_cause_bobb"
 description = "All-cause deaths from the Bobb et al. all-cause curve alone"
-run = "delayed_refuses"
+run = "standard"
 [sweep.set]
 "heat_wave.gasparrini_weight" = 0.0
 "heat_wave.bobb_weight" = 1.0
@@ -216,7 +209,7 @@ run = "delayed_refuses"
 [[sweep]]
 id = "all_cause_nordio"
 description = "All-cause deaths from the Nordio et al. all-cause curve alone"
-run = "delayed_refuses"
+run = "standard"
 [sweep.set]
 "heat_wave.gasparrini_weight" = 0.0
 "heat_wave.bobb_weight" = 0.0
@@ -226,7 +219,7 @@ run = "delayed_refuses"
 [[sweep]]
 id = "all_cause_schwartz"
 description = "All-cause deaths from the Schwartz et al. all-cause curve alone"
-run = "delayed_refuses"
+run = "standard"
 [sweep.set]
 "heat_wave.gasparrini_weight" = 0.0
 "heat_wave.bobb_weight" = 0.0
@@ -236,41 +229,41 @@ run = "delayed_refuses"
 [[sweep]]
 id = "heat_related_cap_72"
 description = "Heat-related deaths capped at 72 °C, the cap of the earlier code"
-run = "delayed_refuses"
+run = "standard"
 set = {"heat_wave.cap" = 72}
 
 [[sweep]]
 id = "heat_related_slope_0_2"
 description = "Heat-related death curve rising 0.2 in the log risk ratio per degree"
-run = "delayed_refuses"
+run = "standard"
 set = {"heat_wave.heat_death_slope" = 0.2}
 
 [[sweep]]
 id = "heat_related_slope_0_6"
 description = "Heat-related death curve rising 0.6 in the log risk ratio per degree"
-run = "delayed_refuses"
+run = "standard"
 set = {"heat_wave.heat_death_slope" = 0.6}
 
 [[sweep]]
 id = "heat_wave_48"
 description = "A heat wave of 48 hours"
-run = "delayed_refuses"
+run = "standard"
 set = {"heat_wave.length" = 48}
 
 [[sweep]]
 id = "heat_wave_240"
 description = "A heat wave of 240 hours"
-run = "delayed_refuses"
+run = "standard"
 set = {"heat_wave.length" = 240}
 
 [[sweep]]
 id = "outdoor_minus_3"
 description = "Daily mean outdoor temperature 3 °C lower"
-run = "delayed_refuses"
+run = "standard"
 set = {"heat_wave.outdoor" = 36.35}
 
 [[sweep]]
 id = "outdoor_plus_3"
 description = "Daily mean outdoor temperature 3 °C higher"
-run = "delayed_refuses"
+run = "standard"
 set = {"heat_wave.outdoor" = 42.35}
