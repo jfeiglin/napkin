@@ -1,7 +1,7 @@
 """The branches and keyed rows of a smooth segment. The arithmetic on them still moves."""
 
 from ...core import expr as nodes
-from ..continuous.integrate import branch_expression, departing_branches
+from ..continuous.integrate import branch_expression, comparison_side, departing_branches
 
 
 class Region:
@@ -14,54 +14,54 @@ class Region:
         self.surfaces = tuple(dict.fromkeys((*surfaces, *keys)))
         self.set({}, {})
 
-    def selected_rows(self, run, signs, operand):
-        """The greatest eligible key of each lookup on this side; the later entry wins a tie."""
+    def _winners(self, run, signs, compare):
+        """Select the greatest eligible key in creation order. The later entry wins a tie."""
         rows = {}
-        for name, pairs in self.lookups.items():
-            eligible = [k for k in run.kept_of(name) if signs.get(pairs[k], -1) >= 0]
-            if eligible:
-                chosen = max(eligible, key=lambda k: (operand(pairs[k][1]), k))
-                rows[name] = run.plan.keyed[name].names[chosen]
-        return rows
-
-    def rank_members(self, run, signs, t, y, side_at, rates, places, moving, contacted):
-        """Keep the winner of each eligible pair, in creation order. These at most N-1
-        comparisons certify the largest key until an eligibility or ranking switch.
-        A located equality uses the same outgoing derivative as other physical operands."""
-        operand = side_at(t, y)
-        rows, ranks = {}, {}
-        self.rank_owners = {}
         for name, pairs in self.lookups.items():
             eligible = (k for k in run.kept_of(name) if signs.get(pairs[k], -1) >= 0)
             winner = next(eligible, None)
             if winner is None:
                 continue
             for challenger in eligible:
-                a, b = pairs[winner][1], pairs[challenger][1]
-                if a != b and (moving(a) or moving(b)):
-                    pair = a, b
-                    direction = departing_branches(
-                        (pair,),
-                        t,
-                        y,
-                        side_at,
-                        rates,
-                        places,
-                        moving,
-                        (pair,) if pair in contacted or run.consumed_in((pair,), t) else (),
-                        run.plan.units.comparisons,
-                    ).get(pair)
-                    if direction is None:
-                        continue
-                    ranks[pair] = direction
-                    self.rank_owners.setdefault(pair, []).append(name)
-                else:
-                    left, right = operand(a), operand(b)
-                    direction = int(left > right) - int(left < right)
-                if direction <= 0:
+                pair = pairs[winner][1], pairs[challenger][1]
+                direction = compare(name, pair)
+                if direction is not None and direction <= 0:
                     winner = challenger
             rows[name] = run.plan.keyed[name].names[winner]
-        return rows, ranks
+        return rows
+
+    def selected_rows(self, run, signs, operand):
+        return self._winners(
+            run, signs, lambda _, pair: comparison_side(pair, operand, run.plan.units.comparisons)
+        )
+
+    def rank_members(self, run, signs, t, y, side_at, rates, places, moving, contacted):
+        """Certify the selected row until its eligibility or its rank changes on this trajectory."""
+        operand = side_at(t, y)
+        ranks = {}
+        self.rank_owners = {}
+
+        def compare(name, pair):
+            a, b = pair
+            if a == b or not (moving(a) or moving(b)):
+                return comparison_side(pair, operand, run.plan.units.comparisons)
+            direction = departing_branches(
+                (pair,),
+                t,
+                y,
+                side_at,
+                rates,
+                places,
+                moving,
+                (pair,) if pair in contacted or run.consumed_in((pair,), t) else (),
+                run.plan.units.comparisons,
+            ).get(pair)
+            if direction is not None:
+                ranks[pair] = direction
+                self.rank_owners.setdefault(pair, []).append(name)
+            return direction
+
+        return self._winners(run, signs, compare), ranks
 
     def set(self, signs, rows):
         """Install the active branches and invalidate expressions selected for the previous segment."""

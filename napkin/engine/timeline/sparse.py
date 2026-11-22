@@ -1108,10 +1108,13 @@ class Sparse(MovingTransfers, Way):
                 at = self.run.triggers.switching_time(a, b, moving, sign, affine)
             else:
                 try:
-                    first = before(a) - before(b)
-                    exact = integrate.fixed_clock(pair, before, self.moves)
-                    if exact is None:
-                        exact = self._held_root(pair, first, solution, start, end, reader, ends)
+                    accepted = exact = None
+                    if sign:
+                        first = before(a) - before(b)
+                        accepted = first, after(a) - after(b)
+                        exact = integrate.fixed_clock(pair, before, self.moves)
+                        if exact is None:
+                            exact = self._held_root(pair, first, solution, start, end, reader, ends)
                     at = integrate.switch_time(
                         pair,
                         reader,
@@ -1119,13 +1122,15 @@ class Sparse(MovingTransfers, Way):
                         end,
                         self.plan.units,
                         sign,
-                        accepted=(first, after(a) - after(b)),
+                        accepted=accepted,
                         exact=exact,
                     )
                 except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
                     continue
             if at is not None and start < at <= end:
-                yield at, pair, 'switch'
+                # Leaving equality restarts the field at its actual state. Only a physical
+                # crossing may place a stock on its target or consume a clock contact.
+                yield at, pair, 'switch' if sign else 'band exit'
 
     def _held_root(self, pair, first, solution, start, end, reader, ends):
         """The crossing of a store with a fixed threshold when the store moves at one rate through

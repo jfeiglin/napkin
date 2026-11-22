@@ -10,7 +10,7 @@ from scipy.integrate import OdeSolution, Radau, solve_ivp
 from scipy.optimize import OptimizeResult, brentq
 
 from ...core import expr as nodes
-from ...core.comparisons import against
+from ...core.comparisons import against, band_from_floor_width
 from ...expressions import ExpressionError, compile_program, evaluate, names_in
 from ...program.config import Numerics
 from ..errors import SimulationError
@@ -35,12 +35,13 @@ class Root(NamedTuple):
     changes in `direction` (1 up, -1 down, 0 either way) where the segment ends. `target` is the
     (quantity index, value) that the state reaches at the root, if any."""
 
-    kind: str  # 'guard', 'release', 'bound', 'repayment' or 'surface'
+    kind: str  # 'guard', 'release', 'bound', 'repayment', 'surface' or 'band-exit'
     direction: int
     data: tuple
     target: tuple | None = None
     start: float | None = None  # a switch this segment has just departed
     fixed_time: float | None = None  # an authored clock contact has an exact time
+    band_pair: tuple | None = None  # authored operands before resolving nested field branches
 
 
 def root_value(system, environment, root, at, state):
@@ -57,6 +58,7 @@ def root_value(system, environment, root, at, state):
       on a bound left it there, so the start carries the sign of its interior.
     - repayment (cash, debt, floor): the cash less the debt and the floor.
     - surface (a, b): one side of a switching surface less the other.
+    - band-exit (a, b): negative while a held equality holds, positive after it ends.
     """
     s = system
     kind, direction, data = root.kind, root.direction, root.data
@@ -77,7 +79,13 @@ def root_value(system, environment, root, at, state):
         return state[cash] - state[debt] - floor
     a, b = data
     env = environment(at, state)
-    gap = float(evaluate(a, env, s.units)) - float(evaluate(b, env, s.units))
+
+    def read(node):
+        return evaluate(node, env, s.units)
+
+    if kind == 'band-exit':
+        return band_root(root, read, s.units.comparisons, (read(a), read(b)))
+    gap = float(read(a)) - float(read(b))
     if root.start is not None and (at == root.start or gap == 0):
         return -direction * np.finfo(float).tiny
     return gap
@@ -122,12 +130,16 @@ class Roots:
         # The expressions that the program computes: the value of each crossing rule, then both sides
         # of each switching surface.
         sources = [roots[k].data[1] for k in kinds.get('guard', [])]
-        sources += [side for k in kinds.get('surface', []) for side in roots[k].data]
+        for kind in ('surface', 'band-exit'):
+            sources.extend(side for k in kinds.get(kind, []) for side in roots[k].data)
         index = {source: n for n, source in enumerate(dict.fromkeys(sources))}
         self.guard_values = np.array([index[roots[k].data[1]] for k in kinds.get('guard', [])], dtype=int)
         self.left = np.array([index[roots[k].data[0]] for k in kinds.get('surface', [])], dtype=int)
         self.surface_starts = np.array([roots[k].start for k in kinds.get('surface', [])], dtype=float)
         self.right = np.array([index[roots[k].data[1]] for k in kinds.get('surface', [])], dtype=int)
+        self.band_operands = [
+            (k, *(index[node] for node in roots[k].data)) for k in kinds.get('band-exit', [])
+        ]
         # `values_program(sources)` gives `values(at, state)` without an environment (`Field`), when it
         # can be made; else the program reads an environment.
         self.direct = None
@@ -181,6 +193,19 @@ class Roots:
                 gaps = computed[self.left] - computed[self.right]
                 leaving = np.isfinite(self.surface_starts) & ((at == self.surface_starts) | (gaps == 0))
                 out[rows] = np.where(leaving, -self.direction[rows] * np.finfo(float).tiny, gaps)
+            if self.band_operands:
+                env = None
+
+                def read(node):
+                    nonlocal env
+                    if env is None:
+                        env = self.environment(at, state)
+                    return evaluate(node, env, s.units)
+
+                for k, left, right in self.band_operands:
+                    out[k] = band_root(
+                        self.roots[k], read, s.units.comparisons, (computed[left], computed[right])
+                    )
         if 'release' in kinds:
             out[kinds['release']] = (
                 self.release_signs * (state[self.release_rows] - self.release_limits) - self.release_twice
@@ -271,6 +296,8 @@ def locate(roots, k, solution, start, end, before, after):
     """Locate a component's already bracketed root using its accepted endpoint states."""
     target = roots.roots[k] if isinstance(roots, Roots) else None
     within = None
+    if target is not None and target.kind == 'band-exit':
+        return first_outside(lambda at: roots.value(k, at, solution(at)) > 0, start, end)
     if target is not None and target.kind == 'surface':
         pair, units = target.data, roots.system.units
 
@@ -289,16 +316,45 @@ def locate(roots, k, solution, start, end, before, after):
     )
 
 
+def comparison_side(pair, read, comparisons, values=None):
+    """The comparison sign on either open side, or zero in the closed equality band."""
+    a, b = values if values is not None else (read(node) for node in pair)
+    gap, band = comparisons.gap_band(*pair, a, b, read)
+    if against('eq', gap, band):
+        return 0
+    return 1 if gap > 0 else -1
+
+
+def band_root(root, read, comparisons, values):
+    side = comparison_side(root.band_pair or root.data, read, comparisons, values)
+    return 1.0 if side else -1.0
+
+
+def first_outside(outside, start, end):
+    """The first representable time outside the band in a bracket with an inside start."""
+    while (mid := start + 0.5 * (end - start)) not in (start, end):
+        if outside(mid):
+            end = mid
+        else:
+            start = mid
+    return end
+
+
 def switch_time(pair, reader, start, end, units, side, *, accepted=None, exact=None):
-    """Locate an armed comparison of two operands on this trajectory, in their own band."""
+    """Locate departure from held equality or a physical return from the selected open side."""
+    if side == 0:
+
+        def outside(t):
+            return comparison_side(pair, reader(t), units.comparisons) != 0
+
+        if not outside(end) or outside(start):
+            return None
+        return first_outside(outside, start, end)
 
     def gap(t):
         read = reader(t)
         return read(pair[0]) - read(pair[1])
 
-    if not side:
-        first = accepted[0] if accepted is not None else gap(start)
-        side = int(first > 0) - int(first < 0)
     return crossing_time(
         gap, start, end, side=side, accepted=accepted, exact=exact, within=contact_band(pair, reader, units)
     )
@@ -763,18 +819,21 @@ def flow_switches(settings, formulas, moving):
     return owners
 
 
-def branch_sides(surfaces, side):
-    """The sign of each readable pair of operands. An undefined side in an untaken branch
-    leaves its expression alone, so an evaluation still fails at the place that reads it."""
-    signs = {}
-    for a, b in surfaces:
+def branch_sides(surfaces, side, comparisons):
+    """Classify readable operands in their band, retaining equal-band values for the departure probe.
+    An undefined side in an untaken branch leaves its expression alone."""
+    signs, equal = {}, {}
+    for pair in surfaces:
         try:
-            left, right = side(a), side(b)
+            left, right = side(pair[0]), side(pair[1])
+            if math.isfinite(left) and math.isfinite(right):
+                sign = comparison_side(pair, side, comparisons, (left, right))
+                signs[pair] = sign
+                if not sign:
+                    equal[pair] = left, right
         except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
             continue
-        if math.isfinite(left) and math.isfinite(right):
-            signs[(a, b)] = int(left > right) - int(left < right)
-    return signs
+    return signs, equal
 
 
 def curved_motion(t, y, h, drift, rates, side_at, place):
@@ -808,24 +867,18 @@ def curved_motion(t, y, h, drift, rates, side_at, place):
     return motion
 
 
-def departing_branches(surfaces, t, y, side_at, rates, place, moving, contacted=(), comparisons=None):
+def departing_branches(surfaces, t, y, side_at, rates, place, moving, contacted, comparisons):
     """Select the sides a segment leaves on, including comparisons between two moving expressions.
     At a contact their equal values alone cannot pick a side. Compare their values along the
     outgoing trajectory; arithmetic outside the condition continues to read the actual state."""
     if not surfaces:
         return {}
     side = side_at(t, y)
-    signs = branch_sides(surfaces, side)
-    ties = set(contacted) | {pair for pair, sign in signs.items() if sign == 0}
-    near = set()
-    if comparisons is not None:
-        for a, b in signs.keys() - ties:
-            left, right = side(a), side(b)
-            if comparisons.ordered('eq', a, b, left, right, side):
-                near.add((a, b))
-    if ties or near:
-        # The comparison can involve large nearly equal terms. A probe that moves the state
-        # by more than last-bit noise measures the relative motion of both actual operands.
+    signs, equal = branch_sides(surfaces, side, comparisons)
+    contacts = {
+        pair: values for pair, values in equal.items() if t or values[0] == values[1] or pair in contacted
+    }
+    if contacts:
         h = math.sqrt(np.finfo(float).eps) * max(1.0, abs(t))
         drift = rates(t, y)
         probe = y + h * drift
@@ -839,22 +892,41 @@ def departing_branches(surfaces, t, y, side_at, rates, place, moving, contacted=
                 and not moving(other)
             )
 
-        for a, b in signs.keys() & (ties | near):
+        for (a, b), (left, right) in contacts.items():
             try:
-                left, right = side(a), side(b)
-                if comparisons is not None and comparisons.ordered('ne', a, b, left, right, side):
-                    continue  # an edit can move the operands away from the located contact
+                if left != right and (a, b) not in contacted:
+                    # An interpolated inventory at a scheduled cut can miss a physical
+                    # tangency by a few ulps. Require an actual equality on the local
+                    # trajectory at a neighbouring clock float. A nonzero gap elsewhere
+                    # inside the band stays held until its band-exit root.
+                    def touches(toward):
+                        at = t
+                        for _ in range(8):
+                            at = math.nextafter(at, toward)
+                            read = side_at(at, y + (at - t) * drift)
+                            if read(a) == read(b):
+                                return True
+                        return False
+
+                    if not (touches(math.inf) or touches(0.0)):
+                        continue
                 change = (following(a) - left) - (following(b) - right)
                 if change == 0 or not (directed(a, b) or directed(b, a)):
                     if motion is None:
                         motion = curved_motion(t, y, h, drift, rates, side_at, place)
-                    change = motion(a, left) - motion(b, right)
+                    da, db = motion(a, left), motion(b, right)
+                    change = da - db
+                    if moving(a) and moving(b):
+                        # A stock has a directly integrated increment. A formula subtracts
+                        # two rounded coordinates to obtain the same increment. Allow the
+                        # rounding of those coordinates and of the two integrated changes.
+                        error = math.ulp(left) + math.ulp(right) + math.ulp(left + da) + math.ulp(right + db)
+                        error += Numerics.rtol * (abs(da) + abs(db))
+                        if abs(change) <= error:
+                            change = 0
             except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
                 continue
-            # A moving face inside the amount band but not at a located root is
-            # still on its physical side. An unrelated cut cannot cross it.
-            if (a, b) not in near or change == 0:
-                signs[a, b] = int(change > 0) - int(change < 0)
+            signs[a, b] = int(change > 0) - int(change < 0)
     return signs
 
 
@@ -869,9 +941,9 @@ def branch_expression(source, signs):
         parts = []
         for left, op, right in zip(node.operands, node.ops, node.operands[1:]):
             sign = signs.get((left, right))
-            # With no measured departure the native comparison holds its value
-            # at rest and continues to follow the actual trial state.
-            if not sign or op in ('eq', 'ne'):
+            # An armed equality holds its ordered comparisons on the entire smooth
+            # segment, including trial states perturbed for the numerical Jacobian.
+            if sign is None or op in ('eq', 'ne'):
                 parts.append(nodes.compare([op], [changed[left], changed[right]]))
             else:
                 parts.append(
@@ -992,10 +1064,15 @@ def switching_roots(system, side, repayment_surfaces, at, state, signs=None, con
         direction, start = 0, None
         if not math.isfinite(gap):
             continue
-        if gap == 0 or (a, b) in contacted:
-            at_switch.append((a, b))
-            sign = (signs or {}).get((a, b))
-            if not sign:
+        pair = a, b
+        side_now = comparison_side(pair, side, s.units.comparisons, (left, right))
+        if not side_now or pair in contacted:
+            at_switch.append(pair)
+            sign = (signs or {}).get(pair)
+            if sign == 0 and not side_now:
+                roots.append(Root('band-exit', 1, pair, band_pair=pair))
+                continue
+            if sign is None:
                 continue
             # A later return to the same switch ends this segment too. While the operands
             # remain equal, give the root its departure sign to avoid a second event at rest.
@@ -1188,7 +1265,11 @@ def far_sides(
         if low <= departure[i] <= high:
             departure[i] = beyond
     reached = set(contacted) | clock_branches.keys()
-    reached.update(pair for pair, sign in branch_sides(surfaces, side).items() if not sign)
+    if switches:
+        # Retain physical contacts at the unperturbed state when a fixed-stock probe
+        # moves its coordinate to the neighbouring float.
+        _, initial = branch_sides(surfaces, side, comparisons)
+        reached.update(pair for pair, (left, right) in initial.items() if left == right)
     # A jump across an enclosing min/max/if changes its winning operand without
     # crossing its incoming root. Read each layer with all inner departures installed.
     signs = dict(clock_branches)
@@ -1202,7 +1283,7 @@ def far_sides(
                     i, gap, order = band_edges[pair]
                     if physical_motion[i] * gap > 0:
                         found[pair] = order if gap > 0 else -order
-        signs = {**signs, **found}
+        signs = {**signs, **found, **clock_branches}
         choose(signs)
     return tuple(switches), clock, signs, watched
 
@@ -1215,18 +1296,12 @@ def exits_of_held_comparisons(edges, factor, solution, start, end):
     initial, final = solution(start), solution(end)
     for row, target, floor in edges:
 
-        def inside(value, target=target, floor=floor):
-            return abs(value - target) <= max(floor, factor * max(abs(value), abs(target)))
+        def outside(value, target=target, floor=floor):
+            return abs(value - target) > band_from_floor_width(factor, floor, value, target)
 
-        if initial[row] == final[row] or not inside(initial[row]) or inside(final[row]):
+        if initial[row] == final[row] or outside(initial[row]) or not outside(final[row]):
             continue
-        low, high = start, end
-        while (middle := low + 0.5 * (high - low)) not in (low, high):
-            if inside(solution(middle)[row]):
-                low = middle
-            else:
-                high = middle
-        yield high, row
+        yield first_outside(lambda at: outside(solution(at)[row]), start, end), row
 
 
 def departing_ledgers(system, run, field, at_switch, env):
@@ -1415,7 +1490,7 @@ def numerical_segment(system, run, field, context, roots, descriptors, end, repa
         # Physical resolution complements adaptive error control.
         armed = roots + [
             root._replace(data=tuple(field.expression(node) for node in root.data))
-            if root.kind == 'surface'
+            if root.kind in ('surface', 'band-exit')
             else root
             for root in switches
         ]

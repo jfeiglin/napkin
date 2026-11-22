@@ -130,7 +130,7 @@ from ...core.errors import ExpressionError
 from ...program.record import Unavailable
 from ..continuous import dense
 from ..continuous.dense import Motion
-from ..continuous.integrate import crossing_time
+from ..continuous.integrate import crossing_time, switch_time
 from ..continuous.walk import walked
 from ..errors import SimulationError
 from .family import Family
@@ -772,43 +772,40 @@ class Triggers:
             )
 
     def switching_time(self, left, right, moving, outgoing, affine):
-        """The physical crossing of a rate's operands over the current store segments.
-        The band's width is zero and the departure side is the one the last sharing selected."""
+        """A held equality ends when it leaves its band. An open side ends on its physical return."""
         now = self.run.now
         until = self._window(moving)
         if until <= now:
             return None
-        start = self.side(left, now) - self.side(right, now)
-        if outgoing == 0:
-            outgoing = int(start > 0) - int(start < 0)
-            if outgoing == 0:
-                return None
+        pair, units = (left, right), self.plan.units
 
-        def gap(t):
-            return self.side(left, t) - self.side(right, t)
+        def reader(t):
+            return lambda node: self.side(node, t)
 
         if not affine:
             ways = {self._giver(name) for name in moving if name != 't'}
             breaks = sorted({at for way in ways if hasattr(way, 'breaks') for at in way.breaks(now, until)})
             for s, e in pairwise((now, *breaks, until)):
-                at = crossing_time(
-                    gap, s, e, side=outgoing, within=lambda t, d: self.within(left, right, t, d)
-                )
+                at = switch_time(pair, reader, s, e, units, outgoing)
                 if at is not None:
                     return at
             return None
         if self._linear(moving):
-            end = gap(until)
+            if outgoing == 0:
+                return switch_time(pair, reader, now, until, units, outgoing)
+            start = self.side(left, now) - self.side(right, now)
+            end = self.side(left, until) - self.side(right, until)
             if start == end:
                 return None
             exact = self._exact_root(left, right, moving, now)
             if exact is None:
                 exact = now + start / (start - end) * (until - now)
-            return crossing_time(gap, now, until, side=outgoing, accepted=(start, end), exact=exact)
-        op = 'ge' if outgoing < 0 else 'le'
-        return self._contact(left, op, right, moving, now, until, start, switching=True)
+            return switch_time(pair, reader, now, until, units, outgoing, accepted=(start, end), exact=exact)
+        start = self.side(left, now) - self.side(right, now)
+        op = {-1: 'ge', 0: 'eq', 1: 'le'}[outgoing]
+        return self._contact(left, op, right, moving, now, until, start, outgoing=outgoing)
 
-    def _contact(self, left, op, right, moving, now, until, start, switching=False, physical=False):
+    def _contact(self, left, op, right, moving, now, until, start, outgoing=None, physical=False):
         """The first time in (now, until] at which a comparison of values on curves can change its
         answer, read within its band, or None: step by step, each piece of a step skipped, decided by
         its ends, or halved (see the module). `start` is its difference now."""
@@ -816,7 +813,7 @@ class Triggers:
         # needs the incoming continuation through the horizon's coincidence band.
         horizon = self.plan.horizon
         if now < horizon < until:
-            at = self._contact(left, op, right, moving, now, horizon, start, switching, physical)
+            at = self._contact(left, op, right, moving, now, horizon, start, outgoing, physical)
             if at is not None:
                 return at
             start = self.side(left, horizon) - self.side(right, horizon)
@@ -827,7 +824,7 @@ class Triggers:
         widths = {}
 
         def width(t):
-            if switching or physical:
+            if outgoing or physical:
                 return 0.0
             if t not in widths:
                 widths[t] = float(self.gap_band(left, right, t)[1])
@@ -841,7 +838,7 @@ class Triggers:
             return found
 
         edges = _EDGES[op]
-        before = {edge: False if switching else _side(edge, start, width(now)) for edge in edges}
+        before = {edge: False if outgoing else _side(edge, start, width(now)) for edge in edges}
         motion, breaks = self._forms(left, right, moving, now, until, spelled)
         halvings, offset = [0], None
 
@@ -850,12 +847,16 @@ class Triggers:
                 return crossing_time(
                     difference, s, e, within=lambda at, gap: self.within(left, right, at, gap)
                 )
-            if switching:
+            if outgoing == 0:
+                return switch_time(
+                    (left, right), lambda t: lambda node: self.side(node, t), s, e, self.plan.units, 0
+                )
+            if outgoing:
                 return crossing_time(
                     difference,
                     s,
                     e,
-                    side=-1 if op == 'ge' else 1,
+                    side=outgoing,
                     speed=speed,
                     within=lambda at, gap: self.within(left, right, at, gap),
                 )
@@ -880,7 +881,7 @@ class Triggers:
                 changed = [edge for edge in near if _side(edge, difference(e), width(e)) != before[edge]]
                 if not changed:
                     return None
-                if not switching and not physical and e - s <= crossing:
+                if outgoing is None and not physical and e - s <= crossing:
                     return e
                 speed = abs(piece.rate) + piece.spread if abs(piece.rate) > piece.spread else None
                 return min(root(edge, s, e, speed) for edge in changed)
@@ -914,7 +915,7 @@ class Triggers:
                     break
         # A change just after now is read at the first instant that the engine tells apart from now:
         # what is due before it is due at now (`moment.Clock`).
-        if switching or physical:
+        if outgoing is not None or physical:
             return found if found is not None and found > now else None
         return None if found is None else min(max(found, self.run.clock.apart(now)), until)
 

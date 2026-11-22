@@ -493,6 +493,7 @@ def roots_of_each_kind(busy=False):
         Root('repayment', 1, (i['s.cash'], i['s.debt'], 0.5)),
         Root('surface', 0, (read('s.rate'), read('s.pressure'))),
         Root('surface', 0, (read('s.a'), read("t * q(1, 'person/h')"))),
+        Root('band-exit', 1, (read('s.a'), read("q(0, 'person')"))),
     ]
     return s, environment, component.state.y.copy(), roots
 
@@ -512,6 +513,29 @@ def test_each_root_has_the_same_value_together_as_alone(busy):
         state[i['s.b']] = float(rng.choice([state[i['s.b']], 10 + atol[i['s.b']] * rng.uniform(-1, 1)]))
         alone = np.array([together.value(k, at, state) for k in range(len(roots))])
         assert together.values(at, state).tobytes() == alone.tobytes()
+
+
+@pytest.mark.parametrize('direction', [-1, 1])
+def test_a_held_comparison_leaves_at_the_first_value_outside_its_closed_band(direction):
+    s, environment, initial, _ = roots_of_each_kind()
+    pair = read('s.a'), read("q(0, 'person')")
+    width = s.units.comparisons.band_floor(*pair)
+    roots = Roots(s, environment, [Root('band-exit', 1, pair)])
+
+    def solution(at):
+        state = initial.copy()
+        state[s.index['s.a']] = direction * 2 * width * at
+        return state
+
+    def reader(at):
+        return lambda node: integrate.evaluate(node, environment(at, solution(at)), s.units)
+
+    edge = math.nextafter(0.5, 1)
+    assert roots.values(0.5, solution(0.5))[0] == -1
+    assert roots.values(edge, solution(edge))[0] == 1
+    assert integrate.locate(roots, 0, solution, 0, 1, -1, 1) == edge
+    assert integrate.switch_time(pair, reader, 0, 1, s.units, 0) == edge
+    assert integrate.switch_time(pair, reader, 0, 0.5, s.units, 0) is None
 
 
 def test_a_root_that_cannot_be_evaluated_fails_as_it_fails_alone():

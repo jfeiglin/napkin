@@ -1867,7 +1867,7 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
         return sorted(found, key=lambda event: event[0])
 
     def _crossings(self, solution, start, end):
-        """Locations of the armed physical switches bracketed by one smooth interval."""
+        """Physical crossings and departures from equality bracketed by one smooth interval."""
 
         def reader(t):
             return self._side(t, solution(t))
@@ -1875,7 +1875,7 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
         for pair, sign in self.region.signs.items():
             at = integrate.switch_time(pair, reader, start, end, self.plan.units, sign)
             if at is not None:
-                yield at, pair, 'switch'
+                yield at, pair, 'switch' if sign else 'band exit'
 
     def _state(self, t):
         segment = self.pending
@@ -1988,7 +1988,7 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
         """The physical switches and bounds in the pending segment."""
         if self.pending is not None:
             for at, name, kind in self.pending.event or ():
-                if at > through or kind == 'release':
+                if at > through or kind in ('release', 'band exit'):
                     continue
                 if kind != 'switch':
                     yield at, name, kind
