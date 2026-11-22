@@ -389,9 +389,11 @@ class Triggers:
         run, moment = self.run, self.run.moment
         trigger = state.plan
         run.chance.firing[trigger.key] = state.firings + 1
-        for name, node in trigger.captures:
-            run.env[name] = run.truth(node)
         tx = Tx(trigger.member, stage=False)
+        for name, node in trigger.captures:
+            value, direct, dependencies = moment.argument(node, tx)
+            run.env[name] = value
+            tx.captures[name] = {name: direct, **dependencies}
         tx.near = near
         moment.execute(trigger.body, tx, trigger.scope)
         state.armed, state.firings = False, state.firings + 1

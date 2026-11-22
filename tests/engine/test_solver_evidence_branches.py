@@ -9,7 +9,7 @@ from napkin.engine.report import report
 from napkin.engine.timeline.record import key_of
 from napkin.model.compile import compile_text
 
-MODEL = '''scenario "Two measured limits"
+MODEL = """scenario "Two measured limits"
     horizon 2 h
 yard:
     input low: L/h = 2 L/h @low_reading
@@ -37,12 +37,13 @@ yard:
 yard.flip.start()
 record low_reading: source "Low measured limit."
 record high_reading: source "High measured limit."
-'''
+"""
 
 
 @pytest.mark.parametrize('selective', [False, True])
-def test_each_solver_answer_credits_the_limit_read_by_its_own_constraint(selective):
-    model = compile_text(MODEL, {'h': {'time': 1}, 'L': {'volume': 1}})
+@pytest.mark.parametrize('high', [9, 2], ids=['different-answer', 'cached-answer'])
+def test_each_solver_answer_credits_the_limit_read_by_its_own_constraint(selective, high):
+    model = compile_text(MODEL.replace('9 L/h', f'{high} L/h'), {'h': {'time': 1}, 'L': {'volume': 1}})
     program, cfg = model.program, model.configuration
     path = 'yard.value'
     if selective:
@@ -54,4 +55,4 @@ def test_each_solver_answer_credits_the_limit_read_by_its_own_constraint(selecti
         row = report(record, program, cfg, [path], [when], table=model.artifact().table).values[0]
         used = {citation for step in row.trail if step.exercised for citation in step.records}
         observed.append((row.values[0], used))
-    assert observed == [(9, {'high_reading'}), (2, {'low_reading'})]
+    assert observed == [(high, {'high_reading'}), (2, {'low_reading'})]

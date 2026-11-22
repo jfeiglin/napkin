@@ -109,6 +109,7 @@ from ...core import ops
 from ...core.comparisons import collapsed_interval
 from ...core.errors import ExpressionError
 from ...core.units import rational
+from ...program.proofs import always
 from .. import departure
 from ..allocation import StockFaces
 from ..continuous import dense, integrate
@@ -227,6 +228,8 @@ class Former:
                 self.undecided.add(name)
         for name in connected.results:
             self.unknown[name] = ('value', name)
+        self.conditional = any(nodes.names(node) - always(node) for node in self.declared.nodes(plan))
+        self.consulted = set()
         self._reads = {}
         self._names = {}  # what each name that reads an unknown gives at the instant (`_name`)
         self._touch = None  # the place of each store in the oracle's order (`_first_touch`)
@@ -256,6 +259,7 @@ class Former:
         bounds; the request of each connection is `requests`."""
         plan, net, declared = self.plan, self.net, self.declared
         self.t, self.problem_, self.cols, self.convex, self.parts = t, Problem(), {}, set(), {}
+        self.consulted.clear()
         self.hard_incidence = None
         self._names = {}  # what each name that reads an unknown gives at this instant (`_name`)
         self.pending, self.rows = [], []  # positive parts (key, Affine), rows (key, terms, lower, upper)
@@ -595,8 +599,22 @@ class Former:
     def _reader(self):
         t, region = self.t, self.region
         if region is None:
-            return lambda name: self.run.value(name, t)
-        return lambda name: self.run.in_region(name, t, region)
+
+            def read(name):
+                return self.run.value(name, t)
+        else:
+
+            def read(name):
+                return self.run.in_region(name, t, region)
+
+        if not self.conditional:
+            return read
+
+        def observed(name):
+            self.consulted.add(name)
+            return read(name)
+
+        return observed
 
     def _settings(self, names, t):
         if self.region is None:
@@ -724,6 +742,8 @@ class Former:
     def _name(self, name):
         """A name that reads an unknown: the unknown, or what a formula, a reduction or a dynamic
         read gives of it (a computation of `walk.walked`), found once at the instant."""
+        if self.conditional:
+            self.consulted.add(name)
         found = self._names.get(name)
         if found is None:
             found = self._names[name] = yield self._named(name)
@@ -953,6 +973,30 @@ class DeclaredWay(Way):
         changed = self._publish(t, *answer)
         return self._lines(t, low, high, forced), changed
 
+    def _trace_answer(self, t, *, solved):
+        """Keep the branch inputs of committed answers, including a change that reuses the same LP."""
+        declared = self.declared
+        if self.former.conditional:
+            reads = tuple(sorted(self.former.consulted))
+            if not solved and not hasattr(self, '_last_reads'):
+                # A rebuilt way may reuse a checkpoint's answer at its first instant.
+                self._last_reads = next(
+                    (
+                        entry.detail('reads')
+                        for entry in reversed(self.recorder.trace)
+                        if entry.kind in ('solve', 'solver_reads')
+                        and entry.part == declared.origin
+                        and entry.owner == declared.member
+                    ),
+                    None,
+                )
+            if solved or self._last_reads != reads:
+                kind = 'solve' if solved else 'solver_reads'
+                self.recorder.entry(t, kind, declared.origin, declared.member, reads=reads)
+            self._last_reads = reads
+        elif solved:
+            self.recorder.entry(t, 'solve', declared.origin, declared.member)
+
     def _settled(self, t, low, high):
         """The answer at time t with the stores flagged on their bounds (`low`, `high`) where it holds
         them there: a store on one bound that the answer moves off is released, and the problem is
@@ -975,8 +1019,10 @@ class DeclaredWay(Way):
             answer = self._values(arrays, last[1])
             leaving = self._moved(answer[0], low ^ high, low, inward=True)
             if last[0] == signature:
+                self._trace_answer(t, solved=False)
                 return answer, low & ~leaving, high & ~leaving
             if leaving.any() and self._formed(t, low & ~leaving, high & ~leaving)[2] == last[0]:
+                self._trace_answer(t, solved=False)
                 return answer, low & ~leaving, high & ~leaving
         x = self._solved(t, problem, arrays)
         flows, results = self._values(arrays, x)
@@ -993,7 +1039,7 @@ class DeclaredWay(Way):
             low, high = low & ~leaving, high & ~leaving
             signature, x, (flows, results) = again[2], found, moved
         ways.last[sid] = (signature, x)
-        self.recorder.entry(t, 'solve', self.declared.origin, self.declared.member)
+        self._trace_answer(t, solved=True)
         return (flows, results), low, high
 
     def _no_answer(self, s, lower):
@@ -1737,7 +1783,7 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
                 break
             released, was_low = leaving, self.low.copy()
             self.low, self.high = self.low & ~leaving, self.high & ~leaving
-        self.recorder.entry(t, 'solve', self.declared.origin, self.declared.member)
+        self._trace_answer(t, solved=True)
         changed = self._publish(t, flows, results)
         if self.held_problem:
             self.amounts.held_solution(self.physical_rates(flows), t)

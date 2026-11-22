@@ -76,6 +76,7 @@ class _Reach:
             numerics = configuration.numerics
             self.comparisons.factor = max(numerics.rtol, numerics.atol_factor)
         self.domains, self.found, self.started = {}, {}, {}
+        self.distributions = set()
         self.changed = False
         overrides = {(item.member, item.name): item.value for item in getattr(configuration, 'inputs', ())}
         self.owners = []  # (scope, owner of the values, values, the members' own values)
@@ -93,10 +94,17 @@ class _Reach:
         self.owners.append((Scope(), ROOT_OWNER, program.root, root))
         for _, owner, values, _ in self.owners:
             for value in values:
-                domain = _domain(value.type, program)
-                if domain is not None and value.kind in (p.STATE, p.INPUT):
-                    self.domains[_key(owner, value.name)] = domain
-                    self.found[_key(owner, value.name)] = {}
+                key = _key(owner, value.name)
+                if isinstance(value.type, p.DistributionType) and isinstance(value.type.of, p.EnumType):
+                    # Track the possible draws alongside the named states, including assignments
+                    # reached by the same fixed point. A dormant stage contributes no outcomes.
+                    domain = _domain(value.type.of, program)
+                    self.distributions.add(key)
+                else:
+                    domain = _domain(value.type, program)
+                if domain is not None and (key in self.distributions or value.kind in (p.STATE, p.INPUT)):
+                    self.domains[key] = domain
+                    self.found[key] = {}
 
     # ---- the fixed point ---------------------------------------------------------------------------
 
@@ -153,6 +161,7 @@ class _Reach:
                 for value in domain
             }
             for key, domain in self.domains.items()
+            if key not in self.distributions
         }
         return Reach(events, states)
 
@@ -172,7 +181,9 @@ class _Reach:
         starts, and the statements of the branches that can be taken."""
         if isinstance(statement, p.Assign):
             key = self.state_of(statement.target, scope)
-            if key is not None and not isinstance(statement.value, (Formula, Distribution, Path)):
+            if key is not None and (
+                key in self.distributions or not isinstance(statement.value, (Formula, Distribution, Path))
+            ):
                 self.add(key, self.values(statement.value, scope), f'{statement.origin} sets it')
         elif isinstance(statement, p.Start):
             found = self.resolver.resolve(statement.event, scope, '')
@@ -214,6 +225,10 @@ class _Reach:
 
     def values(self, init, scope):
         """The values that an expression can take (a frozenset), or None for any value."""
+        if isinstance(init, Distribution) and init.family == 'categorical':
+            return frozenset(
+                name for name, weight in zip(init.outcomes, init.params, strict=True) if weight > 0
+            )
         if isinstance(init, EnumValue):
             return frozenset({init.member})
         if isinstance(init, bool):
@@ -279,10 +294,9 @@ class _Reach:
         if isinstance(read, Draw):
             source = read.source
             if isinstance(source, Path):
-                found = self.resolver.resolve(source, scope, '')
-                source = getattr(found.part, 'init', None) if found is not None else None
-            if isinstance(source, Distribution) and source.family == 'categorical':
-                return frozenset(name for name, weight in zip(source.outcomes, source.params) if weight > 0)
+                key = self.state_of(source, scope)
+                return frozenset(self.found[key]) if key in self.distributions else None
+            return self.values(source, scope)
         return None
 
 

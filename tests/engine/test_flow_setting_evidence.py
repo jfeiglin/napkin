@@ -13,7 +13,7 @@ from napkin.model.compile import compile_text
 @pytest.mark.parametrize('full', [True, False])
 def test_each_flow_setting_reads_its_own_source(full):
     model = compile_text(
-        '''scenario "Independent settings"
+        """scenario "Independent settings"
     horizon 1 h
 w:
     input meter: L/h = 4 L/h @meter
@@ -25,7 +25,7 @@ w:
     reading = formula(this.tap.request)
 record meter: source "Request meter."
 record limit: source "Maximum."
-''',
+""",
         {'h': {'time': 1}, 'L': {'volume': 1}},
     )
     expected = {

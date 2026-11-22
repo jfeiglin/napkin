@@ -493,13 +493,16 @@ class _Trail:
         self._ran = {}  # what each flow's settings read in the run, as the record shows it (`ran`)
         self.cited = {}
         self.entries = {}
-        self.definers, self.finished = {}, {}
+        self.solver_reads = {}
+        self.definers = {}
         for index, entry in enumerate(record.trace):
             self.entries.setdefault((entry.kind, entry.part), []).append(entry)
             position = (entry.t, index)
-            if entry.kind == 'finish':
-                self.finished[entry.owner] = position
-            elif entry.kind in ('commit', 'fire'):
+            if entry.kind in ('solve', 'solver_reads'):
+                self.solver_reads.setdefault((entry.part, entry.owner), []).append(
+                    ((entry.t, index), entry.detail('reads'))
+                )
+            if entry.kind in ('commit', 'fire'):
                 for name, _ in entry.detail('defines') or ():
                     self.definers.setdefault(name, []).append((position, entry))
         # The histories of the actual rates of the flows that the record holds, by their owner
@@ -562,6 +565,9 @@ class _Trail:
         start = name_of(key)
         pairs = frozenset(pair for t in times if (pair := self.reader.evidence_pair(start, t)) in evaluated)
         sure, maybe, unread, applied, seen = set(), set(), {}, {}, set()
+        if not times and '#' in key.owner:
+            why = 'the occurrence held no value at the reported times'
+            return set(), set(), dict.fromkeys(found.edges, why), {}
         if not pairs and self.reader.evaluates(start):
             # The report read no value of the formula at its times (each was unavailable before it
             # was evaluated): it read nothing through it.
@@ -569,11 +575,19 @@ class _Trail:
             return {found.start}, maybe, dict.fromkeys(found.edges.get(found.start, ()), why), applied
         consulted = _Consultations(self.reader, pairs)
         another = 'it was not read at the reported times: the evaluation took another branch'
-        pending = [(found.start, True, pairs)]
+        as_of = frozenset(times)
+        pending = [(found.start, True, pairs, as_of)]
+        if (
+            pairs
+            and start in self.reader.replaced
+            and any(self.reader.evidence_pair(start, t) not in evaluated for t in times)
+        ):
+            # The requested times span a parameter's initial capture and a later stored write.
+            pending.append((found.start, True, frozenset(), as_of))
         while pending:
             state = pending.pop()
-            part, certain, inner = state
-            if state in seen or (not certain and (part, True, inner) in seen):
+            part, certain, inner, as_of = state
+            if state in seen or (not certain and (part, True, inner, as_of) in seen):
                 continue
             seen.add(state)
             (sure if certain else maybe).add(part)
@@ -587,7 +601,12 @@ class _Trail:
                     if read_at:
                         applied[case] = [at for at in times if places.get(at) == k]
                         pending.append(
-                            (case, certain, frozenset(pair for pair in inner if pair[1] in read_at))
+                            (
+                                case,
+                                certain,
+                                frozenset(pair for pair in inner if pair[1] in read_at),
+                                frozenset(read_at),
+                            )
                         )
                     else:
                         unread[case] = another
@@ -602,7 +621,7 @@ class _Trail:
                     candidates = self.names_of(other, names)
                     if candidates is None:
                         written = self.defined_by(other, inner)
-                        pending.append((other, certain and bool(written), written))
+                        pending.append((other, certain and bool(written), written, as_of))
                         continue
                     hits = (
                         {pair for pair in read if pair[0] in candidates}
@@ -611,19 +630,27 @@ class _Trail:
                     )
                     if hits:
                         again = frozenset(pair for pair in hits if pair in evaluated)
-                        pending.append((other, certain, again))
+                        pending.append((other, certain, again, frozenset(at for _, at in hits)))
+                        if (
+                            again
+                            and self.reader.replaced
+                            and any(name in self.reader.replaced for name, _ in hits - again)
+                        ):
+                            pending.append((other, certain, frozenset(), as_of))
                     else:
                         unread[other] = another
             elif self.evaluated(part, found):
                 branch = found.sometimes.get(part, frozenset())
                 # What a flow's settings read on a branch, the record may show (`ran`).
                 shown = self.ran(part) if branch and part.kind == 'flow' else None
+                if branch and part.kind == 'solver':
+                    shown = self.solver_inputs(part, as_of)
                 for other in edges:
                     hit = None if other not in branch or shown is None else self.names_of(other, shown)
                     if other not in branch or hit:
-                        pending.append((other, certain, frozenset()))
+                        pending.append((other, certain, frozenset(), as_of))
                     elif hit is None:
-                        pending.append((other, False, frozenset()))
+                        pending.append((other, False, frozenset(), as_of))
                     else:
                         unread[other] = (
                             'the run did not read it: the record shows that each evaluation that could read it '
@@ -645,7 +672,7 @@ class _Trail:
             history = self.definers.get(name)
             if history is None:
                 continue
-            through = self.finished[at] if isinstance(at, str) else (at, len(self.record.trace))
+            through = self.reader.evidence_position(at)
             index = bisect_right(history, through, key=lambda item: item[0]) - 1
             if index >= 0:
                 entry = history[index][1]
@@ -670,6 +697,17 @@ class _Trail:
                 if pair in self.reader.read:
                     pending.append(pair)
         return found
+
+    def solver_inputs(self, part, times):
+        """Actual operands of the answers in effect at the requested times, when recorded."""
+        history = self.solver_reads.get((part.origin, part.owner), ())
+        reads = set()
+        for t in times:
+            index = bisect_right(history, self.reader.evidence_position(t), key=lambda row: row[0]) - 1
+            if index < 0 or history[index][1] is None:
+                return None
+            reads.update(history[index][1])
+        return reads
 
     def ran(self, part):
         """The engine names that the run's evaluations of a flow's request and capacity read, as the
@@ -740,6 +778,16 @@ class _Trail:
         """The engine names of a part among those that an evaluation read (`read`), or None when its
         engine names are not ones that a formula reads (a stage, a trigger)."""
         owner = part.owner
+        if part.kind in ('network field', 'rate'):
+            fields = part.origin
+            if owner:
+                template = self.program.member(owner)[0]
+                fields = fields.removeprefix(template.name + '.')
+                first, _, rest = fields.partition('.')
+                if isinstance(template.part(first), p.Event):
+                    return {each for each in read if _field(each, f'{owner}.{first}#') == rest}
+            name = f'{owner}.{fields}' if owner else fields
+            return {name} if name in read else set()
         if part.kind == 'value':
             name = part.origin.rsplit('.', 1)[-1]
             if owner.endswith('#'):
@@ -756,10 +804,12 @@ class _Trail:
                     each
                     for each in read
                     if (field := _field(each, head)) is not None
-                    and (not rest or field.startswith(rest + '.'))
+                    and (not rest or field.rpartition('.')[0] == rest)
                 }
-            prefix = f'{owner}.{".".join(steps)}.'
-            return {each for each in read if each.startswith(prefix)}
+            name = f'{owner}.{".".join(steps)}'
+            if part.kind == 'flow':
+                return {each for each in read if each.rpartition('.')[0] == name}
+            return {each for each in read if each.startswith(name + '.')}
         return None
 
     def evaluated(self, part, found):
@@ -767,7 +817,7 @@ class _Trail:
         case applies; a flow's while it existed (a flow of an event, once the event started on its
         receiver), and so whether it moved or not; a trigger's condition, read at every round; an
         event's, a stage's and a solver's when it acted."""
-        if part.kind in ('value', 'status', 'case', 'trigger'):
+        if part.kind in ('value', 'rate', 'network field', 'status', 'case', 'trigger'):
             return True
         if part.kind == 'flow':
             event = self.event_of(part)
@@ -778,7 +828,7 @@ class _Trail:
         """Whether a part acted in the run itself, and why: a flow moved material, an event started,
         a trigger fired, a stage committed, a solver solved; a value is read; a case applied at a
         reported time (`applied`)."""
-        if part.kind in ('value', 'status'):
+        if part.kind in ('value', 'rate', 'network field', 'status'):
             return True, 'read'
         if part.kind == 'case':
             times = applied.get(part, ())

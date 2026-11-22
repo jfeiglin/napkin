@@ -129,7 +129,7 @@ class Occurrences:
 
     # ---- starts -----------------------------------------------------------------------------------
 
-    def register(self, member, event, args):
+    def register(self, member, event, args, evidence=None):
         """A start becomes an occurrence (see the module); gives it."""
         run, plan = self.run, self.plan
         t = run.now
@@ -183,6 +183,15 @@ class Occurrences:
                             self.watched().add(end)
             run.flow_joins(flow)
         details = {'args': tuple(args)}
+        if evidence is not None:
+            origin, caller, arguments = evidence
+            details['arguments'] = (
+                origin,
+                caller,
+                tuple(
+                    (param.name, *reads) for param, reads in zip(made.event.params, arguments, strict=True)
+                ),
+            )
         if made.references:
             details['references'] = made.references
         run.recorder.entry(t, 'start', made.event.origin, made.id, **details)

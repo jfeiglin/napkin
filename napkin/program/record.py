@@ -81,6 +81,7 @@ KINDS = (
     'draw',
     'move',
     'solve',
+    'solver_reads',  # A cached answer whose conditional inputs changed.
     'edit',
     'pause',
     'failure',

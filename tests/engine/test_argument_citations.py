@@ -75,3 +75,8 @@ record right_meter: source "Replacement meter."
     assert actual == {
         (t, path): {'left_meter' if t < 1 else 'right_meter'} for t in (0.5, 1.5, 2.5) for path in paths
     }
+    for row in report(record, model.program, cfg, paths, [0.5, 2.5], table=model.table).values:
+        assert {cite for used in row.trail if used.exercised for cite in used.records} == {
+            'left_meter',
+            'right_meter',
+        }

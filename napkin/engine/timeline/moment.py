@@ -230,7 +230,9 @@ class Tx:
         self.writes = {}
         self.moves = []  # (source, destination, amount, origin)
         self.balances = {}  # exact physical balances written by this stage
-        self.starts = []  # (member, event, arguments)
+        self.starts = []  # (member, event, arguments, argument evidence)
+        self.captures = {}  # actual reads of earlier captures of this firing
+        self.argument_writes = {}  # parameters assigned by this stage, including equal-value writes
         self.allocations = []  # concrete (store, side, priority items), None for proportional()
         # A value that the stage gives a definition -> the statement that gives it its last: a
         # formula, or a captured number in place of a request's or a capacity's formula.
@@ -244,6 +246,8 @@ class Tx:
         """The details of the trace entry of the commit: the definitions that it gives, by the
         statements that give them (`Plan.definitions_of`), and the near-ties of its tests."""
         found = {'defines': tuple(self.defined.items())} if self.defined else {}
+        if self.argument_writes:
+            found['argument_writes'] = tuple(self.argument_writes)
         return found | ({'near': tuple(self.near)} if self.near else {})
 
     def define(self, name, origin):
@@ -661,6 +665,11 @@ class Moment:
             return
         name = self.target(statement.target, scope, statement.origin, tx)
         run.occurrences.writable(name, statement.origin)  # an assignment always writes
+        if '#' in name:
+            owner, _, field = name.rpartition('.')
+            live = run.occurrences.live.get(owner)
+            if live is not None and any(p.name == field for p in live.plan.event.params):
+                tx.argument_writes[name] = None
         if isinstance(statement.value, Distribution):
             # A new distribution for the draws to come; what was drawn stays as it is.
             tx.writes[name] = statement.value
@@ -789,18 +798,42 @@ class Moment:
             node, run.units_for(tx), lambda name: run.value(name, tx=tx), balance_of
         )
 
+    def argument(self, node, tx):
+        """Read an argument or a trigger capture once, keeping its actual branches and caller."""
+        run = self.run
+        direct, dependencies = {}, {}
+
+        def read(name):
+            direct[name] = None
+            return run.value(name, tx=tx, observations=dependencies)
+
+        value = lazily(node, read, run.units_for(tx), run.now)
+        if tx.captures:
+            # Bare trigger locals hold earlier measurements in this firing. Include their
+            # evaluations only when this expression consulted them, directly or through a lookup.
+            names = set(direct).union(*(reads.keys() for reads in dependencies.values()))
+            for capture, earlier in tx.captures.items():
+                if capture in names:
+                    for name, reads in earlier.items():
+                        dependencies.setdefault(name, {}).update(reads)
+        return value, direct, dependencies
+
     def queue(self, statement, tx, scope):
         """`.start(...)`: the arguments are evaluated at the caller, left to right, once; on a
         collection the members start in the order of its keys, and of equal keys in their order of
         creation."""
         run = self.run
         point = self.resolved(statement.event, scope, statement.origin)
-        args = tuple(self.truth(arg, scope, statement.origin, tx) for arg in statement.args)
-        args = tuple(
-            float(arg) if isinstance(arg, int) and not isinstance(arg, bool) else arg for arg in args
-        )
+        args, observations = [], []
+        for expression in statement.args:
+            node = run.occurrences.node(expression, scope, statement.origin)
+            arg, direct, dependencies = self.argument(node, tx)
+            args.append(float(arg) if isinstance(arg, int) and not isinstance(arg, bool) else arg)
+            observations.append((tuple(direct), tuple((n, tuple(r)) for n, r in dependencies.items())))
+        args = tuple(args)
+        evidence = (statement.origin, self.plan.owner_of(scope), tuple(observations)) if args else None
         if point[0] == 'event':
-            tx.starts.append((point[1], point[2], args))
+            tx.starts.append((point[1], point[2], args, evidence))
             return
         if point[0] != 'many' or any(each[0] != 'event' for each in point[1].points):
             raise SimulationError(f'{statement.origin}: a start of what is no event')
@@ -817,7 +850,7 @@ class Moment:
             ),
         )
         for k in order:
-            tx.starts.append((entries.points[k][1], entries.points[k][2], args))
+            tx.starts.append((entries.points[k][1], entries.points[k][2], args, evidence))
 
     def select(self, statement, tx, scope):
         """The body that a `switch` runs: the guards are read once, before the selector; the case of
@@ -874,8 +907,8 @@ class Moment:
             run.changed.add(store)
         for name, value in tx.writes.items():
             run.write(name, value, tx.balances.get(name))
-        for member, event, args in tx.starts:
-            run.occurrences.register(member, event, args)
+        for member, event, args, evidence in tx.starts:
+            run.occurrences.register(member, event, args, evidence)
 
     # ---- the settling -----------------------------------------------------------------------------
 

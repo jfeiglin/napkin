@@ -1501,15 +1501,37 @@ class Reader:
         # with the definition that it had at the time of the read.
         self.definitions = self.plan.definitions_of(record.trace)
         # When each occurrence started, from the trace, which every record holds whole.
-        self.starts = {entry.owner: float(entry.t) for entry in record.trace if entry.kind == 'start'}
+        self.starts = {}
         self.found = {}  # (engine name, time) -> its value, or the LookupError of a value that has none
         self.read = {}  # (engine name, time) -> the engine names that its evaluation read, in order
-        self.finished_at = {}
-        for entry in record.entries('finish'):
-            self.finished_at[entry.owner] = entry.t
-            self.frozen_scales.update((name, (entry.t, size)) for name, size in entry.detail('scales') or ())
-            for name, reads in entry.detail('reads') or ():
-                self.read[name, entry.owner] = reads
+        # Each argument freezes what its expression actually read in the caller's transaction.
+        # Use its unique parameter name as the identity of that evaluation, just as an
+        # occurrence's id identifies a frozen evaluation at its finish.
+        self.captures, self.replaced, self.finish_positions = {}, {}, {}
+        for position, entry in enumerate(record.trace):
+            if entry.kind == 'finish':
+                self.finish_positions[entry.owner] = (entry.t, position)
+                self.frozen_scales.update(
+                    (name, (entry.t, size)) for name, size in entry.detail('scales') or ()
+                )
+                for name, reads in entry.detail('reads') or ():
+                    self.read[name, entry.owner] = reads
+            elif entry.kind in ('commit', 'fire'):
+                for name in entry.detail('argument_writes') or ():
+                    self.replaced.setdefault(name, (entry.t, position))
+            elif entry.kind == 'edit' and entry.detail('target') in self.captures:
+                self.replaced.setdefault(entry.detail('target'), (entry.t, position))
+            elif entry.kind == 'start':
+                self.starts[entry.owner] = float(entry.t)
+                arguments = entry.detail('arguments')
+                if arguments is None:
+                    continue
+                for field, direct, dependencies in arguments[2]:
+                    param = f'{entry.owner}.{field}'
+                    self.captures[param] = (entry.t, position)
+                    self.read[param, param] = direct
+                    for name, others in dependencies:
+                        self.read[name, param] = others
         self.kept = {}
         self._always = {}  # the id of a node -> what every evaluation of it reads (`proofs.always`)
         self._checked = {}  # a key that names a value -> its `Declaration` (`checked`)
@@ -1609,13 +1631,24 @@ class Reader:
         start = self.starts.get(owner)
         return start is not None and start <= t
 
+    def evidence_position(self, at):
+        """A captured evaluation's place in the trace, or the settled end of a physical time."""
+        if isinstance(at, str):
+            return self.captures[at] if at in self.captures else self.finish_positions[at]
+        return at, len(self.record.trace)
+
     def evidence_pair(self, name, at):
         """Identify a live evaluation by time or a frozen evaluation by its finishing occurrence."""
         if isinstance(at, str) and (name, at) in self.read:
             return name, at
-        time = self.finished_at[at] if isinstance(at, str) else at
+        if name in self.captures:
+            position = self.evidence_position(at)
+            if self.captures[name] <= position and (
+                name not in self.replaced or position < self.replaced[name]
+            ):
+                return name, name
         owner = self.plan.occurrence_of(name)
-        if (name, owner) in self.read and time >= self.finished_at[owner]:
+        if (name, owner) in self.read and self.finish_positions[owner] <= self.evidence_position(at):
             return name, owner
         return name, at
 

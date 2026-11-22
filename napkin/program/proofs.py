@@ -145,9 +145,9 @@ class Change:
 
 @dataclass(frozen=True)
 class Part:
-    """A part of a program as one member runs it: its kind (`value`, `flow`, `stage`, `event`,
-    `trigger`, `solver` or `status`), its origin, and its owner: the member that runs it, `''` for the root, or
-    for a value of an event's occurrences the receiver and the event (`tank.receive#`)."""
+    """A declaration or a computed field in the evidence graph. The origin names the declaration
+    and, for a network field or solved rate, its field. The owner is its receiver, the root (''),
+    or the scope of an occurrence value (`tank.receive#`)."""
 
     kind: str
     origin: str
@@ -466,8 +466,12 @@ class Proofs:
                     return (yield self._points(binding.source, _At(at.template, at.member), False, selection))
             if any(unknown.name == name for unknown in at.solver.unknowns):
                 return [(('other', f'{name}, an unknown of {at.solver.origin}'), True)]
-        if at.trigger is not None and any(capture.name == name for capture in at.trigger.captures):
-            return [(('other', f'{name}, a capture of {at.trigger.origin}'), True)]
+        if at.trigger is not None:
+            for capture in at.trigger.captures:
+                if capture.name == name:
+                    if selection is not None:
+                        selection.expression(capture.init, at)
+                    return [(('other', f'{name}, a capture of {at.trigger.origin}'), True)]
         if at.event is not None:
             for part in (*at.event.params, *at.event.locals):
                 if part.name != name:
@@ -531,8 +535,8 @@ class Proofs:
             _, owner, flow, at, side = point
             if name in ('source', 'sink'):
                 end = flow.source if (side == 'forward') == (name == 'source') else flow.sink
-                return (yield self._points(end, at, True, selection))
-            return [(('rate', owner, flow, name, at), True)]
+                return [] if isinstance(end, p.Outside) else (yield self._points(end, at, True, selection))
+            return [(('network field', owner, flow, at, (side, name)), True)]
         if kind == 'event':
             if selection is not None and name == 'occurrences':
                 selection.reads.append((Path(Named(point[2].id), (point[3].name,)), _At(), True))
@@ -554,21 +558,38 @@ class Proofs:
                     return [(('value' if isinstance(part, p.Value) else 'flow', at.owner, part, at), True)]
         if kind == 'value':
             if selection is not None and name in ('outflow', 'inflow'):
-                return [(('endpoint', (point[1], point[2].name), name), True)]
+                return [(('endpoint', point, name), True)]
             return [(('other', f'{point[2].origin}.{name}, a setting or a property of a value'), True)]
-        if kind == 'endpoint' and name == 'flows':
-            _, key, side = point
-            found = []
-            for writer in self.index().writers.get(key, ()):
-                if writer.kind not in ('flow', 'route'):
-                    continue
-                ends = writer.sources if side == 'outflow' else writer.sinks
-                if writer.kind == 'route' or any(end == key for end, _ in ends):
-                    found.append((('flow', writer.at.owner, writer.value, writer.at), False))
-            return found
+        if kind == 'endpoint':
+            _, value, side = point
+            if name == 'flows':
+                return self._incident(value, side)
+            return [(('network field', *value[1:], (side, name)), True)]
+        if kind == 'solver' and any(u.name == name for u in point[3].unknowns):
+            return [(point, True)]  # a read of a declared result reads its solver
         if kind == 'other':
             return [(point, True)]  # what follows a part that the proof does not follow
         return [(('other', f'{name} of {kind}'), True)]
+
+    def _incident(self, value, side):
+        """The connections on one side of a store, including the appropriate leg of each route."""
+        key = value[1], value[2].name
+        found = []
+        for writer in dict.fromkeys(self.index().writers.get(key, ())):
+            if writer.kind not in ('flow', 'route'):
+                continue
+            connection = writer.at.owner, writer.value, writer.at
+            for ends, forward in ((writer.sources, side == 'outflow'), (writer.sinks, side == 'inflow')):
+                for end, one in ends:
+                    if end != key:
+                        continue
+                    definite = one and writer.event is None
+                    if writer.kind == 'route':
+                        direction = 'forward' if forward else 'backward'
+                        found.append((('leg', *connection, direction), definite))
+                    elif forward:
+                        found.append((('flow', *connection), definite))
+        return found
 
     def fixed(self, node, reads, at):
         """Whether an expression reads only what is fixed for the run: constants, inputs and links."""
@@ -756,6 +777,7 @@ class Proofs:
         if self._index is not None:
             return self._index
         found = _Index()
+        statements = []
         for template in self.program.templates:
             for member in template.members:
                 at = _At(template, member)
@@ -770,22 +792,31 @@ class Proofs:
                         if isinstance(step, p.After):
                             stage = Part('stage', step.origin, member.id)
                             found.stages[stage] = (step, inner)
-                            self._statements(step.body, inner, stage, event.origin, found)
+                            statements.append((step.body, inner, stage, event.origin))
                     for trigger in event.triggers:
                         fired = Part('trigger', trigger.origin, member.id)
                         found.triggers[fired] = (trigger, _At(template, member, trigger=trigger))
-                        found.starters.setdefault(Part('event', event.origin, member.id), []).append(fired)
+                        statements.append((trigger.body, found.triggers[fired][1], fired, None))
                 for solver in template.solvers:
                     part = Part('solver', solver.origin, member.id)
-                    targets = tuple(each for target in solver.solve_for for each in self._ends(target, at))
-                    writer = _Writer(
-                        'solver', solver.origin, part, sinks=targets, at=_At(template, member, solver=solver)
-                    )
+                    scope = _At(template, member, solver=solver)
+                    targets = []
+                    for target in solver.solve_for:
+                        for point, certain in self.points(target, scope, True):
+                            if point[0] == 'value':
+                                targets.append(((point[1], point[2].name), certain))
+                            elif point[0] == 'rate':
+                                found.rate_solvers[point[1], point[2].origin] = part
+                    writer = _Writer('solver', solver.origin, part, sinks=tuple(targets), at=scope)
                     found.solvers[part] = solver
                     for key, _ in targets:
                         found.writers.setdefault(key, []).append(writer)
-        self._statements(self.program.setup, _At(), Part('stage', 'setup'), None, found, setup=True)
+        # A setting assignment can select a flow of an endpoint whose connections appear later.
+        # Resolve these targets after every member's flows have entered the index.
         self._index = found
+        for body, at, stage, event in statements:
+            self._statements(body, at, stage, event, found)
+        self._statements(self.program.setup, _At(), Part('stage', 'setup'), None, found, setup=True)
         return found
 
     def _ends(self, end, at):
@@ -802,6 +833,7 @@ class Proofs:
         """The writer of a flow of a member or of an event on a receiver; a flow with legs is its legs."""
         if flow.kind == p.LEGS:
             for leg in flow.legs:
+                found.groups[at.owner, leg.origin] = flow
                 self._flow(leg, at, event, found)
             return
         part = Part('flow', flow.origin, at.member.id)
@@ -822,12 +854,11 @@ class Proofs:
                 ('request',),
                 ('capacity',),
             ):
-                # A setting of a flow: the flow then follows the stage that assigns it.
-                setting = Path(statement.target.start, statement.target.steps[:-1])
-                for point, _ in self.points(setting, at, True):
-                    if point[0] == 'flow':
-                        for flow in self._point_parts(point, {}):
-                            found.settings.setdefault(flow, []).append(stage)
+                # Keep the assigned setting distinct from the other setting of the same connection.
+                for point, _ in _walked(self._points(statement.target, at, True, _Selection([]))):
+                    if point[0] in ('rate', 'network field'):
+                        for setting in self._point_parts(point, {}):
+                            found.settings.setdefault(setting, []).append(stage)
             if isinstance(statement, p.Assign):
                 if isinstance(statement.value, Formula):
                     for point, _ in self.points(statement.target, at, True):
@@ -855,9 +886,11 @@ class Proofs:
             elif isinstance(statement, p.Start):
                 for point, _ in self.points(statement.event, at, True):
                     if point[0] == 'event':
-                        found.starters.setdefault(Part('event', point[3].origin, point[2].id), []).append(
-                            stage
-                        )
+                        target, receiver = point[3], point[2]
+                        found.starters.setdefault(Part('event', target.origin, receiver.id), []).append(stage)
+                        for param, arg in zip(target.params, statement.args, strict=True):
+                            key = (f'{receiver.id}.{target.name}#', param.name)
+                            found.arguments.setdefault(key, []).append((arg, at))
             elif isinstance(statement, p.If):
                 for body in (statement.then, statement.orelse):
                     self._statements(body, at, stage, event, found, setup)
@@ -1278,6 +1311,10 @@ class Proofs:
                 return part, {part: (template.status, _At(template, member))}
         point = self.value_point(owner, steps[0])
         if point is not None:
+            if len(steps) == 3 and steps[1] in ('inflow', 'outflow'):
+                places = {}
+                network = ('network field', *point[1:], steps[1:])
+                return self._point_parts(network, places)[0], places
             part = Part('value', point[2].origin, point[1])
             return part, {part: point}
         places = {}
@@ -1293,8 +1330,9 @@ class Proofs:
         else:
             path = Path(Named(owner), steps[:1]) if owner else Path(Root(), steps[:1])
             points = self.points(path, _At(), True)
-            if len(steps) > 1 and points and points[0][0][0] == 'flow':
-                points = [(after, True) for after, _ in _walked(self._step(points[0][0], steps[1]))]
+        if points and points[0][0][0] == 'flow':
+            for step in steps[1:]:
+                points = [entry for point, _ in points for entry in _walked(self._step(point, step))]
         parts = [part for point, _ in points for part in self._point_parts(point, places)]
         if not parts:
             raise KeyError(f'{key}: no value of the program')
@@ -1340,10 +1378,46 @@ class Proofs:
             own = at.member.value(value.name) if at.member is not None and at.event is None else None
             if value.kind != p.INPUT or (owner, value.name) not in self.given:
                 expression(own if own is not None else value.init, at)
+            for argument, caller in index.arguments.get((owner, value.name), ()):
+                # The program admits every such start. Its record identifies which argument
+                # evaluation produced the value of a particular occurrence.
+                expression(argument, caller, branch=True)
             expression(value.lower, at)
             expression(value.upper, at)
             certain(writer.part for writer in index.writers.get((owner, value.name), ()))
             certain(stage for _, _, stage in index.defines.get((owner, value.name), ()))
+        elif part.kind == 'network field':
+            _, owner, declared, at, fields = places[part]
+            name = fields[-1]
+            if isinstance(declared, p.Value):
+                side = fields[0]
+                if name == 'actual_rate':
+                    value = ('value', owner, declared, at)
+                    for incident, definite in self._incident(value, side):
+                        for rate, _ in _walked(self._step(incident, name)):
+                            parts = self._point_parts(rate, places)
+                            edges.extend(parts)
+                            if definite:
+                                surely.update(parts)
+                else:
+                    expression(getattr(getattr(declared, side), name, None), at)
+            elif len(fields) == 2:
+                # Each directional view is computed from the route's signed setting or answer.
+                certain(self._point_parts(('rate', owner, declared, name, at), places))
+            elif name == 'served_fraction':
+                certain(self._point_parts(('flow', owner, declared, at), places))
+            elif name in ('request', 'capacity'):
+                expression(getattr(declared, name), at)
+            else:
+                # A named leg delivers its request times the fraction served for all its siblings.
+                group = index.groups[owner, declared.origin]
+                certain(self._point_parts(('rate', owner, group, 'served_fraction', at), places))
+                certain(self._point_parts(('rate', owner, declared, 'request', at), places))
+            certain(index.settings.get(part, ()))
+        elif part.kind == 'rate':
+            flow, solver = places[part]
+            certain(self._point_parts(flow, places))
+            certain([solver])
         elif part.kind == 'flow' and part in index.flows:
             writer = index.flows[part]
             expression(writer.value.request, writer.at)
@@ -1357,7 +1431,9 @@ class Proofs:
                         expression(side.request, point[3])
                 # The other flows at an end share it with this one.
                 certain(other.part for other in index.writers.get(key, ()) if other.kind in ('flow', 'route'))
-            certain(index.settings.get(part, ()))
+            for name in ('request', 'capacity'):
+                setting = Part('network field', f'{part.origin}.{name}', part.owner)
+                certain(index.settings.get(setting, ()))
             if writer.event is not None:
                 certain([Part('event', writer.event, part.owner)])
         elif part.kind == 'stage' and part in index.stages:
@@ -1382,10 +1458,15 @@ class Proofs:
         elif part.kind == 'solver' and part in index.solvers:
             solver = index.solvers[part]
             template, member = self.rows[part.owner]
-            for binding in solver.inputs:
-                for point, _ in self.points(binding.source, _At(template, member), True):
-                    certain(self._point_parts(point, places))
             at = _At(template, member, solver=solver)
+            for unknown in solver.unknowns:
+                for operand in (unknown.init, unknown.lower, unknown.upper, unknown.scale):
+                    expression(operand, at)
+            # A target supplies the solve's reference and bounds. Input aliases are names;
+            # the target, constraint and objective expressions decide which ones are read.
+            for target in solver.solve_for:
+                for point, _ in self.points(target, at, True):
+                    certain(self._point_parts(point, places))
             for item in solver.constraints:
                 expression(item.test, at)
             for item in solver.objective:
@@ -1420,8 +1501,27 @@ class Proofs:
         """The parts that a point names: a value, a flow (each leg of a flow with legs), an event or
         a solver."""
         kind = point[0]
+        if kind == 'rate' and point[3] in ('actual_rate', 'served_fraction'):
+            _, owner, flow, field, at = point
+            solver = self.index().rate_solvers.get((owner, flow.origin))
+            if solver is not None:
+                part = Part('rate', f'{flow.origin}.{field}', at.member.id)
+                places[part] = (('flow', owner, flow, at), solver)
+                return [part]
         if kind == 'value':
             part = Part('value', point[2].origin, point[1])
+            places.setdefault(part, point)
+            return [part]
+        if kind == 'rate':
+            _, owner, flow, name, at = point
+            if name in ('request', 'capacity', 'served_fraction') or (
+                name == 'actual_rate' and (owner, flow.origin) in self.index().groups
+            ):
+                point = ('network field', owner, flow, at, (name,))
+                kind = point[0]
+        if kind == 'network field':
+            _, _, declared, at, fields = point
+            part = Part(kind, '.'.join((declared.origin, *fields)), at.member.id if at.member else '')
             places.setdefault(part, point)
             return [part]
         if kind in ('flow', 'rate', 'leg'):
@@ -1447,11 +1547,14 @@ class _Index:
     defines: dict = field(default_factory=dict)
     setup_definitions: dict = field(default_factory=dict)
     starters: dict = field(default_factory=dict)
+    arguments: dict = field(default_factory=dict)
     settings: dict = field(default_factory=dict)
     flows: dict = field(default_factory=dict)
+    groups: dict = field(default_factory=dict)
     stages: dict = field(default_factory=dict)
     triggers: dict = field(default_factory=dict)
     solvers: dict = field(default_factory=dict)
+    rate_solvers: dict = field(default_factory=dict)
 
 
 def _term(key):
