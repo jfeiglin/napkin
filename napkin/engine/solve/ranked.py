@@ -107,11 +107,14 @@ def _feasible(kept):
 def exact(kept, run, work, step):
     """`run`, or a second run with tight tolerances when a dual of `run` has the wrong sign by more
     than TAU, or when its answer misses a row or a bound of the program by more than the tight
-    tolerance, relative to the size of its terms (`Kept._missed`): HiGHS holds a row to its own
-    tolerance, so where two rows nearly tie it can answer on one and miss the other, and a pin of
-    that answer would make an equality that the other row cuts away, a face that the ranks after it,
-    which hold their rows to the tight tolerance, find empty."""
-    if _wrong_sign(kept, run) > TAU or (run.missed is not None and run.missed > TIGHT):
+    tolerance (`Kept._missed`): HiGHS holds a row to its own tolerance, so where two rows nearly tie
+    it can answer on one and miss the other, and a pin of that answer would make an equality that
+    the other row cuts away, a face that the ranks after it, which hold their rows to the tight
+    tolerance, find empty. The miss is measured as those ranks measure it, in the program's working
+    units (`missed_by`). Measured relative to the size of the terms, a miss of 2.1e-10 on a row of
+    size 3 read 7e-11, passed, and left the next rank an empty face (a moving solver whose two
+    bounds meet, on one platform's arithmetic)."""
+    if _wrong_sign(kept, run) > TAU or (run.missed_by is not None and run.missed_by > TIGHT):
         work.tight += 1
         run = kept.tight()
         if run.status != OPTIMAL or not run.answered:

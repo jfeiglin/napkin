@@ -73,12 +73,13 @@ TIGHT = 1e-10
 class Run:
     """What one run of HiGHS gives: its status, the values and duals of the columns and the rows, the
     objective, and the simplex iterations that it took; `Kept.run` adds whether it answers the
-    program and by how much its values miss it."""
+    program and by how much its values miss it: relative to the size of the terms (`missed`), and in
+    the program's own working units (`missed_by`), as HiGHS holds a row to its primal tolerance."""
 
     def __init__(self, status, x, d, row_value, y, objective, iterations):
         self.status, self.x, self.d, self.row_value, self.y = status, x, d, row_value, y
         self.objective, self.iterations = objective, iterations
-        self.answered, self.missed = None, None
+        self.answered, self.missed, self.missed_by = None, None, None
 
 
 def _options():
@@ -349,21 +350,24 @@ class Kept:
         rows and bounds to MISS times the primal tolerance of the run (`_missed`)."""
         run.answered = run.status in STATED
         if run.status == OPTIMAL:
-            run.missed = self._missed(run.x)
+            run.missed, run.missed_by = self._missed(run.x)
             run.answered = run.missed <= MISS * self.s.getOptionValue('primal_feasibility_tolerance')[1]
         return run
 
     def _missed(self, x):
-        """The most by which the values x miss a row or a bound of the program, relative to the size
-        of the row's terms or of the value. The rows are A x on the matrix that the instance holds,
-        never the activities that HiGHS updates."""
+        """The most by which the values x miss a row or a bound of the program: relative to the size
+        of the row's terms or of the value, and in the program's working units. The rows are A x on
+        the matrix that the instance holds, never the activities that HiGHS updates."""
         if not len(x):
-            return 0.0
+            return 0.0, 0.0
         value = self.A @ x
-        size = 1.0 + abs(self.A) @ np.abs(x)
-        rows = np.maximum(self.row_lower - value, value - self.row_upper) / size
-        columns = np.maximum(self.lower - x, x - self.upper) / (1.0 + np.abs(x))
-        return float(max(rows.max(initial=0.0), columns.max(initial=0.0)))
+        rows = np.maximum(self.row_lower - value, value - self.row_upper)
+        columns = np.maximum(self.lower - x, x - self.upper)
+        relative = max(
+            (rows / (1.0 + abs(self.A) @ np.abs(x))).max(initial=0.0),
+            (columns / (1.0 + np.abs(x))).max(initial=0.0),
+        )
+        return float(relative), float(max(rows.max(initial=0.0), columns.max(initial=0.0)))
 
     def _renew(self, keep_basis):
         """A fresh HiGHS instance in place of this one, with its program and options, and with its

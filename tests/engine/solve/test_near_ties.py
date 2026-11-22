@@ -9,8 +9,8 @@ empty for the ranks after it, which hold their rows to the tightest tolerance. T
 gap between two rows, the answer is that of the tighter, and each later rank has a face to work on.
 
 1. By hand: one flow that asks 10 L/h, `u <= 2` and `u <= 2 - d`, maximized: u = min(2, 2 - d), served
-   the fraction u / 10, for gaps from zero to 1e-3 on either side, the rows in either order, in any
-   unit of the flow.
+   the fraction u / 10, for gaps from zero to 1e-3 on either side, several a decade, the rows in either
+   order, in any unit of the flow.
 2. In a run: a provider's solver serves a pipe of a tank up to `want` and up to the tank's water over
    an hour, a moving solver. From 2 L both bounds meet at the start; the rate is then the water over
    an hour, so the tank holds 2 e^-t L. From 3 L the pipe carries 2 L/h to 0.5 h, where the bounds
@@ -49,7 +49,14 @@ from napkin.program.build import (
 from napkin.program.config import Configuration, Request
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
-GAPS = [0.0, 1e-12, 1e-10, 3e-9, 3e-8, 6e-8, 1e-7, 1e-6, 1e-3]
+# Several gaps a decade from 1e-12 to 1e-6, and at the tight tolerance of HiGHS (1e-10). Gaps of 1.5
+# to 2.5e-10 once passed the guard (`ranked.exact`), which measured the miss relative to the size of
+# its row (3 here), and left the next rank an empty face; 1e-10 and 3e-9, the nearest gaps tested
+# then, are either side of that window.
+GAPS = sorted(
+    {0.0, 0.9e-10, 1.1e-10, 1.2e-10, 1e-3}
+    | {m * 10.0**e for e in range(-12, -5) for m in (1, 1.5, 2, 2.5, 3, 5, 7)}
+)
 
 
 def tie(gap, swapped=False, scale=1.0):
