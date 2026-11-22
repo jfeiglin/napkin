@@ -158,3 +158,15 @@ The 48 added cases on `caecf10` change no pre-existing test assertion. They dist
 | A threshold reads another flow’s actual rate | Looking through the rate to locate the crossing could treat its supplying stock as a target for placement. | The reported rate participates in the comparison. Only a directly watched stock can receive a placement. Reading a meter alone leaves 2 L on its supplying stock at 1 h. |
 
 Direct execution, an empty stage and serialized resumption exercise each case across six methods and the exact reference. [Mixed operand and rate controls](../../../tests/engine/test_contact_group_distance.py)
+
+## Roundoff between the ledger and a trajectory
+
+The Linux review of `6f4134a` found five decisions that differed between Linux and macOS
+because they read the last places of the difference between a stock's ledger balance and its
+method's trajectory. One test asserted the branch that one sign of that roundoff takes.
+[Probe tests](../../../tests/engine/test_ledger_roundoff.py)
+
+| Test | Previous expectation | New expectation | Reason |
+| --- | --- | --- | --- |
+| `test_declared_stock_faces.py::test_a_declared_face_with_balanced_through_flow_keeps_its_stock[moving]`, t1 | A skipped placement on `t1.water` naming `t1.f0.capacity`, with a positive residue | Either the skipped placement with a positive residue in its band, or a placement at exactly zero with no entry for `t1`; every skipped placement names a capacity and leaves its stock in its band | The residue at t1's empty face is roundoff of the integrated leg amounts, and its sign differs between OpenBLAS kernels. Above zero the correction would exceed the outlet's capacity, so it is skipped; below zero it sends less through the outlet, which no hard rule forbids (owner's ruling on balances, rules 2 and 4) |
+| The same test, t0 | `t0.water` exactly 0 at 6 h | Within its comparison band of 0 | Under the probe its outlet holds the same kind of crumb. A stock inside its band of a bound is on it, whatever its books hold (rule 3) |

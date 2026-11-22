@@ -41,7 +41,11 @@ def test_a_declared_face_with_balanced_through_flow_keeps_its_stock(moving):
     for run in (machine, restored):
         record = run.resume()
         assert record.failure is None
-        assert run.stock_balance('t0.water', 6) == 0
+        # t0 rests on its empty face. Its books can keep a crumb of a few last places when the
+        # integrated leg amounts round differently (another platform, or `stocks.LEDGER_PROBE`);
+        # inside its band it is on its face all the same (the owner's ruling on balances, rule 3).
+        held = float(run.stock_balance('t0.water', 6))
+        assert abs(held) <= run.comparison_band('t0.water', held, 0)
         residue = run.stock_balance('t1.water', 6)
         if moving:
             # The integrated leg amounts leave a residue of a few last places at t1's empty

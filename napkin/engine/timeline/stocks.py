@@ -24,6 +24,19 @@ from ..errors import SimulationError
 from .moment import quantity, span
 from .plan import DIRECT, FORMULA, LEG, name_of
 
+# Test-only: a whole number of units in the last place added to a ledger balance where a
+# decision reads it (`Run.value`) and where a rebuilt method starts from it (`release_stock`).
+# The ledger and a method's trajectory agree only to the last places, and platforms round those
+# differently, so a decision that changes under this probe depends on the platform
+# (tests/engine/test_ledger_roundoff.py). Zero in every real run.
+LEDGER_PROBE = 0
+
+
+def probed(balance):
+    """A ledger balance as a decision or a new trajectory reads it: itself, unless a test moves
+    its last places (`LEDGER_PROBE`)."""
+    return balance + LEDGER_PROBE * math.ulp(balance) if LEDGER_PROBE else balance
+
 
 class ContactInterval:
     """The incoming part of a time-shifted contact on which an earlier physical
@@ -562,7 +575,7 @@ class Stocks:
         self.run.post_stock(store, t, amounts)
         balance = self.balances[store][0]
         self.balances[store] = balance, 0, t
-        return float(balance)
+        return probed(float(balance))
 
     def replace(self, store, value, balance):
         self.run.post_stock(store, self.run.now)

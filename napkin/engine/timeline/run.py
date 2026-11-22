@@ -92,7 +92,7 @@ from .plan import (
 from .reads import lazily
 from .record import HistoryFull, Recorder, remember
 from .saved import restore
-from .stocks import Stocks
+from .stocks import Stocks, probed
 from .triggers import Triggers
 from .ways import Ways
 
@@ -564,7 +564,7 @@ class Run:
         if kind == STATE and t == self.now == self.accepted and name in self.ways.set_of:
             way = self.ways.instance_of(name)
             if getattr(way, 'trial', None) is None and self.moment.phase != 'settle':
-                return float(self.stock_balance(name, t))
+                return probed(float(self.stock_balance(name, t)))
         if t == self.now and name in self.bound_at:
             return self.bound_at[name]
         if t == self.now and name in self.opening_levels:

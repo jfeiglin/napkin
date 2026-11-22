@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from napkin.engine.timeline import Plan, Run, read, resume
+from napkin.engine.timeline import Plan, Run, read, resume, stocks
 from napkin.program.artifact import loads as load_artifact
 from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
 from napkin.program.config import Configuration, Request
@@ -18,7 +18,19 @@ from tests.reference.evaluate import label
 from tests.reference.from_program import run_of, scale_at, value_at, values_at
 
 CONFIG = Configuration(Request(HORIZON))
-TRANSFORMS = ('empty_event', 'named', 'small_unit', 'split', 'builder', 'artifact', 'checkpoint', 'sparse')
+# `roundoff` moves every ledger read that a decision makes two places each way
+# (`stocks.LEDGER_PROBE`): a decision that changes under it depends on the platform.
+TRANSFORMS = (
+    'empty_event',
+    'named',
+    'small_unit',
+    'split',
+    'builder',
+    'artifact',
+    'checkpoint',
+    'sparse',
+    'roundoff',
+)
 GUARD = 'plant.observe.step[0]'
 
 # physical scale in litres or litres/hour, and the multiplier on the declared tolerance.
@@ -275,7 +287,7 @@ def check_seed(seed, transforms, record_property):
     base_tie = compare(original_view, expected, seed, 'original vs reference')
     for name in transforms:
         spelling = Spelling(**{name: True}) if name in Spelling.__dataclass_fields__ else Spelling()
-        if name == 'sparse':
+        if name in ('sparse', 'roundoff'):
             candidate = original.program
         elif name == 'builder':
             candidate = builder_program(case, spelling)
@@ -285,12 +297,19 @@ def check_seed(seed, transforms, record_property):
             candidate = original.program
         else:
             candidate = text_program(case, spelling).program
-        with patch('napkin.engine.timeline.plan.LIMIT', 0 if name == 'sparse' else 150):
-            changed = engine_view(case, candidate, checkpoint=name == 'checkpoint', sparse=name == 'sparse')
-        oracle_tie = compare(changed, expected, seed, name + ' vs reference')
-        pair_tie = compare(changed, original_view, seed, name + ' vs original')
-        if base_tie or oracle_tie or pair_tie:
-            record_property(f'near-tie-{name}', repr((seed, base_tie, oracle_tie, pair_tie)))
+        for probe in (-2, 2) if name == 'roundoff' else (0,):
+            label = f'{name} {probe:+d}' if probe else name
+            with (
+                patch('napkin.engine.timeline.plan.LIMIT', 0 if name == 'sparse' else 150),
+                patch.object(stocks, 'LEDGER_PROBE', probe),
+            ):
+                changed = engine_view(
+                    case, candidate, checkpoint=name == 'checkpoint', sparse=name == 'sparse'
+                )
+            oracle_tie = compare(changed, expected, seed, label + ' vs reference')
+            pair_tie = compare(changed, original_view, seed, label + ' vs original')
+            if base_tie or oracle_tie or pair_tie:
+                record_property(f'near-tie-{label}', repr((seed, base_tie, oracle_tie, pair_tie)))
 
 
 @pytest.mark.parametrize('seed', range(300))
