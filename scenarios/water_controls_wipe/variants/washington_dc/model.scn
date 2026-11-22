@@ -4,6 +4,20 @@ variant "Washington, DC"
     scope "The people that the water systems of Washington, DC serve, the hospitals that those systems supply
         and the businesses that need public water there."
 
+uncertainty:
+    "Inputs sampled once for a recovery run when its spread is enabled."
+    input enabled = false @recovery_spread
+    input controls_capacity = pert(20 work_h/h, 40 work_h/h, 80 work_h/h) @recovery_spread
+    input field_capacity = pert(30 work_h/h, 60 work_h/h, 120 work_h/h) @recovery_spread
+    input manual_share = pert(0.3, 0.6, 0.9) @recovery_spread
+    input controls_load = pert(300 work_h, 600 work_h, 1500 work_h) @recovery_spread
+
+change controls_crew:
+    working_capacity = this.capacity * (uncertainty.controls_capacity.draw() / (40 work_h/h)) if uncertainty.enabled else this.capacity @recovery_spread
+
+change field_crew:
+    working_capacity = this.capacity * (uncertainty.field_capacity.draw() / (60 work_h/h)) if uncertainty.enabled else this.capacity @recovery_spread
+
 washington_aqueduct: Utility
     "Washington Aqueduct (U.S. Army Corps of Engineers, Baltimore District). Its ID in the federal inventory
         is DC0000001."
@@ -70,11 +84,17 @@ wssc_water: Utility
     buys = <>
     sells = <>
     name = "WSSC Water"
+    manual_share = uncertainty.manual_share.draw() if uncertainty.enabled else 0.6 @manual @recovery_spread
+    controls_load = uncertainty.controls_load.draw() if uncertainty.enabled else 600 work_h @work @recovery_spread
     demand = 241.638095 Mgal/day @wssc_water_demand
     nameplate = 390 Mgal/day @wssc_water_nameplate
     storage = 195.85 Mgal @wssc_water_storage
     sold = 9.28 Mgal/day @wssc_water_sold
     va_rate = 19833649.98 USD2025/h @wssc_water_va_rate
+
+record recovery_spread: assumption "The uncertainty study draws controls and field crew availability, the
+    share produced under manual operation and controls repair work once per run. The crew distributions
+    describe delayed response. Other response options scale them by their own nominal crew capacities."
 
 washington_aqueduct_to_dc_water: Tie
     "The Washington Aqueduct sells water to DC Water."

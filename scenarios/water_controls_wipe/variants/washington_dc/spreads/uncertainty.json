@@ -1,18 +1,11 @@
 {
   "schema_version": "0.0.1",
-  "model_hash": "f1661311aa7e3897dc37b2d620f16bd8492712281aeb6572fc634be460755c17",
+  "model_hash": "bc7da14aae131265c76c6e79371bee08bed78d5d7c04adbe643d3013c0e2939f",
   "set": {
-    "controls_crew.capacity": "pert(20 work_h/h, 40 work_h/h, 80 work_h/h)",
-    "field_crew.capacity": "pert(30 work_h/h, 60 work_h/h, 120 work_h/h)",
-    "wssc_water.manual_share": "pert(0.3, 0.6, 0.9)",
-    "wssc_water.controls_load": "pert(300 work_h, 600 work_h, 1500 work_h)"
-  },
-  "runs": {
-    "delayed_kept": {
-      "attacker.reaction_time": "pert(0.05 h, 0.25 h, 4 h)"
-    },
-    "delayed_kept_human": {
-      "attacker.reaction_time": "pert(24 h, 48 h, 96 h)"
-    }
+    "uncertainty.enabled": true,
+    "uncertainty.controls_capacity": "pert(20 work_h/h, 40 work_h/h, 80 work_h/h)",
+    "uncertainty.field_capacity": "pert(30 work_h/h, 60 work_h/h, 120 work_h/h)",
+    "uncertainty.manual_share": "pert(0.3, 0.6, 0.9)",
+    "uncertainty.controls_load": "pert(300 work_h, 600 work_h, 1500 work_h)"
   }
 }

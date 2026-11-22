@@ -3,7 +3,7 @@
 
 The work is the engine's Monte Carlo study (`napkin.spread.spread`, `napkin.engine.uncertainty`). The
 run is the model's default run, or `--run NAME`, under the edit document of `--edits FILE`, which can
-give an input a distribution ("pert(48 h, 96 h, 200 h)"); the document is checked whole first. A
+give a distribution-valued input a law ("pert(48 h, 96 h, 200 h)"); the document is checked whole first. A
 central run in `median` mode gives each value's central value, its unit and its label; then
 `--samples` samples (200 by default) run in `sampled` mode, each with its own seed from `--seed` (0),
 on `--jobs` processes (the processors, and no more than the samples). One sample gives the same values
@@ -44,8 +44,8 @@ from . import common
 SUMMARY = 'run one run many times with drawn inputs; print the spread of named values'
 
 DESCRIPTION = """\
-Sample one run (the default run, or --run NAME) under its edits: each input with a distribution, in
-the model or the edit document, is drawn in each sample. Print, for each named value at --at (the
+Sample one run (the default run, or --run NAME) under its edits. Each sample draws at the sites
+the model executes. Print, for each named value at --at (the
 horizon by default), the central value, the mean, the middle 50% and 90% of the samples, the
 1-in-100 and 1-in-200 values when there are enough samples, and the draws that move it most.
 Exit 0 ok, 1 diagnostics, 2 usage."""
@@ -93,7 +93,9 @@ def configure(parser):
     parser.epilog = EXAMPLES
     parser.add_argument('--run', metavar='NAME', help='the named run (default: the default run)')
     parser.add_argument(
-        '--edits', metavar='FILE', help='an edit document of the inputs, which can give them distributions'
+        '--edits',
+        metavar='FILE',
+        help='values of the declared input types, including distribution-valued inputs',
     )
     parser.add_argument(
         '--value',

@@ -94,28 +94,17 @@ before the model compiles. So an unknown run is a usage error (exit 2) with the 
 the command compiles nothing. A model with no `runs:` and no options has one run, `base`.
 
 - `run` runs every run, or each run that a `--run` names (repeatable).
-- `play` and `sample` take one run: the run of `--run`, or the only run of the model. A model with
+- `play` takes one run: the run of `--run`, or the only run of the model. A model with
   several runs and no `--run` lists each run with its label, and the command stops (exit 2).
 - `draw` draws the run of `--run`, or the only run. A model with several runs and no `--run` is
   drawn with every run joined.
 
-```
-$ napkin sample scenarios/water_controls_wipe --variant washington_dc --edits scenarios/water_controls_wipe/variants/washington_dc/spreads/uncertainty.json
-usage: napkin sample [-h] [--variant NAME] [--run NAME]
-…
-napkin sample: error: water_controls_wipe:washington_dc has 6 runs: pick one with --run NAME
-  early_kept             Early response · Keeps hidden access
-  standard_kept          Standard response · Keeps hidden access
-  delayed_kept           Delayed response · Keeps hidden access
-  delayed_none           Delayed response · No hidden access
-  delayed_kept_human     Delayed response · Human team keeps hidden access
-  delayed_kept_aqueduct  Delayed response · Keeps hidden access · The Aqueduct only
-```
+For a spread, pass the variant folder as the model and select the response with
+`--run early` or `--run delayed_none`. With no `--run`, `sample` uses the model's default run.
 
 **Which runs the engine checks.** `compile` checks every run of each model. `run --run X`, `play`
-and `draw --run X` check the model for X only, and `sample --run X` for X and the runs that X is
-compared with. Each says so: `checked for run X only; napkin compile checks every run`. `play`
-always checks its one run only. `run`, `sample` and `draw` without `--run` check every run. The check
+and `draw --run X` check the model for X only. `sample` checks the edit document and samples the
+selected configuration. `play` always checks its one run only. `run` and `draw` without `--run` check every run. The check
 of a run is the check of its inputs and the proofs of its structure.
 
 ## napkin compile
@@ -338,95 +327,38 @@ log keeps the picks so far.
 
 ## napkin sample
 
-```
-usage: napkin sample [-h] [--variant NAME] [--run NAME]
-                     [--option [GROUP=]OPTION] [--set NAME=VALUE]
-                     [--samples N] [--seed N] [--jobs N] [--at TIME]
-                     [--exceed NAME=VALUE] [--edits FILE] [--json]
-                     [TARGET]
+```sh
+napkin sample MODEL [--run NAME] [--edits FILE] [--value PATHS] [--at TIME] \
+  [--samples N] [--seed N] [--jobs N] [--exceed PATH=VALUE] [--json]
 ```
 
-`sample` draws each input that has a distribution, in the model or in the edit document, and runs
-the run once for each sample. On the same draws, it also runs the runs that the run is compared
-with: the run that its `versus` names, and each run whose `versus` names it. Each sample draws its
-own value of each input, and two runs compare sample by sample
-([engine.md](engine.md#monte-carlo-studies)). The engine checks the edit document and every
-sample before the first sample runs. A refusal is exit 1. Each diagnostic of a sample gives the
-sample, the seed and the drawn values.
+The command runs one selected configuration through its horizon. A central run uses the median of
+each numeric draw. Each sample then draws at the sites the model executes, including initializers
+and event actions. The default study uses 200 samples and seed 0. Two invocations with the same
+seed and model share a draw when the same member executes the same draw site. The worker count
+does not affect those values.
 
-For each outcome of each run, at the end of the run or at `--at`, the command prints:
+`--value` selects one or more comma-separated paths. The default selects the model's named
+numbers. `--at` sets the time to read the paths, defaulting to the horizon. The report gives the
+central reading, the sample mean, the middle 50% and 90%, and the strongest rank correlations with
+executed draws. For at least 1,000 samples it includes the 99th percentile, and for at least 2,000
+it includes the 99.5th. `--exceed PATH=VALUE` reports the fraction of the samples above a threshold.
+`--json` includes the seeds, realized draws and readings for each sample. A failed central run or
+sample refuses the study. A study that executes no draws reports the absence of a spread.
 
-- the mean, the middle 50% (the 25th to the 75th percentile) and the middle 90% (the 5th to the 95th);
-- the 1-in-100 value (the 99th percentile) from 1000 samples, and the 1-in-200 value (the 99.5th) from
-  2000 samples, so that at least 10 samples lie beyond each;
-- the three inputs that move the outcome most, by rank correlation (Spearman);
-- for each `--exceed`, the chance that the outcome passes the value: the share of the samples above
-  it.
+An edit follows the declared input type. A numeric input accepts a number or a compatible
+quantity. A distribution-valued input accepts an expression such as `"pert(20 h, 40 h, 80 h)"`.
+The scenario calls `.draw()` where it consumes that distribution.
 
+The Washington, DC water recovery spread turns on four draws at initialization. This command
+samples crew availability under the Delayed response. Repeat it with `--run early` to compare
+the response options under the same seed.
+
+```sh
+napkin sample scenarios/water_controls_wipe/variants/washington_dc \
+  --run delayed_none --edits scenarios/water_controls_wipe/variants/washington_dc/spreads/uncertainty.json \
+  --samples 2 --jobs 2 --value controls_crew.working_capacity,field_crew.working_capacity
 ```
-$ napkin sample examples/piano_tuners --samples 1000 --exceed tunings_done=3200
-piano_tuners: Piano tuners
-1000 samples, seed 0, at the end of the run (8760 h)
-  base
-
-tunings_done: Tunings done in the year (tunings)
-  base  mean 2898; middle 50%: 2674 to 3160; middle 90%: 2316 to 3400
-        1-in-100 value: 3495
-        inputs that move it most (rank correlation): tuners.rate +1.00
-        P(tunings_done > 3200) = 0.203 (203 of 1000 samples)
-```
-
-| Flag | What it does |
-| --- | --- |
-| `--run NAME` | The run to sample (default: the only run). |
-| `--samples N` | The number of samples (default 200). |
-| `--seed N` | The seed of the draws (default 0). The same seed gives the same draws. |
-| `--jobs N` | The processes that run the samples (default: the number of processors). The command never starts more processes than there are samples. |
-| `--at TIME` | The spread at this one time (default: the end of the run). |
-| `--exceed NAME=VALUE` | Also prints the chance that output NAME passes VALUE, a number in the output's unit (repeatable). NAME is the output's name in the file or in the report. |
-| `--edits FILE` | Applies an edit document, which can give inputs distributions. |
-| `--option`, `--set` | As for `run`. With `--option`, each sampled run takes the options and has a spread of its own, with the same seed. |
-| `--json` | Every draw and its outcomes as one JSON document ([JSON documents](#json-documents)). |
-
-An edit document can give inputs their distributions. The Washington, DC variant keeps one in its
-folder. Its run `delayed_kept_human` is compared with `delayed_kept`, so the command samples both on
-the same draws, and checks the model for these two runs only:
-
-```
-$ napkin sample scenarios/water_controls_wipe --variant washington_dc --run delayed_kept_human --edits scenarios/water_controls_wipe/variants/washington_dc/spreads/uncertainty.json --samples 40 --jobs 4 --exceed economic_loss=0.05
-water_controls_wipe:washington_dc: Water systems' controls wiped through a shared remote-support platform: Washington, DC
-checked for runs delayed_kept and delayed_kept_human only; `napkin compile` checks every run
-40 samples, seed 0, at the end of the run (2160 h)
-  delayed_kept        Delayed response · Keeps hidden access
-  delayed_kept_human  Delayed response · Human team keeps hidden access
-…
-economic_loss: Economic loss (USD2025_bn)
-  delayed_kept        mean 0.1119; middle 50%: 0.03512 to 0.1758; middle 90%: 0.03126 to 0.2647
-                      inputs that move it most (rank correlation): wssc_water.manual_share -0.97, attacker.reaction_time +0.41, controls_crew.capacity -0.26
-                      P(economic_loss > 0.05) = 0.6 (24 of 40 samples)
-  delayed_kept_human  mean 0.06617; middle 50%: 0.01841 to 0.09118; middle 90%: 0.01535 to 0.1602
-                      inputs that move it most (rank correlation): wssc_water.manual_share -0.95, attacker.reaction_time +0.42, controls_crew.capacity -0.35
-                      P(economic_loss > 0.05) = 0.525 (21 of 40 samples)
-
-deaths: Deaths (people)
-  delayed_kept        not estimated
-  delayed_kept_human  not estimated
-…
-```
-
-When no input of the runs has a distribution, every sample is the same. The command then says that
-there is no spread, and exits 0. A model with several runs and no `--run` normally lists its runs
-and stops. But first, the command compiles the model with every run checked. When no input of any
-run has a distribution, it says that there is no spread:
-
-```
-$ napkin sample scenarios/iv_fluid_shortage --samples 20 --jobs 2
-iv_fluid_shortage: No input of the model has a distribution, in the model or in the edit document. Every sample is the same, so there is no spread. An edit document (--edits FILE) can give an input a distribution.
-```
-
-The spread is the spread of the inputs that the model or the edit document assumes, carried through
-the model. It is not a measured interval. A spread takes about the time of one run, times the
-samples and the runs that the command samples, shared among the processes.
 
 ## napkin draw
 
@@ -539,34 +471,22 @@ $ napkin fmt --check examples/*/ scenarios/*/
 
 ## The edit document
 
-An edit document changes the values of a model's inputs without a change to its files. It is a
-JSON object of the schema `napkin/schema/edits.schema.json`. This document is for the Juneau variant
-of `water_controls_wipe`:
+An edit document changes the values of a model's declared inputs. For example, the
+Washington, DC water recovery model accepts these settings along with the document's
+`schema_version` and `model_hash`:
 
 ```json
 {
   "schema_version": "0.0.1",
-  "model_hash": "f847c520…",
-  "reason": "Faster emergency water, and a faster removal of the credential in a delayed response",
-  "set": {"relief.start_delay": 24},
-  "options": {"Delayed response": {"responders.removal_time": 96}},
-  "runs": {"delayed_kept_human": {"attacker.reaction_time": "pert(24 h, 48 h, 96 h)"}}
+  "model_hash": "<the model's hash>",
+  "set": {"uncertainty.enabled": true},
+  "options": {"Delayed response": {"controls_crew.capacity": "40 work_h/h"}},
+  "runs": {"early": {"uncertainty.manual_share": "pert(0.3, 0.6, 0.9)"}}
 }
 ```
 
-```
-$ napkin run scenarios/water_controls_wipe --variant juneau --edits juneau-edits.json
-…
-delayed_kept: Delayed response · Keeps hidden access
-                                                                at the end (2160 h)
-  Replacement controllers in stock                              1050 parts
-  Person-days without normal water service                      19510 person-days
-…
-```
-
-- An input is `thing.field`, as `compile --inputs` lists it.
-- A value is a number in the input's own unit, `true` or `false` for a bool input, a name for a named
-  input, or a distribution written as in a model file, with its units.
+- A key names an input. Its value must match that input's type. Quantities may have compatible
+  units, and a distribution-valued input accepts another distribution with compatible parameters.
 - `set` edits every run, `options` each run that names the option, and `runs` one run. The narrower
   edit wins: the run, then the option, then every run. Each edit wins over the value that an option
   gives, and that value wins over the input's own value.
@@ -701,19 +621,12 @@ variant uses) and `evidence` (`{sourced, assumed}`). Each model of `models` has 
 
 ### napkin sample --json
 
-One document: the envelope of the engine's report, `admitted_runs`, the `options`, and for each run:
-
-- `label`, `options`, `horizon`, and `settings` (`samples`, `seed`, `method`, the reporting `point`
-  and its time `t`);
-- `inputs`: each drawn input, as an edit document names it, with its `label` and its `distribution`;
-- `outcomes`: the label and unit of each outcome;
-- `samples`: each sample, with its `draws` and the `values` and `statuses` of each outcome at the
-  time;
-- `summary`: for each outcome, the engine's summary (`central`, `mean`, `sd`, `sem`, `min`, `max`
-  and `p5` to `p95`), the `drivers` (the rank correlation of each input), `p99` and `p99.5` when
-  there are enough samples, and `exceed`, one `{value, count, samples, chance}` for each `--exceed`.
-
-An outcome that is not estimated in every sample has the engine's statuses only, and no value.
+The document identifies the model, run, edit file, sample count, seed and reading
+time. `drawn` indicates whether any sample executed a draw. The `values` map gives the unit,
+label, central value and distribution summary for each selected path. `exceed` holds the
+threshold estimates. Each entry of `draws` gives the sample seed, its path readings, and each
+executed draw's site, owner and realized value. A path whose summary is unavailable carries its
+reason.
 
 ### The play protocol
 

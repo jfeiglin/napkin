@@ -784,21 +784,17 @@ is the mean of those sums, with the interval of the sampling method.
 
 ## The edit document
 
-An edit document gives the inputs of a model's runs other values, as one transaction. It follows
-`napkin/schema/edits.schema.json`. `napkin run`, `napkin play` and `napkin sample` read one with
-`--edits FILE`, and each `--set NAME=VALUE` goes into its `set` ([cli.md](cli.md)). In Python,
-`evaluate_study`, `evaluate_uncertainty` and `Session` take it as `edits`
-([python-api.md](python-api.md#studies)). This document is for the catalogue's Juneau model
-(`water_controls_wipe:juneau`):
+An edit document configures the inputs of a model in one transaction. The public sampler
+accepts the file with `--edits`. Python callers pass the document to `Compiled.configure`
+or `napkin.spread.spread`. Here is an excerpt using the Washington, DC recovery model:
 
 ```json
 {
   "schema_version": "0.0.1",
-  "model_hash": "<the model_hash of the model>",
-  "reason": "Slower removal of the credential, and more emergency water for each person",
-  "set": {"relief.ration": 2},
-  "options": {"Delayed response": {"responders.removal_time": "pert(120 h, 240 h, 480 h)"}},
-  "runs": {"delayed_kept_human": {"attacker.reaction_time": 72}}
+  "model_hash": "<the model's hash>",
+  "set": {"uncertainty.enabled": true},
+  "options": {"Delayed response": {"controls_crew.capacity": "40 work_h/h"}},
+  "runs": {"early": {"uncertainty.manual_share": "pert(0.3, 0.6, 0.9)"}}
 }
 ```
 
@@ -808,9 +804,11 @@ An edit document gives the inputs of a model's runs other values, as one transac
   A key that the file gives stays as it is, so the engine refuses a file for another revision.
 - `reason` is an optional text that says why. The engine does not read it.
 
-A value is a number in the unit of the input, true or false for a bool input, a name for a named
-input, or a distribution written as in the file, with its units (`"pert(120 h, 240 h, 480 h)"`). A
-study runs a distribution at its central value, and a Monte Carlo study draws it. An edit is for
+Each edit supplies the declared type. A numeric input accepts a number in its unit or a compatible
+quantity. A Boolean takes true or false. A named input takes a member of its enum. An input
+holding a distribution takes another compatible distribution, such as `"pert(120 h, 240 h, 480 h)"`.
+When the scenario calls `.draw()`, the engine selects the median in a central run and draws in a
+sampled run. The edit can apply to
 every run (`set`), for one option (`options`), or for one run (`runs`), and the narrower edit wins:
 one run, then one option, then every run. Every edit wins over the value that an option gives, and
 that value wins over the input's own value. Two edits of one input by two options that meet in one run
@@ -826,11 +824,9 @@ diagnostic (`combination`). `--option` and a `Session` with `options` check the 
 model first, in every run that the model admits, and then give the combination the edits that reach
 its run.
 
-A saved document depends on the model's identity only. So a change to the engine's code that keeps
-the language's version keeps the document valid. A change to a record changes the identity of each
-model that reaches the record, and of no other model. A change to `style.toml` or `brief.toml` keeps
-every document valid, because the model hash does not cover them. The catalogue's spreads are
-documents of this kind, in the `spreads/` folders of its packages and variants
+An edit document's model hash covers the program, options, runs, default configuration and
+language version. Changes to labels, evidence records, styles and brief selections preserve this
+hash. The catalogue keeps these documents under `spreads/` in the package or variant
 ([catalogue.md](../scenarios/docs/catalogue.md)).
 
 ## The spread
@@ -839,50 +835,27 @@ documents of this kind, in the `spreads/` folders of its packages and variants
 ([cli.md](cli.md)). The work is the engine's ([Monte Carlo studies](#monte-carlo-studies)), in a pool
 of processes (`napkin/spread.py`):
 
-- **The runs.** It samples the run with the runs that it is compared with: the run that its `versus`
-  names, and each run whose `versus` names it. All of them read the same draws, so two runs compare
-  sample by sample. With `--option`, it samples the combination (`model.combination`), which has no
-  comparison: each run with the options takes a spread of its own, and with the same seed the spreads
-  draw the same values.
-- **The draws.** It draws each input that has a distribution, in the model or in the edit document,
-  with `--samples` samples (200 by default), from `--seed` (0 by default), with the method `random`.
-  A model whose runs have no input with a distribution has no spread, and the command says so.
-- **The pool.** `--jobs` processes (by default the number of processors, and never more than the
-  samples) do the work in two phases. Each process builds the model once. First the pool checks each
-  sample, with the checks of any run: a sample that fails rejects the spread before any sample runs,
-  and its diagnostics have `sample` (from 0), `seed` and `drawn`. Then it runs the samples. A sample
-  whose run fails rejects the spread too. The result is the one of the same study in one process, bit
-  for bit. With one job, the samples run in the command's own process.
-- **The cost.** A spread takes about the samples times the runs, times the time of one run, shared
-  among the processes. The 200 samples of `examples/piano_tuners` take a few seconds. In the
-  catalogue, 20 samples of the runs `delayed_kept` and `delayed_kept_human` of
-  `water_controls_wipe:washington_dc`, with its spread document, took 9.5 minutes of processor time:
-  about 13 seconds a run.
+- The sampler runs the selected configuration, using the model's default when the caller omits
+  `--run`. Run a second configuration with the same seed to compare the draws that share an
+  execution site and owner.
+- The central run evaluates numeric draws at their distribution's median. Each of the
+  `--samples` sampled runs then uses its own seed. The default is 200 samples from study seed 0.
+  When no draw site executes, the command reports that the study has no spread.
+- `--jobs` sets the number of worker processes, capped at the number of samples. The central run
+  and every sample must reach the horizon for the study to report a spread. Each refused sample
+  is identified by its index, seed and failure.
 
 For each outcome, `napkin sample` prints the engine's summary at the end of the run, or at `--at`:
 the mean, the middle 50% (p25 to p75), the middle 90% (p5 to p95) and the inputs that move it most.
 It adds the 1-in-100 value (p99) from 1000 samples, and the 1-in-200 value (p99.5) from 2000 samples,
 type-7 quantiles of the samples. `--exceed NAME=VALUE` adds the share of the samples above the value.
 
-The report of a Monte Carlo study (`uncertainty_report`) is the report of its central study with an
-`uncertainty` section:
-
-| Key | What it holds |
-| --- | --- |
-| `settings` | `{samples, seed, method}`. |
-| `runs` | `{run: …}`: each run of the study that has uncertain values or events by chance. A rejected study has none. |
-
-| Key of a run | What it holds |
-| --- | --- |
-| `samples` | The number of samples. |
-| `events` | `{event: {outcome: count}}`: how many times each outcome of an event that goes by chance happened, over the samples. |
-| `inputs` | `{input: {distribution, draws}}`: the distribution as written, and the value of each sample. |
-| `outcomes` | `{outcome: {uncertain_inputs, points, series}}`: the uncertain inputs that the outcome can depend on; its summary at each report point (`central`, `mean`, `sd`, `sem`, `min`, `max`, `p5` to `p95` and `drivers`, or `estimated: false` with the `statuses` that it met); and, with reporting times, its percentiles at each of them (`series`). |
-
-`drivers` gives the rank correlation (Spearman) of each uncertain input that the outcome can depend
-on with the outcome: null when the input or the outcome takes one value only. The spread is the
-spread of the inputs that the model assumes, carried through the model: it is not a measured
-interval.
+`napkin.spread.spread` returns a `MonteCarlo` result. Its `central` report and ordered
+`samples` correspond to the selected configuration. `spread(path, time)` on that result gives
+the reading's summary and its drivers. A driver is the Spearman rank correlation with a numeric
+or Boolean draw that each sample executed once at the same site and owner. A draw or reading
+that stays constant has no rank correlation. The uncertainty intervals describe the modeled
+distribution of inputs.
 
 ## Play
 

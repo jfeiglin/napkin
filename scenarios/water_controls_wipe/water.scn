@@ -476,6 +476,8 @@ CrewPool: @shared_pool
         "Mobilization"
     input capacity = 40 work_h/h in [0 work_h/h, 2000 work_h/h] @capacity_basis
         "Work the pool can do in an hour once at work"
+    readonly working_capacity: work_h/h = this.capacity @capacity_basis
+        "Crew capacity available in this run"
     input request_time = 12 h in [0 h, 168 h] @stages
         "Time from recognition until responders request the crews"
     input approval_time = 24 h in [0 h, 168 h] @stages
@@ -484,7 +486,7 @@ CrewPool: @shared_pool
         "Time for the crews to arrive"
     input orientation_time = 48 h in [0 h, 336 h] @stages
         "Time until arrived crews work on their own"
-    hours: work_h = this.capacity * (100 days) in [0,] @keeps_count_limited
+    hours: work_h = this.working_capacity * (100 days) in [0,] @keeps_count_limited
         "Crew hours still available in the study"
         outflow.capacity = formula(this.pace_now) @shared_pool
             "The pool shares its hours among the systems that have work waiting."
@@ -492,7 +494,7 @@ CrewPool: @shared_pool
         "Crew hours used"
     readonly duty_now: formula(work_h/h) = formula(sum(this.utilities.manual_duty_now)) @operator_competition
         "Hours an hour that running plants by hand takes from the pool"
-    readonly pace_now: formula(work_h/h) = formula(this.capacity if this.stage == PRODUCTIVE else 0 work_h/h) @capacity_basis
+    readonly pace_now: formula(work_h/h) = formula(this.working_capacity if this.stage == PRODUCTIVE else 0 work_h/h) @capacity_basis
         "Work the pool does an hour"
     status ok when this.stage == PRODUCTIVE
         "Crews at work"
@@ -524,7 +526,7 @@ CrewPool: @shared_pool
             this.at_work.start()
         after 0 h:
             this.stage = PRODUCTIVE
-    assert this.hours + this.used in [this.capacity * (100 days) - 0.001 work_h, this.capacity * (100 days) + 0.001 work_h] @keeps_count_limited
+    assert this.hours + this.used in [this.working_capacity * (100 days) - 0.001 work_h, this.working_capacity * (100 days) + 0.001 work_h] @keeps_count_limited
         "Each crew hour is still available or used."
 
 controls_crew: CrewPool
@@ -532,7 +534,7 @@ controls_crew: CrewPool
     utilities = Utility.instances
     skill = "The controls crews"
     capacity = 40 work_h/h @capacity_basis
-    pace_now = formula(max(0 work_h/h, this.capacity - this.duty_now) if this.stage == PRODUCTIVE else 0 work_h/h)
+    pace_now = formula(max(0 work_h/h, this.working_capacity - this.duty_now) if this.stage == PRODUCTIVE else 0 work_h/h)
         @capacity_basis
 
 field_crew: CrewPool
