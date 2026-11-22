@@ -12,7 +12,9 @@ The scenario branch starts at engine handoff `05d25e7`. Historical comparisons u
 
 ## Interpreting the comparisons
 
-The water fixture uses the historical Delayed response run without further incidents. A separate Juneau test delays the initial report until 4 h. Recognition follows at 28 h. With a measured 160 work-hours reported at 200 h, the model reopens the repair queue and returns to manual operation. Automatic service resumes at about 204.21 h and the second laboratory clearance follows 48 h later. Without that field report, there is one restoration and one clearance. The test also accounts for every posted work-hour.
+The water fixture uses the historical Delayed response run without further incidents. A separate Juneau test delays the initial report until 4 h. Recognition follows at 28 h. With a measured 160 work-hours reported at 200 h, the model reopens the repair queue and returns to manual operation. Automatic service resumes at about 204.21 h and the second laboratory clearance follows 48 h later. Without that field report, there is one restoration and one clearance. The test also accounts for every posted work-hour. [Edited incident and paired control](../../../scenarios/water_controls_wipe/tests/test_service_recovery.py)
+
+An edited heat run starts private relocation at hour zero, simultaneous with the observed outage, and starts outreach at hour one. The test observes positive relocations during the first hour and reads the number of people whom outreach protects at hour one. It caught a same-time ordering error in which relocation stood down before the outage finished starting. Stand-down now depends on the restoration event. [Opening-stage and outreach test](../../../scenarios/heat_wave_blackout/tests/test_briefs.py)
 
 Water comparisons allow relative error of 10⁻⁸ with an absolute floor of 10⁻⁸ in the reported unit. Aggregated repair queues allow 10⁻⁵ work-hours absolute at zero because each component queue has a 1,000-work-hour comparison scale. Both source and candidate must reach the horizon before their observations count. Reproduce the historical inputs and output values independently as follows.
 
@@ -21,7 +23,7 @@ python scratch/rewrite/a5/check_water_recovery.py /path/to/legacy-checkout --job
 python -m pytest -q --no-focused -m deep scenarios/water_controls_wipe/tests/test_service_recovery.py -n 6
 ```
 
-The historical catalogue also generated disruptions by choosing future attacker actions. The recovery packages accept an initial incident, reported setbacks, lot condition or aggregate workload as appropriate. The response changes when these inputs change. The original attacker policies and their counterfactual comparisons belong to the historical study. Current published readings report the supplied recovery cases. The Washington, DC uncertainty comparison uses the current random sampler, with the legacy delayed-response PERT ranges and a documented early-response comparison.
+The historical catalogue also generated disruptions by choosing future attacker actions. The recovery packages accept an initial incident, reported setbacks, lot condition or aggregate workload as appropriate. The response changes when these inputs change. The original attacker policies and their counterfactual comparisons belong to the historical study. Current published readings report the supplied recovery cases. The Washington, DC uncertainty comparison uses the current random sampler, with the legacy delayed-response PERT ranges and a documented early-response comparison. Two matched draws for each response completed 2,160 hours. The 50-draw study per response was outside this verification run. [Washington sampling inputs and commands](../../../scenarios/water_controls_wipe/variants/washington_dc/README.md)
 
 ## What the port caught
 
@@ -32,3 +34,11 @@ In Washington, DC, a full downstream store kept a positive residual on its books
 Lehigh uncovered a second branch issue. The advisory was already active, yet the scheduler kept forecasting the stock comparison in a pressure-loss guard that first required potable status. This advanced the clock one representable tick at a time. Ignoring a branch while a held condition rules it out lets the run reach its horizon. Changing the held condition re-enables the forecast. [Trigger regression](../../../tests/engine/test_inactive_guard_contacts.py)
 
 Artifact-only runs of the reservoir and Juneau recovered 15 source readings and the same 27 ordered event starts in fresh processes with scenario-file access disabled. The water dashboard reads the selected time from the same run, including fractional hours. [Dashboard](../../../scenarios/water_controls_wipe/ui/README.md)
+
+## Reproducing the example migration gate
+
+The checker archives both revisions and runs each in its own Python process. It now checks the reservoir under `examples/`, which is the package users run. Twelve piano draws matched at 0, 4,380 and 8,760 hours. Twelve reservoir configurations matched at seven times, and the 24 sampled and analytical controls passed. The checker rejected both an incorrect final tuning count and a run that failed exactly at its horizon. [Paired comparison and rejection checks](../a5/paired_migrations.py)
+
+```sh
+python scratch/rewrite/a5/paired_migrations.py --candidate HEAD
+```
