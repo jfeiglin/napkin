@@ -1100,6 +1100,7 @@ class Sparse(MovingTransfers, Way):
             return self._side(t, solution(t))
 
         before, after = reader(start), reader(end)
+        ends = []  # the stores' rates at the step's two ends, once, when a switch needs them
         for pair, sign in self.signs.items():
             a, b = pair
             if pair in self.labels:
@@ -1107,6 +1108,10 @@ class Sparse(MovingTransfers, Way):
                 at = self.run.triggers.switching_time(a, b, moving, sign, affine)
             else:
                 try:
+                    first = before(a) - before(b)
+                    exact = integrate.fixed_clock(pair, before, self.moves)
+                    if exact is None:
+                        exact = self._held_root(pair, first, solution, start, end, reader, ends)
                     at = integrate.switch_time(
                         pair,
                         reader,
@@ -1114,13 +1119,41 @@ class Sparse(MovingTransfers, Way):
                         end,
                         self.plan.units,
                         sign,
-                        accepted=(before(a) - before(b), after(a) - after(b)),
-                        exact=integrate.fixed_clock(pair, before, self.moves),
+                        accepted=(first, after(a) - after(b)),
+                        exact=exact,
                     )
                 except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
                     continue
             if at is not None and start < at <= end:
                 yield at, pair, 'switch'
+
+    def _held_root(self, pair, first, solution, start, end, reader, ends):
+        """The crossing of a store with a fixed threshold when the store moves at one rate through
+        the whole step: the start plus the gap over that rate. A root search on the dense output
+        lands a place or two to either side of it, and which side depends on the platform's
+        arithmetic. None unless the rate is the same at both ends and the root is in the band."""
+        for node, other, direction in ((pair[0], pair[1], 1), (pair[1], pair[0], -1)):
+            if isinstance(node, nodes.Ref) and node.name in self.place and not self.moves(other):
+                k = self.place[node.name]
+                break
+        else:
+            return None
+        if not ends:
+            evaluations = self.evaluations
+            try:
+                ends.extend(self._net(self.values(at, solution(at))[1]) for at in (start, end))
+            finally:
+                self.evaluations = evaluations
+        rate = ends[0][k]
+        if not rate or rate != ends[1][k]:
+            return None
+        at = start - first / (direction * rate)
+        if not start < at <= end:
+            return None
+        read = reader(at)
+        if not integrate.contact_band(pair, reader, self.plan.units)(at, read(pair[0]) - read(pair[1])):
+            return None
+        return at
 
     def switched_at(self, t):
         """The settings whose actual switching root was reached at this instant."""
