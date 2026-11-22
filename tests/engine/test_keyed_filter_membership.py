@@ -30,10 +30,21 @@ yard:
 
 
 @pytest.mark.parametrize('key', ['999', '999 + t / (1 h)'], ids=['fixed-key', 'moving-key'])
-@pytest.mark.parametrize('limit', [150, 0], ids=['normal', 'sparse'])
-def test_filtered_lookup_switches_at_the_membership_boundary(key, limit):
-    model = compile_text(MODEL.replace('KEY', key), UNITS)
-    with patch('napkin.engine.timeline.plan.LIMIT', limit):
+@pytest.mark.parametrize('way', ['normal', 'sparse', 'declared'])
+def test_filtered_lookup_switches_at_the_membership_boundary(key, way):
+    source = MODEL.replace('KEY', key)
+    if way == 'declared':
+        source = source.replace('request = formula(', 'request = 6 L/h\n        capacity = formula(')
+        source += """    share = solver:
+        inputs:
+            out = this.fill
+        solve_for:
+            out.actual_rate
+        objective:
+            maximize(out.actual_rate)
+"""
+    model = compile_text(source, UNITS)
+    with patch('napkin.engine.timeline.plan.LIMIT', 0 if way == 'sparse' else 150):
         record = run(model.program, model.configuration)
     assert record.failure is None, record.failure
     # At 1 h the higher-ranked row leaves. Both keys are always above both ranks.
@@ -45,9 +56,11 @@ def test_filtered_lookup_switches_at_the_membership_boundary(key, limit):
 
 def test_a_fixed_lookup_key_exposes_both_ends_of_short_eligibility():
     # The high-ranked flow is available for 0.02 h, then the starting row returns.
-    source = MODEL.replace('KEY', '999').replace(
-        'input limit: L = 1 L', 'input limit: L = 1.01 L\n    input opening: L = 0.99 L'
-    ).replace('limit = 4 L', 'limit = 4 L\n    opening = 0 L')
+    source = (
+        MODEL.replace('KEY', '999')
+        .replace('input limit: L = 1 L', 'input limit: L = 1.01 L\n    input opening: L = 0.99 L')
+        .replace('limit = 4 L', 'limit = 4 L\n    opening = 0 L')
+    )
     source = source.replace('limit > this.clock', 'opening <= this.clock and limit > this.clock')
     model = compile_text(source, UNITS)
     with patch('napkin.engine.timeline.plan.LIMIT', 0):

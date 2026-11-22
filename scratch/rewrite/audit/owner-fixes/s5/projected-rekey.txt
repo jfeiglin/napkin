@@ -1,0 +1,4 @@
+key_before observed 3.0 expected 3 PASS
+key_after observed 3.0 expected 8 FAIL
+pipe_before observed 0.25 expected 0.25 PASS
+pipe_after observed 0.25 expected 0.75 FAIL

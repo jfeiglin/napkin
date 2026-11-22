@@ -1,0 +1,21 @@
+scenario "Ties after reversed links"
+    horizon 1 h
+Station:
+    input rank: number = 1
+    input weight: number = 3
+    input cap: L/h = 0.25 L/h
+    water: L = 0 L
+    flow pipe: SOURCE -> this.water
+        request = 1 L/h
+        capacity = this.cap
+left: Station
+right: Station
+    weight = 8
+    cap = 0.75 L/h
+Owner:
+    input rank: number = 1
+    station: Station
+first: Owner
+    station = right
+last: Owner
+    station = left
