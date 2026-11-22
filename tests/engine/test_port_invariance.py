@@ -21,6 +21,7 @@ from tests.engine.collection_scope_cases import check_collection_scope
 from tests.engine.comparison_band_cases import check_comparison_band
 from tests.engine.cross_rate_cases import check_cross_rate
 from tests.engine.lag_monotonicity_cases import check_lag_monotonicity
+from tests.engine.path_selection_cases import check_path_selection
 from tests.engine.port_cases import HORIZON, Case, Spelling, builder_program, text_program
 from tests.engine.proof_event_cases import check_proof_arguments, check_proof_reach
 from tests.engine.proof_network_cases import check_proof_network
@@ -46,6 +47,7 @@ CONFIG = Configuration(Request(HORIZON))
 # `roundoff` moves every ledger read that a decision makes two places each way
 # (`stocks.LEDGER_PROBE`): a decision that changes under it depends on the platform.
 OWNER_CHECKS = {
+    'path_selection': check_path_selection,
     'study_request': check_study_request,
     'collection_scope': check_collection_scope,
     'authoring_parity': check_authoring_parity,

@@ -17,6 +17,7 @@ from tests.engine import (
     comparison_band_cases,
     cross_rate_cases,
     lag_monotonicity_cases,
+    path_selection_cases,
     proof_event_cases,
     proof_network_cases,
     proof_solver_cases,
@@ -37,6 +38,7 @@ from tests.engine import (
 )
 
 FAMILIES = {
+    'p7/selection': path_selection_cases.check_path_selection,
     'p5/request': study_request_cases.check_study_request,
     's1/scalar': stage_read_cases.check_scalar_stage,
     's1/selection': lambda seed: stage_broadcast_cases.check_broadcast_stage(seed, 'selection'),
@@ -99,6 +101,7 @@ def run_cases(ids, destination):
         for module in (stage_broadcast_cases, stage_read_cases, comparison_band_cases, authored_number_cases)
     }
     dedicated = {
+        'p7/selection': path_selection_cases,
         'p5/request': study_request_cases,
         's3/component': switch_side_cases,
         's3/sparse': switch_side_cases,
