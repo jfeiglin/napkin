@@ -20,6 +20,7 @@ from tests.engine.collection_kind_cases import check_collection_kind, check_filt
 from tests.engine.collection_scope_cases import check_collection_scope
 from tests.engine.comparison_band_cases import check_comparison_band
 from tests.engine.cross_rate_cases import check_cross_rate
+from tests.engine.lag_monotonicity_cases import check_lag_monotonicity
 from tests.engine.port_cases import HORIZON, Case, Spelling, builder_program, text_program
 from tests.engine.proof_event_cases import check_proof_arguments, check_proof_reach
 from tests.engine.proof_network_cases import check_proof_network
@@ -59,6 +60,7 @@ OWNER_CHECKS = {
     'proof_solver': check_proof_solver,
     'proof_arguments': check_proof_arguments,
     'proof_reach': check_proof_reach,
+    'lag_monotonicity': check_lag_monotonicity,
 }
 TRANSFORMS = (
     'empty_event',

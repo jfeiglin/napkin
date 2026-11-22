@@ -1,0 +1,18 @@
+scenario "Overlapping stocks"
+    horizon 4 h
+yard:
+    batch = event(initial: L):
+        stock: L = initial
+        after 5 h
+    launch = event():
+        after 1 h:
+            this.batch.start(2 L)
+        after 1 h:
+            this.transfer.start()
+    transfer = event():
+        first = this.batch.occurrences.at(0 h)
+        second = this.batch.occurrences.at(1 h)
+        after 1 h:
+            move 4 L from first.stock to second.stock
+yard.batch.start(10 L)
+yard.launch.start()
