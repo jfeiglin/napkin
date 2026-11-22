@@ -4,7 +4,7 @@ The power supply goes out at the start of a heat wave. The utility checks the sy
 
 Residents on the affected supply, across three age bands, including home device users and people who depend on organized transport to reach cooling.
 
-Model revision `1fd5a16266a5b5b549c8fba8d80ccf36ce98cd493f4aa1b46bf0f83e9d5d21b0`. Readings are instantaneous, without reporting lags. All times are in hours.
+Model revision `cee3575356ec75a1c9216f91ceddfbbfc64ec55abb2b24900577850263c382f8`. Readings are instantaneous, without reporting lags. All times are in hours.
 
 ## standard
 
