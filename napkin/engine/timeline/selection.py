@@ -51,6 +51,7 @@ import math
 
 import numpy as np
 
+from ...core.units import rational
 from ..continuous import highs
 from ..errors import SimulationError
 from ..solve.solver import farther, rate_rounding
@@ -405,6 +406,28 @@ def size_of(rows, upper, tiers, prefs, target):
     return found if found > 0.0 else 1.0
 
 
+def _serves_in_full(rows, lower, upper, tiers, target):
+    """A feasible target serving every claim already attains every fair-sharing
+    maximum and zero final distance. Check the filed numbers exactly, including
+    positive-part capacities, before skipping the optimization."""
+    if not (np.isfinite(target).all() and (lower <= target).all() and (target <= upper).all()):
+        return False
+    exact = list(map(rational, target))
+
+    def total(a):
+        return sum(rational(a[i]) * exact[i] for i in np.flatnonzero(a))
+
+    return (
+        all(total(a) >= rational(wanted) for tier in tiers for a, wanted in tier)
+        and all(total(a) <= rational(b) for a, b in rows.upper)
+        and all(total(a) == rational(b) for a, b in rows.equal)
+        and all(
+            total(a) + sum(max(0, rational(s) * exact[j]) for j, s in parts) <= rational(b)
+            for a, parts, b in rows.convex
+        )
+    )
+
+
 def select(rows, lower, upper, tiers, prefs, target, units=None, own_scales=1.0, measure=None):
     """The unknowns of one coupled part: `rows` (`Rows`, in the units of the rates), the bounds of
     each unknown (-inf and inf for none), the tiers of claims in order (each a list of (a,
@@ -420,6 +443,10 @@ def select(rows, lower, upper, tiers, prefs, target, units=None, own_scales=1.0,
     n = rows.n
     lower, upper = np.asarray(lower, dtype=float), np.asarray(upper, dtype=float)
     target = np.asarray(target, dtype=float)
+    if not prefs and _serves_in_full(rows, lower, upper, tiers, target):
+        if measure is not None:
+            measure(target, target)
+        return target.copy()
     if units is None:
         units = np.full(n, size_of(rows, upper, tiers, prefs, target))
     units = np.asarray(units, dtype=float)
