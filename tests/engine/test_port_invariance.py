@@ -14,6 +14,7 @@ from napkin.program.artifact import loads as load_artifact
 from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
 from napkin.program.config import Configuration, Request
 from napkin.program.record import Key, Unavailable
+from tests.engine.authored_number_cases import check_authored_number
 from tests.engine.comparison_band_cases import check_comparison_band
 from tests.engine.port_cases import HORIZON, Case, Spelling, builder_program, text_program
 from tests.engine.stage_broadcast_cases import check_broadcast_stage
@@ -39,6 +40,9 @@ TRANSFORMS = (
     'stage_ordering',
     'comparison_gap',
     'comparison_range',
+    'authored_units',
+    'authored_cells',
+    'authored_cli',
 )
 GUARD = 'plant.observe.step[0]'
 
@@ -305,6 +309,9 @@ def check_transform(seed, name, record_property):
         return
     if name in ('stage_selection', 'stage_ordering'):
         check_broadcast_stage(seed, name.removeprefix('stage_'))
+        return
+    if name.startswith('authored_'):
+        check_authored_number(seed, name.removeprefix('authored_'))
         return
     if name in ('comparison_gap', 'comparison_range'):
         check_comparison_band(seed, name.removeprefix('comparison_'))

@@ -1,0 +1,30 @@
+Traceback (most recent call last):
+  File "<stdin>", line 8, in <module>
+  File "napkin/model/compile.py", line 191, in load_scenario
+    compiled = _compiled(
+        tree,
+    ...<6 lines>...
+        library,
+    )
+  File "napkin/model/compile.py", line 114, in _compiled
+    program = lower(declared)
+  File "napkin/model/lowering.py", line 111, in lower
+    rows = [_row(each, template) for each in model.members if each.table == member.table]
+            ~~~~^^^^^^^^^^^^^^^^
+  File "napkin/model/lowering.py", line 248, in _row
+    return {'id': id, **_given(member, template)} if id else _given(member, template)
+                        ~~~~~~^^^^^^^^^^^^^^^^^^
+  File "napkin/model/lowering.py", line 240, in _given
+    **{given.name: initial(given.init) for given in member.values},
+                   ~~~~~~~^^^^^^^^^^^^
+  File "napkin/model/lowering.py", line 365, in initial
+    return handle(init)
+  File "napkin/model/lowering.py", line 533, in handle
+    node = _node(expression, reads)
+  File "napkin/model/lowering.py", line 563, in _node
+    if item.exact is not None and item.exact != Fraction(str(value)):
+                                                ~~~~~~~~^^^^^^^^^^^^
+  File "/private/tmp/napkin-check.U3liJ8Ff/uv-python/cpython-3.13.16-macos-aarch64-none/lib/python3.13/fractions.py", line 256, in __new__
+    raise ValueError('Invalid literal for Fraction: %r' %
+                     numerator)
+ValueError: Invalid literal for Fraction: 'inf'

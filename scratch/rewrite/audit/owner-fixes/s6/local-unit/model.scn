@@ -1,0 +1,3 @@
+scenario "Number fixture"
+    horizon 1 h
+input duration: h = 1 hx in [0 h, 1 h]

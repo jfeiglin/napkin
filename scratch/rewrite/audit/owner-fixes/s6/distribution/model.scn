@@ -1,0 +1,3 @@
+scenario "Number fixture"
+    horizon 1 h
+input duration: h = uniform(0 h, 1.00000000000000001 h).draw() in [0 h, 1 h]

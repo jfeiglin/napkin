@@ -1,0 +1,5 @@
+scenario "Number fixture"
+    horizon 1 h
+Item:
+    input amount: h = 0 h
+items: Item from "items.csv"

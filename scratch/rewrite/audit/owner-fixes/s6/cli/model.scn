@@ -1,0 +1,9 @@
+scenario "Number fixture"
+    horizon 1 h
+box:
+    one: number = 1
+    n: number = 0 in [0, 1]
+    pause = event():
+        after 0 h:
+            this.n = this.n
+box.pause.start()
