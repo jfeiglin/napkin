@@ -32,7 +32,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from functools import partial
 
-from ..program.config import MEDIAN, Request
+from ..program.config import MEDIAN
 from . import expectations
 from .report import reading_scale, report
 from .sampling import SamplingSettings, sampled
@@ -144,6 +144,8 @@ def monte_carlo(
     keys = tuple(dict.fromkeys(key_of(program, path) for path in paths))
     for found in keys:
         named(program, found)
+    request = replace(configuration.request, everything=False, keys=keys)
+    configuration = replace(configuration, request=request)
     central_run = replace(configuration, mode=MEDIAN, seed=None)
     central = report(
         run_all(program, [central_run], jobs=jobs)[0], program, central_run, paths, times, model=model
@@ -151,12 +153,11 @@ def monte_carlo(
     study = MonteCarlo(settings, paths, times, central)
     if central.stopped is not None:
         return replace(study, refused=f'the central run stops: {central.stopped}')
-    request = Request(configuration.request.horizon, everything=False, keys=keys)
     work = partial(_sampled, paths, times, with_scales)
     samples = tuple(
         run_all(
             program,
-            sampled(replace(configuration, request=request), settings),
+            sampled(configuration, settings),
             work,
             jobs=jobs,
             progress=progress,
