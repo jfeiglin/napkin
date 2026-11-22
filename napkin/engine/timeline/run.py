@@ -54,11 +54,13 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
+from copy import copy
 from dataclasses import dataclass, replace
 
 import numpy as np
 
 from ...core import expr as nodes
+from ...core.comparisons import Comparisons
 from ...core.errors import ExpressionError
 from ...expressions import evaluate
 from ...program.checkpoint import CheckpointError
@@ -527,11 +529,47 @@ class Run:
 
     # ---- the present ----------------------------------------------------------------------------------
 
+    def definition(self, name, tx=None):
+        """The definition visible at this read, including any assignment earlier in its stage."""
+        value = self.plan.values.get(name)
+        if tx is not None and name in tx.defined:
+            written = tx.writes[name]
+            return value.redefined(written.node if isinstance(written, Defined) else None)
+        return value
+
+    def units_for(self, tx):
+        """Use the stage's definitions for literal operands, inherited floors and selected members.
+        A later redefinition starts a new comparison cache. Committed reads keep the plan's cache."""
+        plan = self.plan
+        if tx is None or not tx.defined:
+            return plan.units
+        if tx.units is None:
+            units = copy(plan.units)
+
+            def lookup(name):
+                return self.definition(name, tx)
+
+            units.comparisons = Comparisons(
+                units,
+                plan.units.comparisons.factor,
+                lambda name: plan.comparison_quantity(name, plan.comparison_scales, lookup, units=units),
+            )
+            units.comparisons.concrete_definitions = True
+            tx.units = units
+        return tx.units
+
     def value(self, name, t=None, tx=None, *, observations=None):
         """The value of an engine name now, or at a time t inside the present window of the ways (see
         the module); a stage's own writes (`tx`) first."""
         t = self.now if t is None else float(t)
         plan = self.plan
+        if tx is not None and name in tx.writes:
+            value = tx.writes[name]
+            if isinstance(value, Unavailable):
+                raise ExpressionError(value.reason)
+            if isinstance(value, Defined):
+                return walked(self._derived(name, t, tx, {}, set(), observations=observations))
+            return value
         found = plan.values.get(name)
         kind = found.kind if found is not None else None
         if (
@@ -550,13 +588,6 @@ class Run:
                 return self.ways.shared_value(name)
             if kind != RESULT:
                 return 0.0  # a flow that this round added has not shared yet
-        if tx is not None and name in tx.writes:
-            value = tx.writes[name]
-            if isinstance(value, Unavailable):
-                raise ExpressionError(value.reason)
-            if isinstance(value, Defined):  # a calculation that the stage gave the value
-                return walked(self._derived(name, t, tx, {}, set(), observations=observations))
-            return value
         if name == 't':
             return t
         if name in self.written:
@@ -671,31 +702,37 @@ class Run:
         """One evaluation of a derived value from `read` (`_derived`); a reduction or a dynamic read
         of every member first asks for those of its entries that this read has not computed."""
         plan = self.plan
-        if tx is not None and name in tx.writes:
-            return lazily(tx.writes[name].node, read, plan.units, t)
-        value = plan.values[name]
+        if tx is None or not tx.defined:
+            units, value = plan.units, plan.values[name]
+        else:
+            units, value = self.units_for(tx), self.definition(name, tx)
         kind = value.kind
         if kind == FORMULA or (region is not None and name in region.defined):
             node = value.node if region is None else region.expression(value.node)
-            return read(node.name) if isinstance(node, nodes.Ref) else lazily(node, read, plan.units, t)
+            return read(node.name) if isinstance(node, nodes.Ref) else lazily(node, read, units, t)
         if kind == REDUCE:
-            reduction, entries = plan.reductions[name], self.kept_of(name)
+            reduction = plan.reductions[name]
+            entries = (
+                kept(reduction.tests, read, units) if tx is not None and tx.writes else self.kept_of(name)
+            )
             if reduction.names is not None:
                 self._ask((reduction.names[k] for k in entries), tx, known)
-            return reduced(reduction, read, plan.units, entries)
+            return reduced(reduction, read, units, entries)
         if kind == LOOKUP:
             entry = region.keyed(name) if region is not None else None
             if entry is not None:
                 return read(entry)
+            if tx is not None and tx.writes:
+                return looked_up(plan.keyed[name], read, units, t)
             if plan.stepped(name):
                 return read(self.stepped_of(name).name_at(t))
-            return looked_up(plan.keyed[name], read, plan.units, t, self.index_for(name))
+            return looked_up(plan.keyed[name], read, units, t, self.index_for(name))
         dynamic = plan.dynamic[name]
         members = plan.members(dynamic.source)
         if dynamic.keep is None and dynamic.steps and dynamic.op not in ('at', 'latest'):
             self._ask((plan.project(point, dynamic.steps) for point in members), tx, known)
         return dynamic_value(
-            dynamic, members, lambda point: plan.project(point, dynamic.steps), read, t, plan.units
+            dynamic, members, lambda point: plan.project(point, dynamic.steps), read, t, units
         )
 
     def _ask(self, names, tx, known):
@@ -719,7 +756,7 @@ class Run:
     def truth(self, node, tx=None):
         """The value of a node over engine names now, through a stage's own writes. Each name is read
         when the evaluation asks for it, so a branch that is not taken executes no draw (`reads.py`)."""
-        return lazily(node, lambda read: self.value(read, tx=tx), self.plan.units, self.now)
+        return lazily(node, lambda read: self.value(read, tx=tx), self.units_for(tx), self.now)
 
     def changed_at(self, name, tx=None):
         """The time at which a stored value last changed at a commit: of a write of this stage that
@@ -875,10 +912,6 @@ class Run:
         self.left.clear()
         self.changed.clear()
         self.moved.clear()
-
-    def kept_entries(self, entries):
-        """The places of the entries of a collection that its where tests keep."""
-        return kept(entries.tests, self.value_of, self.plan.units)
 
     # ---- the run ----------------------------------------------------------------------------------
 

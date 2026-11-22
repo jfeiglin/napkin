@@ -108,7 +108,7 @@ from ...program import parts as p
 from ...program.refs import Distribution, Formula, Lookup, spelled
 from ..continuous.walk import walked
 from ..errors import SimulationError
-from .collections import occurrence_at
+from .collections import kept, occurrence_at
 from .plan import BACKWARD, FORMULA, FORWARD, STATE
 from .reads import Reads, lazily
 
@@ -230,6 +230,7 @@ class Tx:
         # A value that the stage gives a definition -> the statement that gives it its last: a
         # formula, or a captured number in place of a request's or a capacity's formula.
         self.defined = {}
+        self.units = None  # comparison bindings for the current definitions in this stage
         self.near = ()  # the near-ties of its tests (`near_ties`)
         self.edits = []  # (part, owner, details) of the trace entry of each edit made in it
         self.mark = None  # the length of the trace when its statements are done (`execute`)
@@ -239,6 +240,10 @@ class Tx:
         statements that give them (`Plan.definitions_of`), and the near-ties of its tests."""
         found = {'defines': tuple(self.defined.items())} if self.defined else {}
         return found | ({'near': tuple(self.near)} if self.near else {})
+
+    def define(self, name, origin):
+        self.defined[name] = origin
+        self.units = None
 
 
 class _Savepoint:
@@ -512,18 +517,27 @@ class Moment:
             seen[name] = found = run.value(name, tx=tx)
             return found
 
-        answer = bool(lazily(node, read, self.plan.units, run.now))
+        units = run.units_for(tx)
+        answer = bool(lazily(node, read, units, run.now))
 
         def side(part):
             return lazily(
                 part,
                 lambda name: seen[name] if name in seen else run.value(name, tx=tx),
-                self.plan.units,
+                units,
                 run.now,
             )
 
         try:
-            near = near_ties(node, origin, self.plan, run.frozen, side)
+            near = near_ties(
+                node,
+                origin,
+                self.plan,
+                run.frozen,
+                side,
+                comparisons=units.comparisons,
+                definition=lambda name: run.definition(name, tx),
+            )
         except (ExpressionError, ArithmeticError, LookupError):
             near = ()  # a side that the answer did not read
         tx.near = (*tx.near, *near)
@@ -576,7 +590,12 @@ class Moment:
 
                 try:
                     point = occurrence_at(
-                        self.plan.members(source[1]), key, read, self.plan.units, self.run.now, spelled(path)
+                        self.plan.members(source[1]),
+                        key,
+                        read,
+                        self.run.units_for(tx),
+                        self.run.now,
+                        spelled(path),
                     )
                 except ExpressionError as problem:
                     raise SimulationError(f'{origin}: {problem}') from problem
@@ -640,10 +659,10 @@ class Moment:
             tx.writes[name] = statement.value
             return
         if isinstance(statement.value, Formula):
-            # A new calculation: what reads the value follows it from the commit on.
+            # The following statements in this stage already see the new calculation.
             node = run.occurrences.node(statement.value.expr, scope, statement.origin)
             tx.writes[name] = Defined(node)
-            tx.defined[name] = statement.origin
+            tx.define(name, statement.origin)
             return
         value = self.truth(statement.value, scope, statement.origin, tx)
         if statement.op != '=':
@@ -662,7 +681,7 @@ class Moment:
         if name in tx.defined or (found is not None and found.kind == FORMULA):
             # A request or a capacity that was a formula now holds the number (spec: "A scalar
             # assignment captures a value").
-            tx.defined[name] = statement.origin
+            tx.define(name, statement.origin)
 
     def move(self, statement, tx, scope):
         """`move amount from source to destination`: both inventories are checked before anything
@@ -745,15 +764,12 @@ class Moment:
         while isinstance(node, nodes.Ref) and node.name not in visited:
             name = node.name
             visited.add(name)
-            found = self.plan.values.get(name)
+            found = self.run.definition(name, tx)
             if found is None:
                 break
             if found.kind == STATE:
                 return name
-            if name in tx.writes:
-                written = tx.writes[name]
-                node = written.node if isinstance(written, Defined) else None
-            elif found.kind == FORMULA and name not in self.run.frozen:
+            if found.kind == FORMULA and name not in self.run.frozen:
                 node = found.node
             elif name in self.plan.dynamic and self.plan.dynamic[name].op == 'at':
                 dynamic = self.plan.dynamic[name]
@@ -761,7 +777,7 @@ class Moment:
                     self.plan.members(dynamic.source),
                     dynamic.key,
                     lambda n: self.run.value(n, tx=tx),
-                    self.plan.units,
+                    self.run.units_for(tx),
                     self.run.now,
                     dynamic.spelled,
                 )
@@ -774,11 +790,16 @@ class Moment:
         """Take a rational share of the authored quantities before booking it to either store.
         Reads and comparisons use the stage's usual values, including its selected branches.
         An irrational result uses the ordinary numerical evaluator with the same cached reads."""
-        run, units = self.run, self.plan.units
+        run = self.run
+        units = run.units_for(tx)
         reads = Reads(nodes.names(node), lambda name: run.value(name, tx=tx), run.now)
 
         def parts(part):
             op, args, data = node_parts(part)
+            if isinstance(part, nodes.Ref):
+                authored = units.comparisons.literal_value(part)
+                if isinstance(authored, Fraction):
+                    return 'number', (), (authored, '')
             if isinstance(part, nodes.Ref) or op in ('compare', 'within', 'not', 'and', 'or'):
                 found = evaluate(part, reads, units)
                 if isinstance(found, int | float) and not isinstance(found, bool):
@@ -805,11 +826,14 @@ class Moment:
         if point[0] != 'many' or any(each[0] != 'event' for each in point[1].points):
             raise SimulationError(f'{statement.origin}: a start of what is no event')
         entries = point[1]
-        kept = run.kept_entries(entries)
+
+        def read(name):
+            return run.value(name, tx=tx)
+
         order = sorted(
-            kept,
+            kept(entries.tests, read, run.units_for(tx)),
             key=lambda k: (
-                float(run.value(entries.keys[k])) if isinstance(entries.keys[k], str) else entries.keys[k],
+                float(read(entries.keys[k])) if isinstance(entries.keys[k], str) else entries.keys[k],
                 k,
             ),
         )
@@ -1044,7 +1068,7 @@ def _listed(names):
     return shown if len(names) <= 3 else f'{shown} and {len(names) - 3} more'
 
 
-def near_ties(node, origin, plan, frozen, side, later=None):
+def near_ties(node, origin, plan, frozen, side, later=None, *, comparisons=None, definition=None):
     """The near-ties of a condition (see the module): (origin, comparison, difference, tolerance) of
     each numeric comparison that decides its answer, through boolean formulas, whose sides differ by
     no more than the band of their two values, and with `later`, still do an instant later. `side(node)`
@@ -1056,12 +1080,15 @@ def near_ties(node, origin, plan, frozen, side, later=None):
     link of a true one, else the link that fails. A membership is evaluated (a reversed interval
     fails by name), then read as its chain `lo <= x <= hi`."""
 
+    comparisons = plan.units.comparisons if comparisons is None else comparisons
+    definition = plan.values.get if definition is None else definition
+
     def decided(part):
         """(the answer of a part, the near-ties of the comparisons that decide it), as a computation
         of `walk.walked`: each part through a boolean formula is one that it yields, so a chain of
         them is no limit of Python's."""
         if isinstance(part, nodes.Ref):
-            value = plan.values.get(part.name)
+            value = definition(part.name)
             if value is not None and value.kind == FORMULA and value.boolean and part.name not in frozen:
                 return (yield decided(value.node))
             return bool(side(part)), []
@@ -1097,7 +1124,7 @@ def near_ties(node, origin, plan, frozen, side, later=None):
                 if not ((a == b) if op == 'eq' else (a != b)):
                     return False, []
                 continue
-            difference, band = plan.units.comparisons.gap_band(left, right, a, b, side)
+            difference, band = comparisons.gap_band(left, right, a, b, side)
             exact_count = (
                 any(
                     isinstance(part, nodes.Ref)

@@ -21,6 +21,7 @@ from fractions import Fraction
 import pytest
 
 from napkin.engine import read, run
+from napkin.model.compile import compile_text
 from napkin.program.build import (
     BOOL,
     SINK,
@@ -115,6 +116,72 @@ def test_a_later_statement_of_the_stage_reads_the_new_calculation():
     )
     record = run_for(program, 3)
     assert values(record, program, 'tank.copy', [1, 2]) == pytest.approx([0, 2])
+
+
+def test_each_redefinition_and_capture_supplies_its_own_comparison():
+    program = compile_text(
+        """box:
+    stock: L = 10 L
+    flow pipe: this.stock -> SINK
+        request = formula(0 L/h)
+    observed: number = 0
+    change = event():
+        after 1 h:
+            this.pipe.request = formula(2 L/h)
+            if this.pipe.request > 1 L/h:
+                this.observed += 1
+            this.pipe.request = 0 L/h
+            if this.pipe.request == 0 L/h:
+                this.observed += 2
+            this.pipe.request = formula(3 L/h)
+            if this.pipe.request == 3 L/h:
+                this.observed += 4
+box.change.start()
+""",
+        UNITS,
+    ).program
+    record = run_for(program, 1)
+    assert values(record, program, 'box.observed', [1]) == [7]
+
+
+def test_a_move_reads_the_exact_authored_value_of_its_new_definition():
+    program = compile_text(
+        """box:
+    amount = formula(10000000000000000 L)
+    stock: L = 10 L
+    received: L = 0 L
+    change = event():
+        after 1 h:
+            this.amount = formula(10000000000000001 L)
+            move (this.amount - 10000000000000000 L) from this.stock to this.received
+box.change.start()
+""",
+        UNITS,
+    ).program
+    record = run_for(program, 1)
+    assert values(record, program, 'box.received', [1]) == [1]
+
+
+def test_a_redefined_boolean_attributes_its_own_near_tie():
+    program = compile_text(
+        """box:
+    amount: L = 2 L
+    qualifies = formula(false)
+    observed: bool = false
+    change = event():
+        after 1 h:
+            this.qualifies = formula(this.amount == 2 L)
+            if this.qualifies:
+                this.observed = true
+box.change.start()
+""",
+        UNITS,
+    ).program
+    record = run_for(program, 1)
+    assert values(record, program, 'box.observed', [1]) == [True]
+    ((_, (_, comparison, difference, band)),) = record.near_ties()
+    assert comparison == 'box.amount == 2 L'
+    assert difference == 0 and band > 0
 
 
 def test_a_request_takes_a_formula_then_a_number_again():

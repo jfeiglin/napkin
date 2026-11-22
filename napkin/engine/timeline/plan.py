@@ -234,6 +234,10 @@ class Value:
     shape: nodes.Node | None = None
     binding: tuple[tuple[str, str], ...] = ()
 
+    def redefined(self, node):
+        """The value after a formula assignment, or a captured scalar in its place."""
+        return replace(self, kind=CAPTURE if node is None else FORMULA, node=node, shape=None, binding=())
+
 
 @dataclass(frozen=True)
 class Drawn:
@@ -633,12 +637,12 @@ class Plan:
         self._connect()
         self._classify_asserts()
 
-    def comparison_quantity(self, name, scales, lookup=None, resolve=None, latest=None):
+    def comparison_quantity(self, name, scales, lookup=None, resolve=None, latest=None, *, units=None):
         """The declared unit size and the explicit floor or defining formula for a name."""
-        live = lookup is None
-        value = self.values.get(name) if live else lookup(name)
-        unit = self.units.scale(value.unit) if value is not None and value.unit else 1.0
-        if live and name in self.frozen_scales:
+        units = self.units if units is None else units
+        value = self.values.get(name) if lookup is None else lookup(name)
+        unit = units.scale(value.unit) if value is not None and value.unit else 1.0
+        if latest is None and name in self.frozen_scales:
             return unit, self.frozen_scales[name]
         if name in scales:
             return unit, scales[name]
@@ -647,20 +651,20 @@ class Plan:
                 if resolve is not None:
                     return unit, resolve(name, value.scale)
                 if not nodes.names(value.scale):
-                    return unit, abs(float(evaluate(value.scale, {}, self.units)))
+                    return unit, abs(float(evaluate(value.scale, {}, units)))
             elif value.kind == FORMULA:
                 return unit, value.node
             elif value.kind == DYNAMIC and self.dynamic[name].op == 'at':
                 projection = self.dynamic[name]
                 if projection.key is None:
                     members = self.occurrences[projection.source[1:]]
-                    owner = members[-1] if live and members else latest(members) if latest else None
+                    owner = latest(members) if latest is not None else members[-1] if members else None
                     if owner is not None:
                         return unit, nodes.ref(self.project(('occurrence', owner), projection.steps))
 
                 def choose(read):
                     members = self.members_at(projection.source, read)
-                    point = occurrence_at(members, projection.key, read, self.units, None, projection.spelled)
+                    point = occurrence_at(members, projection.key, read, units, None, projection.spelled)
                     return nodes.ref(self.project(point, projection.steps))
 
                 names = tuple(self.project(m, projection.steps) for m in self.members(projection.source))
@@ -672,7 +676,7 @@ class Plan:
                 dynamic = self.dynamic[name]
 
                 def choose(read):
-                    members = dynamic.selected(self.members_at(dynamic.source, read), read)
+                    members = dynamic.selected(self.members_at(dynamic.source, read), read, units)
                     return aggregate_node(
                         dynamic.op, (self.project(m, dynamic.steps) for m in members), dynamic.spelled
                     )
@@ -687,7 +691,7 @@ class Plan:
                     return unit, node_of(reduction, range(len(reduction.tests)))
 
                 def choose(read):
-                    return node_of(reduction, kept(reduction.tests, read, self.units))
+                    return node_of(reduction, kept(reduction.tests, read, units))
 
                 tests = {n for test in reduction.tests if test is not None for n in nodes.names(test)}
                 return unit, SelectedScale(choose, tests, reduction.names)
@@ -698,7 +702,7 @@ class Plan:
                     return unit, nodes.ref(fixed)
 
                 def choose(read):
-                    k = selected(keyed, read, self.units, None)
+                    k = selected(keyed, read, units, None)
                     if k is None:
                         raise ExpressionError(f'{keyed.spelled}: no member at this key')
                     return nodes.ref(keyed.names[k])
@@ -1396,10 +1400,7 @@ class Plan:
         value reads the new definition from then on: the expansions are found again."""
         value = self.values[name]
         found = self.defined.setdefault(name, [(start, value)])
-        if node is None:
-            made = replace(value, kind=CAPTURE, node=None, shape=None, binding=())
-        else:
-            made = replace(value, kind=FORMULA, node=node, shape=None, binding=())
+        made = value.redefined(node)
         self.values[name] = made
         found.append((t, made))
         self._expanded.clear()
@@ -1430,11 +1431,12 @@ class Plan:
             for name, origin in defines:
                 statement = self._statements[origin]
                 original = self.original(name)
-                if isinstance(statement.value, Formula):
-                    node = self.node(statement.value.expr, scope, origin)
-                    made = replace(original, kind=FORMULA, node=node, shape=None, binding=())
-                else:
-                    made = replace(original, kind=CAPTURE, node=None, shape=None, binding=())
+                node = (
+                    self.node(statement.value.expr, scope, origin)
+                    if isinstance(statement.value, Formula)
+                    else None
+                )
+                made = original.redefined(node)
                 start = self.start_of(name)
                 found.setdefault(name, [(start, original)]).append((float(entry.t), made))
         return found
@@ -2255,7 +2257,7 @@ class Plan:
         rest = Expr(node, tuple((name, read) for name, read in test.reads if name in left))
         answered = [f'?{k}' for k in range(len(atoms))]
         bound = self._bound(rest, scope, origin, answered=answered)[0]
-        return Ends(tuple(atoms), bound, self.connections, self.units)
+        return Ends(tuple(atoms), bound, self.connections)
 
     def _derived_name(self, read, scope, item):
         """The engine name of a reduction or a keyed read: its spelling, after the member that it

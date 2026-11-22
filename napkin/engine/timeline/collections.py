@@ -117,7 +117,6 @@ class Ends:
     atoms: tuple
     rest: nodes.Node
     connections: dict
-    units: object
     before: Ends | None = None
     _nodes: dict = field(default_factory=dict)
 
@@ -138,12 +137,12 @@ class Ends:
             found = self._nodes[connection] = _answered(self.rest, answers)
         return found
 
-    def keeps(self, point, value):
+    def keeps(self, point, value, units):
         """Whether the test keeps a member of a dynamic collection (its point), from the values of
         engine names."""
-        if self.before is not None and not self.before.keeps(point, value):
+        if self.before is not None and not self.before.keeps(point, value, units):
             return False
-        return bool(lazily(self.node(point[1]), value, self.units))
+        return bool(lazily(self.node(point[1]), value, units))
 
     def reads(self):
         """The engine names that the test reads besides the ends of its members."""
@@ -188,9 +187,9 @@ class Dynamic:
     keep: Ends | None = None
     key: nodes.Node | None = None  # None for the current time on an occurrence lookup
 
-    def selected(self, members, value):
+    def selected(self, members, value, units):
         """The members retained by the authored filter at this read."""
-        return members if self.keep is None else [m for m in members if self.keep.keeps(m, value)]
+        return members if self.keep is None else [m for m in members if self.keep.keeps(m, value, units)]
 
 
 def occurrence_at(members, key, read, units, t, spelled):
@@ -208,7 +207,7 @@ def occurrence_at(members, key, read, units, t, spelled):
 def dynamic_value(dynamic, members, project, value, t, units):
     """The value of a dynamic read at time t from its members at t (their points, in order), the
     engine name that each projects (`project(point)`) and the values of engine names."""
-    members = dynamic.selected(members, value)
+    members = dynamic.selected(members, value, units)
     op = dynamic.op
     if op == 'latest':
         if not members:
