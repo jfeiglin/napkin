@@ -1,17 +1,17 @@
 scenario "Electricity restoration during a heat wave"
-    summary "The power supply goes out at the start of a heat wave. The utility checks the system and
-        crews restore service. Hospitals, cooling centres and outreach respond to the remaining need."
+    summary "The power supply goes out at the start of a heat wave. The utility checks the system and crews
+        restore service. Hospitals, cooling centres and outreach respond to the remaining need."
     horizon 1800 h
-    scope "Residents on the affected supply, across three age bands, including home device users
-        and people who depend on organized transport to reach cooling."
+    scope "Residents on the affected supply, across three age bands, including home device users and people
+        who depend on organized transport to reach cooling."
     library "../library"
 
-heat_wave:  @counts_quantity_value
+heat_wave: @counts_quantity_value
     "A dry heat wave that starts with the outage. Its outdoor temperature and published heat-health curves set
         the risk of people without cooling."
-    input length = 120 h in [48 h, 240 h]  @heat_wave_length
+    input length = 120 h in [48 h, 240 h] @heat_wave_length
         "Length of the heat wave"
-    input outdoor = 39.35 degC in [30 degC, 45 degC]  @heat_wave_outdoor
+    input outdoor = 39.35 degC in [30 degC, 45 degC] @heat_wave_outdoor
         "Daily mean outdoor temperature in the heat wave"
     input cap = 55 degC in [55 degC, 72 degC]
         "Highest equivalent outdoor temperature for heat-related deaths"
@@ -29,107 +29,107 @@ heat_wave:  @counts_quantity_value
             claims:
                 E-GRONLUND26-CAP55
                 E-IETCODE-EXTRAPOLATION
-    input heat_death_threshold = 34 degC in [25 degC, 40 degC]  @heat_curve_limits
+    input heat_death_threshold = 34 degC in [25 degC, 40 degC] @heat_curve_limits
         "Heat-related death curve: threshold"
         @source "Heat-related deaths in Phoenix rise above 34 °C (Petitti et al. 2016)."
             claims:
                 E-GRONLUND26-S1-PHX
                     datum: petitti_heat_deaths_threshold
-    input heat_death_slope = 0.44 per_degC in [0.2 per_degC, 0.6 per_degC]  @heat_curve_limits
+    input heat_death_slope = 0.44 per_degC in [0.2 per_degC, 0.6 per_degC] @heat_curve_limits
         "Heat-related death curve: rise in the log risk ratio per degree"
         @source "The risk ratio of Phoenix heat-related deaths is 14.0 at 40 °C against 34 °C, 0.440 in the
             log risk ratio per degree; the curve continues in a straight line above 40 °C."
             claims:
                 E-GRONLUND26-S1-PHX
                     datum: petitti_heat_deaths_slope
-    input heat_death_rate = 5.0359712e-08 per_day in [1e-08 per_day, 2e-07 per_day]  @heat_death_normal_rate
+    input heat_death_rate = 5.0359712e-08 per_day in [1e-08 per_day, 2e-07 per_day] @heat_death_normal_rate
         "Normal rate of heat-related deaths"
     # The four all-cause mortality curves of the setting. Each is linear in the log risk ratio from its
     # threshold to the top of its fitted range, and continues beyond the top with the slope of its last
     # degree.
-    input gasparrini_threshold = 33.3 degC in [20 degC, 40 degC]  @curve_table @curve_limits
+    input gasparrini_threshold = 33.3 degC in [20 degC, 40 degC] @curve_table @curve_limits
         "Gasparrini et al. 2015 curve: threshold"
-    input gasparrini_top = 40.6 degC in [25 degC, 45 degC]  @curve_table @curve_limits
+    input gasparrini_top = 40.6 degC in [25 degC, 45 degC] @curve_table @curve_limits
         "Gasparrini et al. 2015 curve: top of the fitted range"
-    input gasparrini_slope = 0.026112378 per_degC in [0 per_degC, 0.2 per_degC]  @gasparrini_slope_arithmetic
+    input gasparrini_slope = 0.026112378 per_degC in [0 per_degC, 0.2 per_degC] @gasparrini_slope_arithmetic
         "Gasparrini et al. 2015 curve: rise in the log risk ratio per degree up to the top"
-    input gasparrini_extension = 0.0539 per_degC in [0 per_degC, 0.2 per_degC]  @curve_limits
+    input gasparrini_extension = 0.0539 per_degC in [0 per_degC, 0.2 per_degC] @curve_limits
         "Gasparrini et al. 2015 curve: rise in the log risk ratio per degree above the top"
         @source "The slope between the two highest observed temperatures, which the method continues above the
             top."
             claims:
                 E-GRONLUND26-S1-PHX
                     datum: gasparrini_phoenix_extension_slope
-    input gasparrini_weight: fraction = 1 in [0, 1]  @curve_weights
+    input gasparrini_weight: fraction = 1 in [0, 1] @curve_weights
         "Gasparrini et al. 2015 curve: weight"
-    input bobb_threshold = 33.3 degC in [20 degC, 40 degC]  @curve_table @curve_limits
+    input bobb_threshold = 33.3 degC in [20 degC, 40 degC] @curve_table @curve_limits
         "Bobb et al. 2014 curve: threshold"
-    input bobb_top = 40.6 degC in [25 degC, 45 degC]  @curve_table @curve_limits
+    input bobb_top = 40.6 degC in [25 degC, 45 degC] @curve_table @curve_limits
         "Bobb et al. 2014 curve: top of the fitted range"
-    input bobb_slope = 0.00108 per_degC in [0 per_degC, 0.2 per_degC]  @curve_limits
+    input bobb_slope = 0.00108 per_degC in [0 per_degC, 0.2 per_degC] @curve_limits
         "Bobb et al. 2014 curve: rise in the log risk ratio per degree up to the top"
         @source "The curve is linear in the log risk ratio."
             claims:
                 E-GRONLUND26-S1-PHX
                     datum: bobb_phoenix_extension_slope
-    input bobb_extension = 0.00108 per_degC in [0 per_degC, 0.2 per_degC]  @curve_limits
+    input bobb_extension = 0.00108 per_degC in [0 per_degC, 0.2 per_degC] @curve_limits
         "Bobb et al. 2014 curve: rise in the log risk ratio per degree above the top"
         @source "The curve continues with the same slope."
             claims:
                 E-GRONLUND26-S1-PHX
                     datum: bobb_phoenix_extension_slope
-    input bobb_weight: fraction = 0 in [0, 1]  @curve_weights
+    input bobb_weight: fraction = 0 in [0, 1] @curve_weights
         "Bobb et al. 2014 curve: weight"
-    input nordio_threshold = 24.3 degC in [20 degC, 40 degC]  @curve_table @curve_limits
+    input nordio_threshold = 24.3 degC in [20 degC, 40 degC] @curve_table @curve_limits
         "Nordio et al. 2015 curve: threshold"
-    input nordio_top = 38.6 degC in [25 degC, 45 degC]  @curve_table @curve_limits
+    input nordio_top = 38.6 degC in [25 degC, 45 degC] @curve_table @curve_limits
         "Nordio et al. 2015 curve: top of the fitted range"
-    input nordio_slope = 0.00603 per_degC in [0 per_degC, 0.2 per_degC]  @curve_limits
+    input nordio_slope = 0.00603 per_degC in [0 per_degC, 0.2 per_degC] @curve_limits
         "Nordio et al. 2015 curve: rise in the log risk ratio per degree up to the top"
         @source "The curve is linear in the log risk ratio."
             claims:
                 E-GRONLUND26-S1-PHX
                     datum: nordio_phoenix_extension_slope
-    input nordio_extension = 0.00603 per_degC in [0 per_degC, 0.2 per_degC]  @curve_limits
+    input nordio_extension = 0.00603 per_degC in [0 per_degC, 0.2 per_degC] @curve_limits
         "Nordio et al. 2015 curve: rise in the log risk ratio per degree above the top"
         @source "The curve continues with the same slope."
             claims:
                 E-GRONLUND26-S1-PHX
                     datum: nordio_phoenix_extension_slope
-    input nordio_weight: fraction = 0 in [0, 1]  @curve_weights
+    input nordio_weight: fraction = 0 in [0, 1] @curve_weights
         "Nordio et al. 2015 curve: weight"
-    input schwartz_threshold = 29 degC in [20 degC, 40 degC]  @curve_table @curve_limits
+    input schwartz_threshold = 29 degC in [20 degC, 40 degC] @curve_table @curve_limits
         "Schwartz et al. 2016 curve: threshold"
-    input schwartz_top = 42 degC in [25 degC, 45 degC]  @curve_table @curve_limits
+    input schwartz_top = 42 degC in [25 degC, 45 degC] @curve_table @curve_limits
         "Schwartz et al. 2016 curve: top of the fitted range"
-    input schwartz_slope = 0.00302 per_degC in [0 per_degC, 0.2 per_degC]  @curve_limits
+    input schwartz_slope = 0.00302 per_degC in [0 per_degC, 0.2 per_degC] @curve_limits
         "Schwartz et al. 2016 curve: rise in the log risk ratio per degree up to the top"
         @source "The curve is linear in the log risk ratio."
             claims:
                 E-GRONLUND26-S1-PHX
                     datum: schwartz_phoenix_extension_slope
-    input schwartz_extension = 0.00302 per_degC in [0 per_degC, 0.2 per_degC]  @curve_limits
+    input schwartz_extension = 0.00302 per_degC in [0 per_degC, 0.2 per_degC] @curve_limits
         "Schwartz et al. 2016 curve: rise in the log risk ratio per degree above the top"
         @source "The curve continues with the same slope."
             claims:
                 E-GRONLUND26-S1-PHX
                     datum: schwartz_phoenix_extension_slope
-    input schwartz_weight: fraction = 0 in [0, 1]  @curve_weights
+    input schwartz_weight: fraction = 0 in [0, 1] @curve_weights
         "Schwartz et al. 2016 curve: weight"
-    input ed_threshold = 33 degC in [25 degC, 40 degC]  @heat_curve_limits
+    input ed_threshold = 33 degC in [25 degC, 40 degC] @heat_curve_limits
         "Heat emergency curve: threshold"
         @source "The Phoenix curve of heat-related emergency visits rises above 33 °C."
             claims:
                 E-STONE23-ERF
-    input ed_slope = 0.179 per_degC in [0.1 per_degC, 0.3 per_degC]  @heat_curve_limits
+    input ed_slope = 0.179 per_degC in [0.1 per_degC, 0.3 per_degC] @heat_curve_limits
         "Heat emergency curve: rise in the log risk ratio per degree"
         @source "The curve is linear in the log risk ratio and continues above its fitted range."
             claims:
                 E-STONE23-ERF
                     datum: phoenix_ed_ln_rr_per_degree
     input ed_rate = 4.244604e-06 cases/person/day in [1e-06 cases/person/day, 2e-05 cases/person/day]
-        @ed_normal_rate
         "Normal rate of heat emergency visits"
+        @ed_normal_rate
     readonly visit_limit = 1 cases/people
         "Most heat emergency visits for each person"
         @source "The method sums the risk of each person over the heat wave and limits it to one for each
@@ -138,41 +138,28 @@ heat_wave:  @counts_quantity_value
                 E-STONE23-ANALOG
                     datum: aggregate_risk_limit
     state: enum[ONGOING, OVER] = ONGOING
-    readonly heat_on: formula(fraction) = formula(1 if this.state == ONGOING else 0)  @heat_wave_frame
+    readonly heat_on: formula(fraction) = formula(1 if this.state == ONGOING else 0) @heat_wave_frame
     # Each curve's log risk ratio at the outdoor temperature.
-    readonly lr_gasparrini: formula(fraction) = formula(this.gasparrini_slope * clip(this.outdoor
-        - this.gasparrini_threshold, 0 degC, this.gasparrini_top - this.gasparrini_threshold)
-        + this.gasparrini_extension * max(0 degC, this.outdoor - this.gasparrini_top))  @curve_shape
-    readonly lr_bobb: formula(fraction) = formula(this.bobb_slope * clip(this.outdoor - this.bobb_threshold,
-        0 degC, this.bobb_top - this.bobb_threshold) + this.bobb_extension * max(0 degC,
-        this.outdoor - this.bobb_top))  @curve_shape
-    readonly lr_nordio: formula(fraction) = formula(this.nordio_slope * clip(this.outdoor
-        - this.nordio_threshold, 0 degC, this.nordio_top - this.nordio_threshold) + this.nordio_extension
-        * max(0 degC, this.outdoor - this.nordio_top))  @curve_shape
-    readonly lr_schwartz: formula(fraction) = formula(this.schwartz_slope * clip(this.outdoor
-        - this.schwartz_threshold, 0 degC, this.schwartz_top - this.schwartz_threshold)
-        + this.schwartz_extension * max(0 degC, this.outdoor - this.schwartz_top))  @curve_shape
-    readonly rr_outdoor: formula(fraction) = formula(exp(this.gasparrini_weight * this.lr_gasparrini
-        + this.bobb_weight * this.lr_bobb + this.nordio_weight * this.lr_nordio + this.schwartz_weight
-        * this.lr_schwartz))  @curve_weights
-    readonly rr_ed_outdoor: formula(fraction) = formula(exp(this.ed_slope * max(0 degC,
-        this.outdoor - this.ed_threshold)))  @curve_shape
-    readonly rr_heat_outdoor: formula(fraction) = formula(exp(this.heat_death_slope * max(0 degC,
-        this.outdoor - this.heat_death_threshold)))
+    readonly lr_gasparrini: formula(fraction) = formula(this.gasparrini_slope * clip(this.outdoor - this.gasparrini_threshold, 0 degC, this.gasparrini_top - this.gasparrini_threshold) + this.gasparrini_extension * max(0 degC, this.outdoor - this.gasparrini_top)) @curve_shape
+    readonly lr_bobb: formula(fraction) = formula(this.bobb_slope * clip(this.outdoor - this.bobb_threshold, 0 degC, this.bobb_top - this.bobb_threshold) + this.bobb_extension * max(0 degC, this.outdoor - this.bobb_top)) @curve_shape
+    readonly lr_nordio: formula(fraction) = formula(this.nordio_slope * clip(this.outdoor - this.nordio_threshold, 0 degC, this.nordio_top - this.nordio_threshold) + this.nordio_extension * max(0 degC, this.outdoor - this.nordio_top)) @curve_shape
+    readonly lr_schwartz: formula(fraction) = formula(this.schwartz_slope * clip(this.outdoor - this.schwartz_threshold, 0 degC, this.schwartz_top - this.schwartz_threshold) + this.schwartz_extension * max(0 degC, this.outdoor - this.schwartz_top)) @curve_shape
+    readonly rr_outdoor: formula(fraction) = formula(exp(this.gasparrini_weight * this.lr_gasparrini + this.bobb_weight * this.lr_bobb + this.nordio_weight * this.lr_nordio + this.schwartz_weight * this.lr_schwartz)) @curve_weights
+    readonly rr_ed_outdoor: formula(fraction) = formula(exp(this.ed_slope * max(0 degC, this.outdoor - this.ed_threshold))) @curve_shape
+    readonly rr_heat_outdoor: formula(fraction) = formula(exp(this.heat_death_slope * max(0 degC, this.outdoor - this.heat_death_threshold)))
         @curve_shape
     status ok when this.state == OVER
         "Heat wave over"
     status degraded
         "Dangerous heat"
-    ends = event():  @heat_wave_frame
+    ends = event(): @heat_wave_frame
         "The heat wave ends."
-        when (this.state == ONGOING and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power)
-            >= this.length):
+        when this.state == ONGOING and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power) >= this.length:
             this.ends.start()
         after 0 h:
             this.state = OVER
 
-AgeBand:  @counts_quantity_value
+AgeBand: @counts_quantity_value
     "An age band of the people on the supply, with its normal death rate."
     input share: fraction = 0.8231 in [0, 1]
         "Share of the people in the age band"
@@ -180,7 +167,7 @@ AgeBand:  @counts_quantity_value
             claims:
                 E-CENSUS-AGE-2023
                     datum: share_under_65
-    input death_rate = 0.002757783 per_year in [0.0001 per_year, 0.3 per_year]  @national_rates
+    input death_rate = 0.002757783 per_year in [0.0001 per_year, 0.3 per_year] @national_rates
         "Normal death rate"
     input device_share: fraction = 0.00242 in [0, 0.1]
         "Share of the people outside the compound on a home oxygen concentrator or ventilator"
@@ -199,8 +186,8 @@ aged_65_to_74: AgeBand
             claims:
                 E-CENSUS-AGE-2023
                     datum: share_65_74
-    death_rate = 0.018008536 per_year  @national_rates
-    device_share = 0.021853  @a_setting_prevalence_home_concentrators
+    death_rate = 0.018008536 per_year @national_rates
+    device_share = 0.021853 @a_setting_prevalence_home_concentrators
 
 aged_75_and_over: AgeBand
     share = 0.0733
@@ -208,19 +195,19 @@ aged_75_and_over: AgeBand
             claims:
                 E-CENSUS-AGE-2023
                     datum: share_75_plus
-    death_rate = 0.067011768 per_year  @national_rates
-    device_share = 0.021853  @a_setting_prevalence_home_concentrators
+    death_rate = 0.067011768 per_year @national_rates
+    device_share = 0.021853 @a_setting_prevalence_home_concentrators
 
-Buildings:  @counts_quantity_value
+Buildings: @counts_quantity_value
     "The buildings where a group of people lives. Without power and air conditioning, the temperature that the
         people feel inside rises."
-    input iet_on = 26.3 degC in [20 degC, 32 degC]  @felt_temperature_limits
+    input iet_on = 26.3 degC in [20 degC, 32 degC] @felt_temperature_limits
         "Temperature that people feel with power"
         @source "The mean temperature that people feel with power in the source's Phoenix heat wave."
             claims:
                 E-STONE23-IET
                     datum: phoenix_iet_power_on
-    input iet_off_mean = 32.7 degC in [20 degC, 45 degC]  @felt_temperature_limits
+    input iet_off_mean = 32.7 degC in [20 degC, 45 degC] @felt_temperature_limits
         "Mean temperature that people feel in the source's blackout"
         @source "The mean temperature that people feel over the source's blackout and the return of power, in
             the same heat wave."
@@ -273,50 +260,29 @@ Buildings:  @counts_quantity_value
             claims:
                 V-P01
                     datum: restoration_complete_h
-    readonly dark_rise: formula(degC) = formula((this.iet_off_mean - this.iet_on) * this.source_event
-        / (this.source_dark + (this.source_event - this.source_dark) / 2 - this.heat_up_time ** 2
-        / (this.source_event - this.source_dark) * (1 - exp(-(this.source_event - this.source_dark)
-        / this.heat_up_time)) + this.heat_up_time * exp(-this.source_event
-        / this.heat_up_time)))  @dark_calibration
-    readonly rise: formula(degC) = formula(this.dark_rise * (1 - exp(-t / this.heat_up_time)))  @heat_up
-    readonly equivalent: formula(degC) = formula(heat_wave.outdoor + this.rise / this.slope)  @conversion
+    readonly dark_rise: formula(degC) = formula((this.iet_off_mean - this.iet_on) * this.source_event / (this.source_dark + (this.source_event - this.source_dark) / 2 - this.heat_up_time ** 2 / (this.source_event - this.source_dark) * (1 - exp(-(this.source_event - this.source_dark) / this.heat_up_time)) + this.heat_up_time * exp(-this.source_event / this.heat_up_time))) @dark_calibration
+    readonly rise: formula(degC) = formula(this.dark_rise * (1 - exp(-t / this.heat_up_time))) @heat_up
+    readonly equivalent: formula(degC) = formula(heat_wave.outdoor + this.rise / this.slope) @conversion
     readonly equivalent_capped: formula(degC) = formula(min(heat_wave.cap, this.equivalent))
-        @source_transfer "The heat-related death curve reads the equivalent outdoor temperature up to the
-            cap."
+        @source_transfer "The heat-related death curve reads the equivalent outdoor temperature up to the cap."
             assumption A-SC41-CONVERSION-CAP
             claims:
                 E-GRONLUND26-CAP55
     # Each curve's log risk ratio at the equivalent outdoor temperature.
-    readonly lr_gasparrini: formula(fraction) = formula(heat_wave.gasparrini_slope * clip(this.equivalent
-        - heat_wave.gasparrini_threshold, 0 degC, heat_wave.gasparrini_top - heat_wave.gasparrini_threshold)
-        + heat_wave.gasparrini_extension * max(0 degC, this.equivalent
-        - heat_wave.gasparrini_top))  @curve_shape
-    readonly lr_bobb: formula(fraction) = formula(heat_wave.bobb_slope * clip(this.equivalent
-        - heat_wave.bobb_threshold, 0 degC, heat_wave.bobb_top - heat_wave.bobb_threshold)
-        + heat_wave.bobb_extension * max(0 degC, this.equivalent - heat_wave.bobb_top))  @curve_shape
-    readonly lr_nordio: formula(fraction) = formula(heat_wave.nordio_slope * clip(this.equivalent
-        - heat_wave.nordio_threshold, 0 degC, heat_wave.nordio_top - heat_wave.nordio_threshold)
-        + heat_wave.nordio_extension * max(0 degC, this.equivalent - heat_wave.nordio_top))  @curve_shape
-    readonly lr_schwartz: formula(fraction) = formula(heat_wave.schwartz_slope * clip(this.equivalent
-        - heat_wave.schwartz_threshold, 0 degC, heat_wave.schwartz_top - heat_wave.schwartz_threshold)
-        + heat_wave.schwartz_extension * max(0 degC, this.equivalent - heat_wave.schwartz_top))  @curve_shape
-    readonly excess_deaths_ratio: formula(fraction) = formula(exp(heat_wave.gasparrini_weight
-        * this.lr_gasparrini + heat_wave.bobb_weight * this.lr_bobb + heat_wave.nordio_weight * this.lr_nordio
-        + heat_wave.schwartz_weight * this.lr_schwartz) - heat_wave.rr_outdoor)  @heat_excess
-    readonly excess_visits_ratio: formula(fraction) = formula(exp(heat_wave.ed_slope * max(0 degC,
-        this.equivalent - heat_wave.ed_threshold)) - heat_wave.rr_ed_outdoor)  @heat_excess
-    readonly excess_heat_deaths_ratio: formula(fraction) = formula(exp(heat_wave.heat_death_slope
-        * max(0 degC, this.equivalent_capped - heat_wave.heat_death_threshold))
-        - heat_wave.rr_heat_outdoor)  @heat_excess
+    readonly lr_gasparrini: formula(fraction) = formula(heat_wave.gasparrini_slope * clip(this.equivalent - heat_wave.gasparrini_threshold, 0 degC, heat_wave.gasparrini_top - heat_wave.gasparrini_threshold) + heat_wave.gasparrini_extension * max(0 degC, this.equivalent - heat_wave.gasparrini_top)) @curve_shape
+    readonly lr_bobb: formula(fraction) = formula(heat_wave.bobb_slope * clip(this.equivalent - heat_wave.bobb_threshold, 0 degC, heat_wave.bobb_top - heat_wave.bobb_threshold) + heat_wave.bobb_extension * max(0 degC, this.equivalent - heat_wave.bobb_top)) @curve_shape
+    readonly lr_nordio: formula(fraction) = formula(heat_wave.nordio_slope * clip(this.equivalent - heat_wave.nordio_threshold, 0 degC, heat_wave.nordio_top - heat_wave.nordio_threshold) + heat_wave.nordio_extension * max(0 degC, this.equivalent - heat_wave.nordio_top)) @curve_shape
+    readonly lr_schwartz: formula(fraction) = formula(heat_wave.schwartz_slope * clip(this.equivalent - heat_wave.schwartz_threshold, 0 degC, heat_wave.schwartz_top - heat_wave.schwartz_threshold) + heat_wave.schwartz_extension * max(0 degC, this.equivalent - heat_wave.schwartz_top)) @curve_shape
+    readonly excess_deaths_ratio: formula(fraction) = formula(exp(heat_wave.gasparrini_weight * this.lr_gasparrini + heat_wave.bobb_weight * this.lr_bobb + heat_wave.nordio_weight * this.lr_nordio + heat_wave.schwartz_weight * this.lr_schwartz) - heat_wave.rr_outdoor) @heat_excess
+    readonly excess_visits_ratio: formula(fraction) = formula(exp(heat_wave.ed_slope * max(0 degC, this.equivalent - heat_wave.ed_threshold)) - heat_wave.rr_ed_outdoor) @heat_excess
+    readonly excess_heat_deaths_ratio: formula(fraction) = formula(exp(heat_wave.heat_death_slope * max(0 degC, this.equivalent_capped - heat_wave.heat_death_threshold)) - heat_wave.rr_heat_outdoor) @heat_excess
     # Each person's visits multiply the heatstroke of thousands of people at home, so the scale is small
     # enough that their tolerance moves heatstroke no more than the tolerance of a heatstroke stock (scale
     # 100) does.
-    visits: cases/people = 0 scale 0.01 cases/people  @visits_at_home
-    flow add_visits: SOURCE -> this.visits  @visits_at_home
-        request = formula(heat_wave.ed_rate * this.excess_visits_ratio * heat_wave.heat_on * (1
-            - supply.service))
-        capacity = formula(heat_wave.ed_rate * this.excess_visits_ratio * heat_wave.heat_on * (1
-            - supply.service))
+    visits: cases/people = 0 scale 0.01 cases/people @visits_at_home
+    flow add_visits: SOURCE -> this.visits @visits_at_home
+        request = formula(heat_wave.ed_rate * this.excess_visits_ratio * heat_wave.heat_on * (1 - supply.service))
+        capacity = formula(heat_wave.ed_rate * this.excess_visits_ratio * heat_wave.heat_on * (1 - supply.service))
     readonly first_visit: formula(fraction) = formula(exp(-this.visits / heat_wave.visit_limit))
         @source_transfer "The method limits the summed risk of each person to one. The model counts only the
             first visit of each person, as it counts deaths: the visits so far set the chance that a person
@@ -331,14 +297,14 @@ homes: Buildings
 compound_buildings: Buildings
     "The buildings of the compound. They take the values of the homes, chosen for this scenario."
 
-incident:  @records_status_events
+incident: @records_status_events
     "An observed service interruption and optional work order supplied to the utility."
-    input hold: bool = false  @recovery_inputs
-    input hold_at = 30 h in [0 h, 1800 h]  @recovery_inputs
-    input hold_duration = 6 h in [0 h, 1800 h]  @recovery_inputs
-    input repeat_work = 0 h in [0 h, 30 h]  @recovery_inputs
-    paused: bool = false  @records_status_events
-    hold_begins = event():  @recovery_inputs
+    input hold: bool = false @recovery_inputs
+    input hold_at = 30 h in [0 h, 1800 h] @recovery_inputs
+    input hold_duration = 6 h in [0 h, 1800 h] @recovery_inputs
+    input repeat_work = 0 h in [0 h, 30 h] @recovery_inputs
+    paused: bool = false @records_status_events
+    hold_begins = event(): @recovery_inputs
         when this.hold and t >= this.hold_at:
             this.hold_begins.start()
             reset when false
@@ -353,12 +319,12 @@ incident:  @records_status_events
             this.paused = false
             crews.dispatch.start()
 
-crews:  @records_status_events
+crews: @records_status_events
     "Repair teams on the affected supply."
     title "Repair crews"
-    input work = 15 h in [6 h, 30 h]  @restoration_switching
+    input work = 15 h in [6 h, 30 h] @restoration_switching
         "Switching work for a full restoration with intact equipment"
-    input lineworkers = 40 people in [10 people, 200 people]  @work_cost
+    input lineworkers = 40 people in [10 people, 200 people] @work_cost
         "Lineworkers in the standard crews"
     readonly wage = 45.83 USD2025/person/hour
         "Median wage of power-line installers"
@@ -366,29 +332,27 @@ crews:  @records_status_events
             median wage per lineworker-hour."
             claims:
                 E-ONET25-LINEWORKER-WAGE
-    input cost_multiplier: ratio = 2 in [1.5, 4]  @work_cost
+    input cost_multiplier: ratio = 2 in [1.5, 4] @work_cost
         "Cost of a lineworker-hour as a multiple of the wage"
     state: enum[WAITING, WORKING, DONE] = WAITING
     task: enum[IDLE, EXTRA, REPEAT, BASE] = IDLE
-    revision: fraction = 0  @records_status_events
-    remaining: h = 0 in [0,] scale 100 h  @keeps_exact_count
-    completed: h = 0 scale 100 h  @keeps_exact_count
-    required: h = this.work scale 100 h  @keeps_exact_count
+    revision: fraction = 0 @records_status_events
+    remaining: h = 0 in [0,] scale 100 h @keeps_exact_count
+    completed: h = 0 scale 100 h @keeps_exact_count
+    required: h = this.work scale 100 h @keeps_exact_count
     untouched: h = this.work in [0,] scale 100 h
         @identity "The outage makes the whole switching work still to do."
-    rework_left: h = 0 in [0,] scale 100 h  @keeps_exact_count
-    rework_done: h = 0 scale 100 h  @keeps_exact_count
-    rework_caused: h = 0 scale 100 h  @keeps_exact_count
-    readonly halted: formula(bool) = formula(incident.paused)  @rework
-    readonly extra_pace: formula(fraction) = formula(1 if this.task == EXTRA else 0)  @order_of_work
-    readonly rework_pace: formula(fraction) = formula(1 if this.task == REPEAT else 0)  @order_of_work
-    readonly switching_rate: formula(fraction) = formula(1 if this.task == BASE else 0)  @order_of_work
-    readonly crew_cost: formula(USD2025/h) = formula(this.lineworkers * this.wage
-        * this.cost_multiplier)  @work_cost
-    work_left: formula(h) = formula(this.remaining) in [0,]  @counts_work_done
+    rework_left: h = 0 in [0,] scale 100 h @keeps_exact_count
+    rework_done: h = 0 scale 100 h @keeps_exact_count
+    rework_caused: h = 0 scale 100 h @keeps_exact_count
+    readonly halted: formula(bool) = formula(incident.paused) @rework
+    readonly extra_pace: formula(fraction) = formula(1 if this.task == EXTRA else 0) @order_of_work
+    readonly rework_pace: formula(fraction) = formula(1 if this.task == REPEAT else 0) @order_of_work
+    readonly switching_rate: formula(fraction) = formula(1 if this.task == BASE else 0) @order_of_work
+    readonly crew_cost: formula(USD2025/h) = formula(this.lineworkers * this.wage * this.cost_multiplier) @work_cost
+    work_left: formula(h) = formula(this.remaining) in [0,] @counts_work_done
         "Switching work still to do"
-    restoration_cost: formula(USD2025_bn) = formula((this.completed + this.rework_done + extra.work_done)
-        * this.crew_cost) in [0,]  @work_cost
+    restoration_cost: formula(USD2025_bn) = formula((this.completed + this.rework_done + extra.work_done) * this.crew_cost) in [0,] @work_cost
         "Cost of the restoration work"
     status ok when this.state == DONE
         "Every circuit is back"
@@ -398,16 +362,15 @@ crews:  @records_status_events
         "Crews switch the circuits on"
     status degraded
         "Switching waits for the checks"
-    repairs_start = event():  @switching_starts
+    repairs_start = event(): @switching_starts
         "With the settings checked, crews start to switch the circuits back on one by one."
-        when (this.state == WAITING and utility.isolated and utility.determined > 0
-            and utility.checked > 0):
+        when this.state == WAITING and utility.isolated and utility.determined > 0 and utility.checked > 0:
             this.repairs_start.start()
         after 0 h:
             this.state = WORKING
             supply.supply = COMING_BACK
             this.dispatch.start()
-    dispatch = event():  @order_of_work
+    dispatch = event(): @order_of_work
         "Assign one crew to the first outstanding work in the utility queue."
         after 0 h:
             if this.state == WORKING and not this.halted:
@@ -428,13 +391,14 @@ crews:  @records_status_events
                             supply.supply = ON
                             this.repairs_complete.start()
                             supply.come_back.start()
-    finish_interval = event(ticket: fraction, work_time: h):  @counts_work_done
-        "A work order takes one crew-hour per hour. A hold or reassignment invalidates its earlier finish time."
+    finish_interval = event(ticket: fraction, work_time: h): @counts_work_done
+        "A work order takes one crew-hour per hour. A hold or reassignment invalidates its earlier finish
+            time."
         after work_time:
             if ticket == this.revision and this.state == WORKING and not this.halted:
                 this.revision += 1
                 this.dispatch.start()
-    repairs_complete = event():  @restoration_back
+    repairs_complete = event(): @restoration_back
         "Crews finish the last circuit."
         after 0 h
     flow repair: this.remaining -> this.completed
@@ -452,21 +416,19 @@ crews:  @records_status_events
         @identity "Rework moves once from still to do to done."
         request = formula(this.rework_pace)
         capacity = formula(this.rework_pace)
-    assert this.untouched + this.remaining + this.completed in [this.required - 1e-05 h,
-        this.required + 1e-05 h]  @counts_hour_work
+    assert this.untouched + this.remaining + this.completed in [this.required - 1e-05 h, this.required + 1e-05 h] @counts_hour_work
         "The switching work from the outage is counted once, as work still to do or work done."
-    assert this.rework_left + this.rework_done in [this.rework_caused - 1e-05 h,
-        this.rework_caused + 1e-05 h]  @counts_hour_work
+    assert this.rework_left + this.rework_done in [this.rework_caused - 1e-05 h, this.rework_caused + 1e-05 h] @counts_hour_work
         "The rework from the work order is counted once, as work still to do or work done."
 
-extra:  @records_status_events
+extra: @records_status_events
     "Extra work recorded by an external inspection, alongside work already in the queue."
-    input recorded: bool = false  @recovery_inputs
-    input recorded_at = 24 h in [0 h, 1800 h]  @recovery_inputs
-    input hours = 0 h in [0 h, 30 h]  @recovery_inputs
-    work_left: h = 0 in [0,] scale 100 h  @keeps_exact_count
-    work_done: h = 0 in [0,] scale 100 h  @keeps_exact_count
-    arrives = event():  @recovery_inputs
+    input recorded: bool = false @recovery_inputs
+    input recorded_at = 24 h in [0 h, 1800 h] @recovery_inputs
+    input hours = 0 h in [0 h, 30 h] @recovery_inputs
+    work_left: h = 0 in [0,] scale 100 h @keeps_exact_count
+    work_done: h = 0 in [0,] scale 100 h @keeps_exact_count
+    arrives = event(): @recovery_inputs
         when this.recorded and t >= this.recorded_at:
             this.arrives.start()
             reset when false
@@ -476,23 +438,21 @@ extra:  @records_status_events
                 crews.revision += 1
                 crews.dispatch.start()
 
-supply:  @counts_quantity_value
+supply: @counts_quantity_value
     "The electricity service for all residents in the study."
-    input people_served = 60000 people in [20000 people, 120000 people]  @people_on_supply
+    input people_served = 60000 people in [20000 people, 120000 people] @people_on_supply
         "People served by the supply"
     supply: enum[ON, OFF, COMING_BACK] = ON
     # While the supply is off, crews have not started to switch, so no circuit is back: the share is 0, not a
     # roundoff remainder of the work done.
-    readonly service: formula(fraction) = formula(1 if this.supply == ON else 0 if this.supply == OFF
-        else clip(crews.completed / crews.work, 0, 1))  @service_follows_work
-    hours_without_power: h = 0 scale 200 h  @counts_quantity_value
-    flow add_hours_without_power: SOURCE -> this.hours_without_power  @counts_quantity_value
+    readonly service: formula(fraction) = formula(1 if this.supply == ON else 0 if this.supply == OFF else clip(crews.completed / crews.work, 0, 1)) @service_follows_work
+    hours_without_power: h = 0 scale 200 h @counts_quantity_value
+    flow add_hours_without_power: SOURCE -> this.hours_without_power @counts_quantity_value
         request = formula(1 - this.service)
         capacity = formula(1 - this.service)
-    share_restored: formula(fraction) = formula(this.service) in [0,]  @counts_quantity_value
+    share_restored: formula(fraction) = formula(this.service) in [0,] @counts_quantity_value
         "Share of the supply restored"
-    resident_hours: formula(person * hours) = formula(this.people_served
-        * this.hours_without_power) in [0,]  @counts_quantity_value
+    resident_hours: formula(person * hours) = formula(this.people_served * this.hours_without_power) in [0,] @counts_quantity_value
         "Resident-hours without electricity"
     people_followed: formula(people) = formula(this.people_served) in [0,]
         "People the study follows"
@@ -504,50 +464,50 @@ supply:  @counts_quantity_value
         "Power partly restored"
     status failed
         "Power unavailable"
-    lose_power = event():  @recovery_inputs
+    lose_power = event(): @recovery_inputs
         "The external outage observation starts the service and exposure clocks."
         after 0 h:
             this.supply = OFF
             move crews.untouched from crews.untouched to crews.remaining
     come_back = event():
-        @restoration_back @service_follows_work
         "Power is back across the compound and the homes around it."
+        @restoration_back @service_follows_work
         after 0 h
 
-utility:  @records_status_events
+utility: @records_status_events
     "Isolation, assessment and safety checks determine when restoration work can start."
-    input contain_time = 1 h in [0 h, 24 h]  @clocks
-    input determination_time = 1 h in [0.5 h, 24 h]  @clocks
-    input check_time = 24 h in [6 h, 72 h]  @protection_check_time
-    isolated: bool = false  @records_status_events
-    determined: fraction = 0 in [0, 1]  @keeps_exact_count
-    checked: fraction = 0 in [0, 1]  @keeps_exact_count
-    containment = event():  @clocks
+    input contain_time = 1 h in [0 h, 24 h] @clocks
+    input determination_time = 1 h in [0.5 h, 24 h] @clocks
+    input check_time = 24 h in [6 h, 72 h] @protection_check_time
+    isolated: bool = false @records_status_events
+    determined: fraction = 0 in [0, 1] @keeps_exact_count
+    checked: fraction = 0 in [0, 1] @keeps_exact_count
+    containment = event(): @clocks
         when count(supply.lose_power.occurrences) > 0 and since(supply.lose_power) >= this.contain_time:
             this.containment.start()
             reset when false
         after 0 h:
             this.isolated = true
-    determination = event():  @clocks
+    determination = event(): @clocks
         when count(supply.lose_power.occurrences) > 0 and since(supply.lose_power) >= this.determination_time:
             this.determination.start()
             reset when false
         after 0 h:
             this.determined = 1
-    checks = event():  @protection_check_time
+    checks = event(): @protection_check_time
         when count(this.determination.occurrences) > 0 and since(this.determination) >= this.check_time:
             this.checks.start()
             reset when false
         after 0 h:
             this.checked = 1
 
-places:  @counts_quantity_value
+places: @counts_quantity_value
     "Cooled places in the area, such as community centres, and the road transport that takes people to them. A
         place can open only if it has its own power."
     title "Cooled places"
     residents = <residents_under_65, residents_65_to_74, residents_75_and_over>
     confined = <confined_under_65, confined_65_to_74, confined_75_and_over>
-    input capacity_share: fraction = 0.02 in [0, 0.3]  @cooling_centre_capacity
+    input capacity_share: fraction = 0.02 in [0, 0.3] @cooling_centre_capacity
         "Cooled places as a share of the people on the supply"
     input powered_share: fraction = 0 in [0, 1]
         "Share of cooled places with their own power"
@@ -557,36 +517,32 @@ places:  @counts_quantity_value
             claims:
                 E-STONE21-CAP
                 E-BERYL-CC
-    input start_delay = 18 h in [2 h, 48 h]  @open_by_response
+    input start_delay = 18 h in [2 h, 48 h] @open_by_response
         "Time until cooled places open"
-    input moves_per_hour = 800 people/h in [50 people/h, 6000 people/h]  @moves_by_response
+    input moves_per_hour = 800 people/h in [50 people/h, 6000 people/h] @moves_by_response
         "People moved per hour"
     input transport_limit = 2000 people/h in [200 people/h, 6000 people/h]
         "Transport capacity"
         @assumption "The road transport that officials can run in the area."
             assumption A-SC41-PROTECTION
-    input place_cost = 25 USD2025/person/day in [0 USD2025/person/day, 100 USD2025/person/day]  @cost_chosen
+    input place_cost = 25 USD2025/person/day in [0 USD2025/person/day, 100 USD2025/person/day] @cost_chosen
         "Extra cost of cooled places per person-day"
     state: enum[STANDBY, ACTIVE, FULL, CLOSED] = STANDBY
-    readonly usable_places: formula(people) = formula(this.capacity_share * this.powered_share
-        * supply.people_served)  @places_with_power
+    readonly usable_places: formula(people) = formula(this.capacity_share * this.powered_share * supply.people_served) @places_with_power
     readonly planned_rate: formula(people/h) = formula(min(this.moves_per_hour, this.transport_limit))
         @assumption "The intake stays within the transport capacity."
             assumption A-SC41-PROTECTION
-    readonly intake: formula(people/h) = formula(this.planned_rate if this.state == ACTIVE
-        else 0 people/h)  @counts_quantity_value
-    readonly queue: formula(people) = formula(sum(this.residents.queue0) + (sum(this.confined.queue0)
-        if compound.gates == OPEN else 0 people))  @share_by_waiting
-    dispatched: people = 0 scale 100000.0 people  @counts_quantity_value
+    readonly intake: formula(people/h) = formula(this.planned_rate if this.state == ACTIVE else 0 people/h) @counts_quantity_value
+    readonly queue: formula(people) = formula(sum(this.residents.queue0) + (sum(this.confined.queue0) if compound.gates == OPEN else 0 people)) @share_by_waiting
+    dispatched: people = 0 scale 100000.0 people @counts_quantity_value
         "Admissions to cooled places"
-    remaining: people = this.usable_places in [0,] scale 100000 people  @counts_delivered
-    readonly occupancy: formula(people) = formula(sum(this.residents.formal_h)
-        + sum(this.confined.formal_h))  @counts_quantity_value
-    person_days: person * days = 0 scale 1 person * days  @counts_extra_support
-    flow add_person_days: SOURCE -> this.person_days  @integrates_delivered
+    remaining: people = this.usable_places in [0,] scale 100000 people @counts_delivered
+    readonly occupancy: formula(people) = formula(sum(this.residents.formal_h) + sum(this.confined.formal_h)) @counts_quantity_value
+    person_days: person * days = 0 scale 1 person * days @counts_extra_support
+    flow add_person_days: SOURCE -> this.person_days @integrates_delivered
         request = formula(this.occupancy)
         capacity = formula(this.occupancy)
-    admissions: formula(people) = formula(this.dispatched) in [0,]  @counts_quantity_value @setting_groups
+    admissions: formula(people) = formula(this.dispatched) in [0,] @counts_quantity_value @setting_groups
         "People admitted to cooled places"
     status failed when this.usable_places <= 0 people
         "No cooled place has its own power"
@@ -598,19 +554,15 @@ places:  @counts_quantity_value
         "Closed"
     status inactive
         "Standby"
-    opens = event():  @open_by_response @officials_see_need
+    opens = event(): @open_by_response @officials_see_need
         "Officials open the cooled places that have their own power."
-        when (this.state == STANDBY and this.usable_places > 0 people and supply.supply != ON
-            and heat_wave.state == ONGOING and count(supply.lose_power.occurrences) > 0
-            and since(supply.lose_power) >= this.start_delay):
+        when this.state == STANDBY and this.usable_places > 0 people and supply.supply != ON and heat_wave.state == ONGOING and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power) >= this.start_delay:
             this.opens.start()
         after 0 h:
             this.state = ACTIVE
-    stands_down = event():  @open_by_response @officials_see_need
+    stands_down = event(): @open_by_response @officials_see_need
         "The cooling response stands down before it opens."
-        when (this.state == STANDBY and this.usable_places > 0 people and (supply.supply == ON
-            or heat_wave.state == OVER) and count(supply.lose_power.occurrences) > 0
-            and since(supply.lose_power) >= this.start_delay):
+        when this.state == STANDBY and this.usable_places > 0 people and (supply.supply == ON or heat_wave.state == OVER) and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power) >= this.start_delay:
             this.stands_down.start()
         after 0 h:
             this.state = CLOSED
@@ -623,20 +575,18 @@ places:  @counts_quantity_value
             this.filled.start()
         after 0 h:
             this.state = FULL
-    closes = event():  @occupants_keep_place
+    closes = event(): @occupants_keep_place
         "The cooled places close, and the people in them go home."
-        when (this.state == ACTIVE or this.state == FULL) and (supply.supply == ON or heat_wave.state
-            == OVER):
+        when (this.state == ACTIVE or this.state == FULL) and (supply.supply == ON or heat_wave.state == OVER):
             this.closes.start()
         after 0 h:
             this.state = CLOSED
             this.residents.go_home.start()
             this.confined.go_home.start()
-    assert this.remaining + this.dispatched in [this.usable_places - 0.01 people,
-        this.usable_places + 0.01 people]  @counts_delivered
+    assert this.remaining + this.dispatched in [this.usable_places - 0.01 people, this.usable_places + 0.01 people] @counts_delivered
         "Places are used only by completed admissions."
 
-moves:  @counts_quantity_value
+moves: @counts_quantity_value
     "Families who leave the area by their own means, to places outside the official plan."
     title "Private moves"
     residents = <residents_under_65, residents_65_to_74, residents_75_and_over>
@@ -648,16 +598,14 @@ moves:  @counts_quantity_value
         "When private moves end"
         @assumption "Private departures go on at an even rate until this time."
             assumption A-SC41-PROTECTION
-    input cost_per_day = 25 USD2025/person/day in [0 USD2025/person/day, 100 USD2025/person/day]  @cost_chosen
+    input cost_per_day = 25 USD2025/person/day in [0 USD2025/person/day, 100 USD2025/person/day] @cost_chosen
         "Extra cost of private moves per person-day"
     state: enum[WAITING, ACTIVE, ENDED] = WAITING
     window: enum[OPEN, CLOSED] = OPEN
-    person_days: person * days = 0 scale 1 person * days  @counts_extra_support
-    flow add_person_days: SOURCE -> this.person_days  @integrates_delivered
-        request = formula(sum(this.residents.moved_h) + sum(this.residents.moved_s) if supply.supply != ON
-            and heat_wave.state == ONGOING else 0 people)
-        capacity = formula(sum(this.residents.moved_h) + sum(this.residents.moved_s) if supply.supply != ON
-            and heat_wave.state == ONGOING else 0 people)
+    person_days: person * days = 0 scale 1 person * days @counts_extra_support
+    flow add_person_days: SOURCE -> this.person_days @integrates_delivered
+        request = formula(sum(this.residents.moved_h) + sum(this.residents.moved_s) if supply.supply != ON and heat_wave.state == ONGOING else 0 people)
+        capacity = formula(sum(this.residents.moved_h) + sum(this.residents.moved_s) if supply.supply != ON and heat_wave.state == ONGOING else 0 people)
     status ok when this.state == ACTIVE
         "Families leave by their own means"
     status inactive when this.state == ENDED
@@ -667,39 +615,33 @@ moves:  @counts_quantity_value
     window_ends = event():
         @assumption "Private departures stop at the end of their window."
             assumption A-SC41-PROTECTION
-        when (this.window == OPEN and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power)
-            >= this.end_time):
+        when this.window == OPEN and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power) >= this.end_time:
             this.window_ends.start()
         after 0 h:
             this.window = CLOSED
-    opens = event():  @private_movers_leave @families_see_need
+    opens = event(): @private_movers_leave @families_see_need
         "Families with somewhere to go start to leave."
-        when (this.state == WAITING and this.window == OPEN and supply.supply != ON and heat_wave.state
-            == ONGOING and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power)
-            >= this.start_time):
+        when this.state == WAITING and this.window == OPEN and supply.supply != ON and heat_wave.state == ONGOING and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power) >= this.start_time:
             this.opens.start()
         after 0 h:
             this.state = ACTIVE
-    stands_down = event():  @families_see_need
+    stands_down = event(): @families_see_need
         "Private moves are no longer needed."
-        when (this.state == WAITING and (this.window == CLOSED or supply.supply == ON or heat_wave.state
-            == OVER) and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power)
-            >= this.start_time):
+        when this.state == WAITING and (this.window == CLOSED or supply.supply == ON or heat_wave.state == OVER) and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power) >= this.start_time:
             this.stands_down.start()
         after 0 h:
             this.state = ENDED
-    closes = event():  @private_departures_end
+    closes = event(): @private_departures_end
         "Private departures end."
-        when (this.state == ACTIVE and (this.window == CLOSED or supply.supply == ON or heat_wave.state
-            == OVER)):
+        when this.state == ACTIVE and (this.window == CLOSED or supply.supply == ON or heat_wave.state == OVER):
             this.closes.start()
         after 0 h:
             this.state = ENDED
 
-compound:  @counts_quantity_value
+compound: @counts_quantity_value
     "The compound where the criminal group holds people. Its operators control the gates, so the people inside
         can reach outside help only if officials open them."
-    input held = 10000 people in [0 people, 20000 people]  @people_held
+    input held = 10000 people in [0 people, 20000 people] @people_held
         "People held in the compound"
     input plan_start: enum[KEEP_SHUT, OPEN_ON_TIME] = KEEP_SHUT
     plan: enum[KEEP_SHUT, OPEN_ON_TIME] = this.plan_start
@@ -717,16 +659,15 @@ compound:  @counts_quantity_value
         "The compound gates open."
         @assumption "People held inside without backup can now reach the cooled places and transport."
             assumption RT-SC41-CONFINEMENT
-        when (this.gates == CLOSED and this.plan == OPEN_ON_TIME and count(supply.lose_power.occurrences) > 0
-            and since(supply.lose_power) >= this.open_time):
+        when this.gates == CLOSED and this.plan == OPEN_ON_TIME and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power) >= this.open_time:
             this.opens.start()
         after 0 h:
             this.gates = OPEN
 
-devices:  @counts_quantity_value
+devices: @counts_quantity_value
     "The batteries and other power supplies of people on home oxygen concentrators and ventilators."
     title "Home devices"
-    input battery_hours = 3 h in [2 h, 12 h]  @battery_runtime
+    input battery_hours = 3 h in [2 h, 12 h] @battery_runtime
         "How long home devices run on battery"
     input alternative_share: fraction = 0.25 in [0, 1]
         "Share of device users with another power supply for their device"
@@ -741,13 +682,12 @@ devices:  @counts_quantity_value
             claims:
                 E-MOLINARI17-MIX
                     datum: ventilator_share
-    input ventilator_admission = 0.02 per_h in [0.005 per_h, 0.08 per_h]  @admission
+    input ventilator_admission = 0.02 per_h in [0.005 per_h, 0.08 per_h] @admission
         "Hourly rate of hospital admission of ventilator users without power"
-    input concentrator_factor: fraction = 0.25 in [0, 1]  @admission
+    input concentrator_factor: fraction = 0.25 in [0, 1] @admission
         "Admission rate of concentrator users as a share of the ventilator rate"
     battery: enum[RUNNING, RUN_OUT] = RUNNING
-    readonly admission_rate: formula(per_h) = formula(this.ventilator_admission * (this.ventilator_share + (1
-        - this.ventilator_share) * this.concentrator_factor))  @admission
+    readonly admission_rate: formula(per_h) = formula(this.ventilator_admission * (this.ventilator_share + (1 - this.ventilator_share) * this.concentrator_factor)) @admission
     status failed when this.battery == RUN_OUT and supply.supply != ON
         "Home device batteries have run out"
     status ok
@@ -759,30 +699,28 @@ devices:  @counts_quantity_value
             assumption A-SC41-DEVICE-ADMISSION
             claims:
                 E-MOLINARI17-BATTERY
-        when (this.battery == RUNNING and count(supply.lose_power.occurrences) > 0
-            and since(supply.lose_power) >= this.battery_hours):
+        when this.battery == RUNNING and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power) >= this.battery_hours:
             this.runs_out.start()
         after 0 h:
             this.battery = RUN_OUT
 
-outreach:  @counts_quantity_value
+outreach: @counts_quantity_value
     "Responders who find people on home oxygen concentrators and ventilators and take them to sites with
         power."
     users = <device_users_under_65, device_users_65_to_74, device_users_75_and_over>
-    input start_time = 18 h in [1 h, 96 h]  @by_response
+    input start_time = 18 h in [1 h, 96 h] @by_response
         "When outreach to device users starts"
-    input reach: fraction = 0.5 in [0, 1]  @contact
+    input reach: fraction = 0.5 in [0, 1] @contact
         "Share of device users without power that outreach takes to power"
     status ok when count(this.starts.occurrences) > 0
         "Responders have taken device users to sites with power"
     status inactive
         "Outreach not yet started"
     starts = event():
-        @by_response @contact
         "Responders find device users from their lists and take half of those without power to sites with
             power."
-        when (supply.supply != ON and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power)
-            >= this.start_time):
+        @by_response @contact
+        when supply.supply != ON and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power) >= this.start_time:
             this.starts.start()
             reset when false
         after 0 h:
@@ -791,23 +729,23 @@ outreach:  @counts_quantity_value
 
 hospitals:
     "The hospitals that treat the people whom the heat makes seriously ill."
-    input heatstroke_share: fraction = 0.054 in [0.02, 0.1]  @clinical_share_limits
+    input heatstroke_share: fraction = 0.054 in [0.02, 0.1] @clinical_share_limits
         "Heatstroke share of heat emergency visits"
         @source_transfer "A national emergency-department sample for 2006-2010 found that 5.4% of heat-illness
             visits were heatstroke."
             claims:
                 RB-T04
                     datum: heatstroke_share
-    input heatstroke_fatality: fraction = 0.035 in [0.01, 0.1]  @clinical_share_limits
+    input heatstroke_fatality: fraction = 0.035 in [0.01, 0.1] @clinical_share_limits
         "Heatstroke visits that end in death"
         @source_transfer "The share of national heatstroke emergency visits in which the patient died. The
             model removes these cases, which the deaths already count, from the heatstroke survivors."
             claims:
                 E-WU14
                     datum: heatstroke_fatality
-    input people_per_visit = 1 people/case in [0.25 people/case, 1 people/case]  @one_person_per_visit
+    input people_per_visit = 1 people/case in [0.25 people/case, 1 people/case] @one_person_per_visit
         "People seriously hurt for each heatstroke visit"
-    input severe_share: fraction = 0.1 in [0.02, 0.3]  @severe_as_intensive_care
+    input severe_share: fraction = 0.1 in [0.02, 0.3] @severe_as_intensive_care
         "Share of heatstroke survivors as severe as intensive-care cases"
     readonly late_fatality: fraction = 0.28
         "Severe heatstroke survivors who die within a year"
@@ -816,9 +754,9 @@ hospitals:
             claims:
                 E-DEMATTE98-ICU
                     datum: additional_one_year_mortality
-    input cost_per_casualty = 15000 USD2025/person in [0 USD2025/person, 50000 USD2025/person]  @cost_chosen
+    input cost_per_casualty = 15000 USD2025/person in [0 USD2025/person, 50000 USD2025/person] @cost_chosen
         "Extra cost of medical care for each serious casualty"
-    input admitted_share: fraction = 0.546 in [0.25, 0.8]  @clinical_share_limits
+    input admitted_share: fraction = 0.546 in [0.25, 0.8] @clinical_share_limits
         "Heatstroke emergency visits admitted to hospital"
         @source_transfer "The 2009-2010 national study of emergency visits reports that 54.6% of heatstroke
             patients were admitted to hospital."
@@ -826,9 +764,9 @@ hospitals:
                 E-WU14
                     datum: heatstroke_hospitalised_share
 
-Customers:  @counts_quantity_value
+Customers: @counts_quantity_value
     "The electricity customers of one class on the supply."
-    input customers = 24000 customers in [0 customers, 100000 customers]  @counts
+    input customers = 24000 customers in [0 customers, 100000 customers] @counts
         "Customers"
     input cost_24h = 56.66 USD2025/customer in [0 USD2025/customer, 100000 USD2025/customer]
         "Interruption cost of a 24-hour outage per customer"
@@ -848,25 +786,23 @@ Customers:  @counts_quantity_value
             assumption A-SC41-INTERRUPTION-COST
             claims:
                 E-ICE2-COSTS
-    readonly shortest = 2 h  @fit_range
+    readonly shortest = 2 h @fit_range
         "Shortest outage in the cost fit"
-    readonly reference = 24 h  @fit_range
+    readonly reference = 24 h @fit_range
         "Outage of the reference cost"
-    readonly cost_now: formula(USD2025/customer) = formula(this.cost_24h * (max(t,
-        this.shortest) / this.reference) ** this.exponent)  @power_law
-    restored_cost: USD2025_bn = 0 scale 1 USD2025_bn  @power_law
+    readonly cost_now: formula(USD2025/customer) = formula(this.cost_24h * (max(t, this.shortest) / this.reference) ** this.exponent) @power_law
+    restored_cost: USD2025_bn = 0 scale 1 USD2025_bn @power_law
     flow add_restored_cost: SOURCE -> this.restored_cost
         @power_law
         request = formula(this.customers * this.cost_now * crews.switching_rate / crews.work)
         capacity = formula(this.customers * this.cost_now * crews.switching_rate / crews.work)
-    cost: formula(USD2025_bn) = formula(this.restored_cost + this.customers * (1 - supply.service)
-        * this.cost_now) in [0,]  @power_law
+    cost: formula(USD2025_bn) = formula(this.restored_cost + this.customers * (1 - supply.service) * this.cost_now) in [0,] @power_law
         "Interruption cost"
 
 residential: Customers
 
 non_residential: Customers
-    customers = 3000 customers  @counts
+    customers = 3000 customers @counts
     cost_24h = 13878 USD2025/customer
         @source "The modelled cost of a 24-hour interruption per non-residential customer."
             claims:
@@ -879,109 +815,90 @@ non_residential: Customers
             claims:
                 E-ICE2-COSTS
 
-Residents:  @counts_quantity_value
+Residents: @counts_quantity_value
     "The people of one age band who live in the homes around the compound and do not depend on a home device."
     band: AgeBand
-    input backup_share: fraction = 0.1 in [0, 1]  @backup_protected
+    input backup_share: fraction = 0.1 in [0, 1] @backup_protected
         "People in homes with backup cooling"
-    input private_share: fraction = 0.1 in [0, 1]  @private_movers_leave
+    input private_share: fraction = 0.1 in [0, 1] @private_movers_leave
         "People in homes who move away privately"
-    readonly population: formula(people) = formula((supply.people_served - compound.held) * this.band.share
-        * (1 - this.band.device_share))
+    readonly population: formula(people) = formula((supply.people_served - compound.held) * this.band.share * (1 - this.band.device_share))
         @setting_groups
-    readonly h_death: formula(per_h) = formula(max(this.band.death_rate * homes.excess_deaths_ratio,
-        heat_wave.heat_death_rate * homes.excess_heat_deaths_ratio) * heat_wave.heat_on * (1
-        - supply.service))  @heat_excess
-    readonly h_ill: formula(per_h) = formula(heat_wave.ed_rate * homes.excess_visits_ratio * homes.first_visit
-        * hospitals.heatstroke_share * hospitals.people_per_visit * (1 - hospitals.heatstroke_fatality)
-        * heat_wave.heat_on * (1 - supply.service))  @heat_excess
-    backup: people = this.backup_share * this.population scale 100000 people  @backup_protected
-    private_h: people = this.private_share * (1
-        - this.backup_share) * this.population in [0,] scale 100000 people
+    readonly h_death: formula(per_h) = formula(max(this.band.death_rate * homes.excess_deaths_ratio, heat_wave.heat_death_rate * homes.excess_heat_deaths_ratio) * heat_wave.heat_on * (1 - supply.service)) @heat_excess
+    readonly h_ill: formula(per_h) = formula(heat_wave.ed_rate * homes.excess_visits_ratio * homes.first_visit * hospitals.heatstroke_share * hospitals.people_per_visit * (1 - hospitals.heatstroke_fatality) * heat_wave.heat_on * (1 - supply.service)) @heat_excess
+    backup: people = this.backup_share * this.population scale 100000 people @backup_protected
+    private_h: people = this.private_share * (1 - this.backup_share) * this.population in [0,] scale 100000 people
         @private_movers_leave
-    private_s: people = 0 in [0,] scale 100 people  @counts_quantity_value
-    wait_h: people = (1 - this.private_share) * (1
-        - this.backup_share) * this.population in [0,] scale 100000 people
-        @assumption "People in homes without backup who do not move privately wait at home for a cooled
-            place."
+    private_s: people = 0 in [0,] scale 100 people @counts_quantity_value
+    wait_h: people = (1 - this.private_share) * (1 - this.backup_share) * this.population in [0,] scale 100000 people
+        @assumption "People in homes without backup who do not move privately wait at home for a cooled place."
             assumption A-SC41-PROTECTION
-    wait_s: people = 0 in [0,] scale 100 people  @counts_quantity_value
-    moved_h: people = 0 scale 100000 people  @counts_quantity_value
-    moved_s: people = 0 scale 100 people  @counts_quantity_value
-    formal_h: people = 0 in [0,] scale 100000 people  @counts_quantity_value
-    returned_h: people = 0 scale 100000 people  @counts_quantity_value
-    dead: people = 0 scale 100 people  @counts_quantity_value
-    exposure: person * hours = 0 scale 10000000.0 person * hours  @exposure_weighted
-    flow add_exposure: SOURCE -> this.exposure  @exposure_weighted
-        request = formula(heat_wave.heat_on * (1 - supply.service) * (this.wait_h + this.wait_s
-            + this.private_h + this.private_s))
-        capacity = formula(heat_wave.heat_on * (1 - supply.service) * (this.wait_h + this.wait_s
-            + this.private_h + this.private_s))
+    wait_s: people = 0 in [0,] scale 100 people @counts_quantity_value
+    moved_h: people = 0 scale 100000 people @counts_quantity_value
+    moved_s: people = 0 scale 100 people @counts_quantity_value
+    formal_h: people = 0 in [0,] scale 100000 people @counts_quantity_value
+    returned_h: people = 0 scale 100000 people @counts_quantity_value
+    dead: people = 0 scale 100 people @counts_quantity_value
+    exposure: person * hours = 0 scale 10000000.0 person * hours @exposure_weighted
+    flow add_exposure: SOURCE -> this.exposure @exposure_weighted
+        request = formula(heat_wave.heat_on * (1 - supply.service) * (this.wait_h + this.wait_s + this.private_h + this.private_s))
+        capacity = formula(heat_wave.heat_on * (1 - supply.service) * (this.wait_h + this.wait_s + this.private_h + this.private_s))
     # The people in this pool leave in proportion to health status. Death acts at
     # the same rate on both groups, so the remaining well share follows q' = -h_ill*q.
     # Tracking q directly avoids dividing two vanishing population stocks.
-    private_well_share: fraction = 1 in [0, 1]  @private_movers_leave
-    flow private_illness_share: this.private_well_share -> SINK  @private_movers_leave
+    private_well_share: fraction = 1 in [0, 1] @private_movers_leave
+    flow private_illness_share: this.private_well_share -> SINK @private_movers_leave
         request = formula(this.h_ill * this.private_well_share)
         capacity = formula(this.h_ill * this.private_well_share)
-    readonly leaving: formula(people) = formula(this.private_h + this.private_s)  @counts_quantity_value
-    readonly queue0: formula(people) = formula((1 - this.private_share) * (1 - this.backup_share)
-        * this.population)  @share_by_waiting
-    readonly move_rate: formula(people/h) = formula(this.private_share * (1 - this.backup_share)
-        * this.population / (moves.end_time - moves.start_time) if moves.state == ACTIVE
-        else 0 people/h)  @private_movers_leave
-    readonly survivors: formula(people) = formula(this.private_s + this.wait_s
-        + this.moved_s)  @counts_quantity_value
-    deaths: formula(people) = formula(this.dead) in [0,]  @heat_deaths_counted
+    readonly leaving: formula(people) = formula(this.private_h + this.private_s) @counts_quantity_value
+    readonly queue0: formula(people) = formula((1 - this.private_share) * (1 - this.backup_share) * this.population) @share_by_waiting
+    readonly move_rate: formula(people/h) = formula(this.private_share * (1 - this.backup_share) * this.population / (moves.end_time - moves.start_time) if moves.state == ACTIVE else 0 people/h) @private_movers_leave
+    readonly survivors: formula(people) = formula(this.private_s + this.wait_s + this.moved_s) @counts_quantity_value
+    deaths: formula(people) = formula(this.dead) in [0,] @heat_deaths_counted
         "Deaths"
-    flow move_well: this.private_h -> this.moved_h  @private_movers_leave
+    flow move_well: this.private_h -> this.moved_h @private_movers_leave
         "People in homes without heatstroke who move privately leave the area."
-        request = formula(this.move_rate * this.private_well_share if this.leaving > 0 people
-            else 0 people/h)
+        request = formula(this.move_rate * this.private_well_share if this.leaving > 0 people else 0 people/h)
         capacity = formula(this.move_rate * this.private_well_share)
-    flow move_ill: this.private_s -> this.moved_s  @private_movers_leave
+    flow move_ill: this.private_s -> this.moved_s @private_movers_leave
         "People in homes with heatstroke who move privately leave the area with their families."
-        request = formula(this.move_rate * (1 - this.private_well_share) if this.leaving > 0 people
-            else 0 people/h)
+        request = formula(this.move_rate * (1 - this.private_well_share) if this.leaving > 0 people else 0 people/h)
         capacity = formula(this.move_rate * (1 - this.private_well_share))
-    flow die_waiting_well: this.wait_h -> this.dead  @heat_excess
+    flow die_waiting_well: this.wait_h -> this.dead @heat_excess
         "People who wait at home for a cooled place die from the heat."
         request = formula(this.h_death * this.wait_h)
         capacity = formula(this.h_death * this.wait_h)
-    flow fall_ill_waiting: this.wait_h -> this.wait_s  @heat_excess
+    flow fall_ill_waiting: this.wait_h -> this.wait_s @heat_excess
         "People who wait at home for a cooled place fall seriously ill from the heat."
         request = formula(this.h_ill * this.wait_h)
         capacity = formula(this.h_ill * this.wait_h)
-    flow die_waiting_ill: this.wait_s -> this.dead  @heat_excess
+    flow die_waiting_ill: this.wait_s -> this.dead @heat_excess
         "People with heatstroke who wait at home die from the heat."
         request = formula(this.h_death * this.wait_s)
         capacity = formula(this.h_death * this.wait_s)
-    flow die_leaving_well: this.private_h -> this.dead  @heat_excess
+    flow die_leaving_well: this.private_h -> this.dead @heat_excess
         "People who wait to move privately die from the heat."
         request = formula(this.h_death * this.private_h)
         capacity = formula(this.h_death * this.private_h)
-    flow fall_ill_leaving: this.private_h -> this.private_s  @heat_excess
+    flow fall_ill_leaving: this.private_h -> this.private_s @heat_excess
         "People who wait to move privately fall seriously ill from the heat."
         request = formula(this.h_ill * this.private_h)
         capacity = formula(this.h_ill * this.private_h)
-    flow die_leaving_ill: this.private_s -> this.dead  @heat_excess
+    flow die_leaving_ill: this.private_s -> this.dead @heat_excess
         "People with heatstroke who wait to move privately die from the heat."
         request = formula(this.h_death * this.private_s)
         capacity = formula(this.h_death * this.private_s)
     flow admit:
-        @healthy_person_moved @healthy_person_place
         "Officials take people in homes without heatstroke to cooled places, and each person uses one place."
+        @healthy_person_moved @healthy_person_place
         flow formal_h: this.wait_h -> this.formal_h
-            request = formula(places.intake * this.queue0 / places.queue if places.queue > 0 people
-                else 0 people/h)
-        flow places_dispatched: places.remaining -> places.dispatched  @admission_uses_place
-            request = formula(places.intake * this.queue0 / places.queue if places.queue > 0 people
-                else 0 people/h)
-    go_home = event():  @occupants_keep_place
+            request = formula(places.intake * this.queue0 / places.queue if places.queue > 0 people else 0 people/h)
+        flow places_dispatched: places.remaining -> places.dispatched @admission_uses_place
+            request = formula(places.intake * this.queue0 / places.queue if places.queue > 0 people else 0 people/h)
+    go_home = event(): @occupants_keep_place
         after 0 h:
             move this.formal_h from this.formal_h to this.returned_h
-    assert this.backup + this.private_h + this.private_s + this.wait_h + this.wait_s + this.moved_h + this.moved_s + this.formal_h + this.returned_h + this.dead in [this.population
-        - 0.01 people, this.population + 0.01 people]  @counts_quantity_value
+    assert this.backup + this.private_h + this.private_s + this.wait_h + this.wait_s + this.moved_h + this.moved_s + this.formal_h + this.returned_h + this.dead in [this.population - 0.01 people, this.population + 0.01 people] @counts_quantity_value
         "Every person in the group is counted once, alive or dead."
 
 residents_under_65: Residents
@@ -993,77 +910,67 @@ residents_65_to_74: Residents
 residents_75_and_over: Residents
     band = aged_75_and_over
 
-DeviceUsers:  @counts_quantity_value
+DeviceUsers: @counts_quantity_value
     "The people of one age band outside the compound who live on a home oxygen concentrator or ventilator."
     band: AgeBand
-    readonly population: formula(people) = formula((supply.people_served - compound.held) * this.band.share
-        * this.band.device_share)
+    readonly population: formula(people) = formula((supply.people_served - compound.held) * this.band.share * this.band.device_share)
         @setting_groups
-    readonly h_death: formula(per_h) = formula(max(this.band.death_rate * homes.excess_deaths_ratio,
-        heat_wave.heat_death_rate * homes.excess_heat_deaths_ratio) * heat_wave.heat_on * (1
-        - supply.service))  @heat_excess
-    readonly h_ill: formula(per_h) = formula(heat_wave.ed_rate * homes.excess_visits_ratio * homes.first_visit
-        * hospitals.heatstroke_share * hospitals.people_per_visit * (1 - hospitals.heatstroke_fatality)
-        * heat_wave.heat_on * (1 - supply.service))  @heat_excess
-    readonly h_admit: formula(per_h) = formula(devices.admission_rate * (1 if devices.battery == RUN_OUT
-        else 0) * (1 - supply.service))  @admission
-    own_power_h: people = devices.alternative_share * this.population in [0,] scale 1000 people  @own_power
-    own_power_s: people = 0 in [0,] scale 100 people  @counts_quantity_value
-    dark_h: people = (1 - devices.alternative_share) * this.population in [0,] scale 1000 people  @own_power
-    dark_s: people = 0 in [0,] scale 100 people  @counts_quantity_value
-    supported: people = 0 scale 1000 people  @counts_quantity_value
-    admitted_h: people = 0 scale 1000 people  @counts_quantity_value
-    admitted_s: people = 0 scale 100 people  @counts_quantity_value
-    dead: people = 0 scale 100 people  @counts_quantity_value
-    exposure: person * hours = 0 scale 10000000.0 person * hours  @exposure_weighted
-    flow add_exposure: SOURCE -> this.exposure  @exposure_weighted
-        request = formula(heat_wave.heat_on * (1 - supply.service) * (this.own_power_h + this.own_power_s
-            + this.dark_h + this.dark_s))
-        capacity = formula(heat_wave.heat_on * (1 - supply.service) * (this.own_power_h + this.own_power_s
-            + this.dark_h + this.dark_s))
-    readonly survivors: formula(people) = formula(this.own_power_s + this.dark_s
-        + this.admitted_s)  @counts_quantity_value
-    deaths: formula(people) = formula(this.dead) in [0,]  @heat_deaths_counted
+    readonly h_death: formula(per_h) = formula(max(this.band.death_rate * homes.excess_deaths_ratio, heat_wave.heat_death_rate * homes.excess_heat_deaths_ratio) * heat_wave.heat_on * (1 - supply.service)) @heat_excess
+    readonly h_ill: formula(per_h) = formula(heat_wave.ed_rate * homes.excess_visits_ratio * homes.first_visit * hospitals.heatstroke_share * hospitals.people_per_visit * (1 - hospitals.heatstroke_fatality) * heat_wave.heat_on * (1 - supply.service)) @heat_excess
+    readonly h_admit: formula(per_h) = formula(devices.admission_rate * (1 if devices.battery == RUN_OUT else 0) * (1 - supply.service)) @admission
+    own_power_h: people = devices.alternative_share * this.population in [0,] scale 1000 people @own_power
+    own_power_s: people = 0 in [0,] scale 100 people @counts_quantity_value
+    dark_h: people = (1 - devices.alternative_share) * this.population in [0,] scale 1000 people @own_power
+    dark_s: people = 0 in [0,] scale 100 people @counts_quantity_value
+    supported: people = 0 scale 1000 people @counts_quantity_value
+    admitted_h: people = 0 scale 1000 people @counts_quantity_value
+    admitted_s: people = 0 scale 100 people @counts_quantity_value
+    dead: people = 0 scale 100 people @counts_quantity_value
+    exposure: person * hours = 0 scale 10000000.0 person * hours @exposure_weighted
+    flow add_exposure: SOURCE -> this.exposure @exposure_weighted
+        request = formula(heat_wave.heat_on * (1 - supply.service) * (this.own_power_h + this.own_power_s + this.dark_h + this.dark_s))
+        capacity = formula(heat_wave.heat_on * (1 - supply.service) * (this.own_power_h + this.own_power_s + this.dark_h + this.dark_s))
+    readonly survivors: formula(people) = formula(this.own_power_s + this.dark_s + this.admitted_s) @counts_quantity_value
+    deaths: formula(people) = formula(this.dead) in [0,] @heat_deaths_counted
         "Deaths"
-    admissions: formula(people) = formula(this.admitted_h + this.admitted_s) in [0,]  @admission
+    admissions: formula(people) = formula(this.admitted_h + this.admitted_s) in [0,] @admission
         "Admissions to hospital after the device fails"
-    flow die_own_well: this.own_power_h -> this.dead  @heat_excess
+    flow die_own_well: this.own_power_h -> this.dead @heat_excess
         "Device users with power for their device die from the heat."
         request = formula(this.h_death * this.own_power_h)
         capacity = formula(this.h_death * this.own_power_h)
-    flow fall_ill_own: this.own_power_h -> this.own_power_s  @heat_excess
+    flow fall_ill_own: this.own_power_h -> this.own_power_s @heat_excess
         "Device users with power for their device fall seriously ill from the heat."
         request = formula(this.h_ill * this.own_power_h)
         capacity = formula(this.h_ill * this.own_power_h)
-    flow die_own_ill: this.own_power_s -> this.dead  @heat_excess
+    flow die_own_ill: this.own_power_s -> this.dead @heat_excess
         "Device users with power for their device and heatstroke die from the heat."
         request = formula(this.h_death * this.own_power_s)
         capacity = formula(this.h_death * this.own_power_s)
-    flow die_dark_well: this.dark_h -> this.dead  @heat_excess
+    flow die_dark_well: this.dark_h -> this.dead @heat_excess
         "Device users without power die from the heat."
         request = formula(this.h_death * this.dark_h)
         capacity = formula(this.h_death * this.dark_h)
-    flow fall_ill_dark: this.dark_h -> this.dark_s  @heat_excess
+    flow fall_ill_dark: this.dark_h -> this.dark_s @heat_excess
         "Device users without power fall seriously ill from the heat."
         request = formula(this.h_ill * this.dark_h)
         capacity = formula(this.h_ill * this.dark_h)
-    flow die_dark_ill: this.dark_s -> this.dead  @heat_excess
+    flow die_dark_ill: this.dark_s -> this.dead @heat_excess
         "Device users without power and with heatstroke die from the heat."
         request = formula(this.h_death * this.dark_s)
         capacity = formula(this.h_death * this.dark_s)
-    flow admit_well: this.dark_h -> this.admitted_h  @admission
+    flow admit_well: this.dark_h -> this.admitted_h @admission
         "Device users whose battery has run out are admitted to hospital."
         request = formula(this.h_admit * this.dark_h)
         capacity = formula(this.h_admit * this.dark_h)
-    flow admit_ill: this.dark_s -> this.admitted_s  @admission
+    flow admit_ill: this.dark_s -> this.admitted_s @admission
         "Device users with heatstroke whose battery has run out are admitted to hospital."
         request = formula(this.h_admit * this.dark_s)
         capacity = formula(this.h_admit * this.dark_s)
-    take_to_power = event():  @contact
+    take_to_power = event(): @contact
         after 0 h:
             move outreach.reach * this.dark_h from this.dark_h to this.supported
-    assert this.own_power_h + this.own_power_s + this.dark_h + this.dark_s + this.supported + this.admitted_h + this.admitted_s + this.dead in [this.population
-        - 0.01 people, this.population + 0.01 people]  @counts_quantity_value
+    assert this.own_power_h + this.own_power_s + this.dark_h + this.dark_s + this.supported + this.admitted_h + this.admitted_s + this.dead in [this.population - 0.01 people, this.population + 0.01 people] @counts_quantity_value
         "Every device user is counted once, alive or dead."
 
 device_users_under_65: DeviceUsers
@@ -1075,64 +982,56 @@ device_users_65_to_74: DeviceUsers
 device_users_75_and_over: DeviceUsers
     band = aged_75_and_over
 
-Confined:  @counts_quantity_value
+Confined: @counts_quantity_value
     "The people of one age band held in the compound. They stay inside unless officials open its gates."
     band: AgeBand
-    input backup_share: fraction = 0.1 in [0, 1]  @backup_protected
+    input backup_share: fraction = 0.1 in [0, 1] @backup_protected
         "People in the compound with backup cooling"
-    readonly population: formula(people) = formula(compound.held * this.band.share)  @setting_groups
-    readonly h_death: formula(per_h) = formula(max(this.band.death_rate
-        * compound_buildings.excess_deaths_ratio, heat_wave.heat_death_rate
-        * compound_buildings.excess_heat_deaths_ratio) * heat_wave.heat_on * (1
-        - supply.service))  @heat_excess
-    readonly h_ill: formula(per_h) = formula(heat_wave.ed_rate * compound_buildings.excess_visits_ratio
-        * compound_buildings.first_visit * hospitals.heatstroke_share * hospitals.people_per_visit * (1
-        - hospitals.heatstroke_fatality) * heat_wave.heat_on * (1 - supply.service))  @heat_excess
-    backup: people = this.backup_share * this.population scale 100000 people  @backup_protected
+    readonly population: formula(people) = formula(compound.held * this.band.share) @setting_groups
+    readonly h_death: formula(per_h) = formula(max(this.band.death_rate * compound_buildings.excess_deaths_ratio, heat_wave.heat_death_rate * compound_buildings.excess_heat_deaths_ratio) * heat_wave.heat_on * (1 - supply.service)) @heat_excess
+    readonly h_ill: formula(per_h) = formula(heat_wave.ed_rate * compound_buildings.excess_visits_ratio * compound_buildings.first_visit * hospitals.heatstroke_share * hospitals.people_per_visit * (1 - hospitals.heatstroke_fatality) * heat_wave.heat_on * (1 - supply.service)) @heat_excess
+    backup: people = this.backup_share * this.population scale 100000 people @backup_protected
     exposed_h: people = (1 - this.backup_share) * this.population in [0,] scale 100000 people
         @assumption "People held without backup stay inside while the compound is closed."
             assumption RT-SC41-CONFINEMENT
-    exposed_s: people = 0 in [0,] scale 100 people  @counts_quantity_value
-    formal_h: people = 0 in [0,] scale 100000 people  @counts_quantity_value
-    returned_h: people = 0 scale 100000 people  @counts_quantity_value
-    dead: people = 0 scale 100 people  @counts_quantity_value
-    exposure: person * hours = 0 scale 10000000.0 person * hours  @exposure_weighted
+    exposed_s: people = 0 in [0,] scale 100 people @counts_quantity_value
+    formal_h: people = 0 in [0,] scale 100000 people @counts_quantity_value
+    returned_h: people = 0 scale 100000 people @counts_quantity_value
+    dead: people = 0 scale 100 people @counts_quantity_value
+    exposure: person * hours = 0 scale 10000000.0 person * hours @exposure_weighted
     flow add_exposure: SOURCE -> this.exposure
         @exposure_weighted
         request = formula(heat_wave.heat_on * (1 - supply.service) * (this.exposed_h + this.exposed_s))
         capacity = formula(heat_wave.heat_on * (1 - supply.service) * (this.exposed_h + this.exposed_s))
-    readonly survivors: formula(people) = formula(this.exposed_s)  @counts_quantity_value
-    readonly queue0: formula(people) = formula((1 - this.backup_share) * this.population)  @share_by_waiting
-    deaths: formula(people) = formula(this.dead) in [0,]  @heat_deaths_counted
+    readonly survivors: formula(people) = formula(this.exposed_s) @counts_quantity_value
+    readonly queue0: formula(people) = formula((1 - this.backup_share) * this.population) @share_by_waiting
+    deaths: formula(people) = formula(this.dead) in [0,] @heat_deaths_counted
         "Deaths"
-    flow die_well: this.exposed_h -> this.dead  @heat_excess
+    flow die_well: this.exposed_h -> this.dead @heat_excess
         "People held without cooling die from the heat."
         request = formula(this.h_death * this.exposed_h)
         capacity = formula(this.h_death * this.exposed_h)
-    flow fall_ill: this.exposed_h -> this.exposed_s  @heat_excess
+    flow fall_ill: this.exposed_h -> this.exposed_s @heat_excess
         "People held without cooling fall seriously ill from the heat."
         request = formula(this.h_ill * this.exposed_h)
         capacity = formula(this.h_ill * this.exposed_h)
-    flow die_ill: this.exposed_s -> this.dead  @heat_excess
+    flow die_ill: this.exposed_s -> this.dead @heat_excess
         "People held with heatstroke die from the heat."
         request = formula(this.h_death * this.exposed_s)
         capacity = formula(this.h_death * this.exposed_s)
-    flow admit:  @healthy_person_moved @healthy_person_place
+    flow admit: @healthy_person_moved @healthy_person_place
         "Once the gates are open, officials take people from the compound without heatstroke to cooled places,
             and each person uses one place."
         flow formal_h: this.exposed_h -> this.formal_h
-            request = formula(places.intake * this.queue0 / places.queue if compound.gates == OPEN
-                and places.queue > 0 people else 0 people/h)
-        flow places_dispatched: places.remaining -> places.dispatched  @admission_uses_place
-            request = formula(places.intake * this.queue0 / places.queue if compound.gates == OPEN
-                and places.queue > 0 people else 0 people/h)
-    go_home = event():  @occupants_keep_place
+            request = formula(places.intake * this.queue0 / places.queue if compound.gates == OPEN and places.queue > 0 people else 0 people/h)
+        flow places_dispatched: places.remaining -> places.dispatched @admission_uses_place
+            request = formula(places.intake * this.queue0 / places.queue if compound.gates == OPEN and places.queue > 0 people else 0 people/h)
+    go_home = event(): @occupants_keep_place
         after 0 h:
             move this.formal_h from this.formal_h to this.returned_h
-    assert this.backup + this.exposed_h + this.exposed_s + this.formal_h + this.returned_h + this.dead in [this.population
-        - 0.01 people, this.population + 0.01 people]
-        @counts_quantity_value
+    assert this.backup + this.exposed_h + this.exposed_s + this.formal_h + this.returned_h + this.dead in [this.population - 0.01 people, this.population + 0.01 people]
         "Every person held in the compound is counted once, alive or dead."
+        @counts_quantity_value
 
 confined_under_65: Confined
     band = under_65
@@ -1143,53 +1042,42 @@ confined_65_to_74: Confined
 confined_75_and_over: Confined
     band = aged_75_and_over
 
-assert compound.held <= supply.people_served  @setting_groups
+assert compound.held <= supply.people_served @setting_groups
     "The people held in the compound are part of the people on the supply."
 
-assert abs(under_65.share + aged_65_to_74.share + aged_75_and_over.share - 1) <= 1e-06  @setting_groups
+assert abs(under_65.share + aged_65_to_74.share + aged_75_and_over.share - 1) <= 1e-06 @setting_groups
     "The shares of the age bands add up to one."
 
-assert (abs(heat_wave.gasparrini_weight + heat_wave.bobb_weight + heat_wave.nordio_weight
-    + heat_wave.schwartz_weight - 1) <= 1e-06)  @curve_weights
+assert abs(heat_wave.gasparrini_weight + heat_wave.bobb_weight + heat_wave.nordio_weight + heat_wave.schwartz_weight - 1) <= 1e-06 @curve_weights
     "The weights of the mortality curves add up to one."
 
-assert (heat_wave.gasparrini_top >= heat_wave.gasparrini_threshold and heat_wave.bobb_top
-    >= heat_wave.bobb_threshold and heat_wave.nordio_top >= heat_wave.nordio_threshold
-    and heat_wave.schwartz_top >= heat_wave.schwartz_threshold)  @curve_shape
+assert heat_wave.gasparrini_top >= heat_wave.gasparrini_threshold and heat_wave.bobb_top >= heat_wave.bobb_threshold and heat_wave.nordio_top >= heat_wave.nordio_threshold and heat_wave.schwartz_top >= heat_wave.schwartz_threshold @curve_shape
     "The top of each curve's fitted range is at or above its threshold."
 
-assert heat_wave.cap >= heat_wave.outdoor  @conversion
+assert heat_wave.cap >= heat_wave.outdoor @conversion
     "The highest equivalent outdoor temperature for heat-related deaths is at or above the outdoor
         temperature."
 
 assert homes.iet_off_mean >= homes.iet_on and compound_buildings.iet_off_mean >= compound_buildings.iet_on
-    @dark_calibration
     "Without power, the temperature that people feel is at or above its value with power."
+    @dark_calibration
 
-assert moves.end_time > moves.start_time  @private_departures_end
+assert moves.end_time > moves.start_time @private_departures_end
     "Private moves must end after they begin."
 
-assert places.moves_per_hour <= places.transport_limit  @counts_quantity_value
+assert places.moves_per_hour <= places.transport_limit @counts_quantity_value
     "The transport capacity limits the number of people moved each hour."
 
-deaths: formula(people) = formula(residents_under_65.dead + residents_65_to_74.dead
-    + residents_75_and_over.dead + device_users_under_65.dead + device_users_65_to_74.dead
-    + device_users_75_and_over.dead + confined_under_65.dead + confined_65_to_74.dead
-    + confined_75_and_over.dead) in [0,]  @heat_deaths_counted  @setting_groups
+deaths: formula(people) = formula(residents_under_65.dead + residents_65_to_74.dead + residents_75_and_over.dead + device_users_under_65.dead + device_users_65_to_74.dead + device_users_75_and_over.dead + confined_under_65.dead + confined_65_to_74.dead + confined_75_and_over.dead) in [0,] @heat_deaths_counted @setting_groups
     "Deaths"
 
-heatstroke_survivors: formula(people) = formula(residents_under_65.survivors + residents_65_to_74.survivors
-    + residents_75_and_over.survivors + device_users_under_65.survivors + device_users_65_to_74.survivors
-    + device_users_75_and_over.survivors + confined_under_65.survivors + confined_65_to_74.survivors
-    + confined_75_and_over.survivors) in [0,]  @person_only_health  @person_only_health
+heatstroke_survivors: formula(people) = formula(residents_under_65.survivors + residents_65_to_74.survivors + residents_75_and_over.survivors + device_users_under_65.survivors + device_users_65_to_74.survivors + device_users_75_and_over.survivors + confined_under_65.survivors + confined_65_to_74.survivors + confined_75_and_over.survivors) in [0,] @person_only_health @person_only_health
     "Heatstroke survivors"
 
-casualties: formula(people) = formula(deaths
-    + heatstroke_survivors) in [0,]  @heat_deaths_counted @hazus_severity  @heat_deaths_counted
+casualties: formula(people) = formula(deaths + heatstroke_survivors) in [0,] @heat_deaths_counted @hazus_severity @heat_deaths_counted
     "Serious casualties, including deaths"
 
-late_deaths: formula(people) = formula(heatstroke_survivors * hospitals.severe_share
-    * hospitals.late_fatality) in [0,]
+late_deaths: formula(people) = formula(heatstroke_survivors * hospitals.severe_share * hospitals.late_fatality) in [0,]
     "Later deaths among severe heatstroke survivors, within a year"
     @source_transfer "The chosen share of severe survivors times the share of the 1995 Chicago intensive-care
         heatstroke patients who died within a year."
@@ -1197,29 +1085,23 @@ late_deaths: formula(people) = formula(heatstroke_survivors * hospitals.severe_s
         claims:
             E-DEMATTE98-ICU
 
-device_admissions: formula(people) = formula(device_users_under_65.admissions
-    + device_users_65_to_74.admissions
-    + device_users_75_and_over.admissions) in [0,]  @admission  @setting_groups
+device_admissions: formula(people) = formula(device_users_under_65.admissions + device_users_65_to_74.admissions + device_users_75_and_over.admissions) in [0,] @admission @setting_groups
     "Device users admitted to hospital"
 
-economic_loss: formula(USD2025_bn) = formula(interruption_cost + crews.restoration_cost + support_cost
-    + clinical_cost) in [0,]
-    @counts_group_people
+economic_loss: formula(USD2025_bn) = formula(interruption_cost + crews.restoration_cost + support_cost + clinical_cost) in [0,]
     "Economic loss"
+    @counts_group_people
 
-interruption_cost: formula(USD2025_bn) = formula(residential.cost + non_residential.cost) in [0,]  @power_law
+interruption_cost: formula(USD2025_bn) = formula(residential.cost + non_residential.cost) in [0,] @power_law
     "Customers' interruption costs"
 
-support_cost: formula(USD2025_bn) = formula(places.person_days * places.place_cost + moves.person_days
-    * moves.cost_per_day) in [0,]  @counts_group_people
+support_cost: formula(USD2025_bn) = formula(places.person_days * places.place_cost + moves.person_days * moves.cost_per_day) in [0,] @counts_group_people
     "Extra cost of cooled places and private moves"
 
-clinical_cost: formula(USD2025_bn) = formula(casualties
-    * hospitals.cost_per_casualty) in [0,]  @counts_group_people
+clinical_cost: formula(USD2025_bn) = formula(casualties * hospitals.cost_per_casualty) in [0,] @counts_group_people
     "Extra cost of medical care"
 
-clinical_demand: formula(people) = formula(heatstroke_survivors * hospitals.admitted_share / (1
-    - hospitals.heatstroke_fatality)) in [0,]
+clinical_demand: formula(people) = formula(heatstroke_survivors * hospitals.admitted_share / (1 - hospitals.heatstroke_fatality)) in [0,]
     "Heatstroke survivors who need hospital care"
     @source_transfer "Heatstroke survivors times the share of heatstroke emergency visits admitted to
         hospital, among the visits that do not end in death."
@@ -1227,30 +1109,26 @@ clinical_demand: formula(people) = formula(heatstroke_survivors * hospitals.admi
         claims:
             E-WU14
 
-thermal_exposure: formula(person * hours) = formula(residents_under_65.exposure + residents_65_to_74.exposure
-    + residents_75_and_over.exposure + device_users_under_65.exposure + device_users_65_to_74.exposure
-    + device_users_75_and_over.exposure + confined_under_65.exposure + confined_65_to_74.exposure
-    + confined_75_and_over.exposure) in [0,]  @exposure_weighted
+thermal_exposure: formula(person * hours) = formula(residents_under_65.exposure + residents_65_to_74.exposure + residents_75_and_over.exposure + device_users_under_65.exposure + device_users_65_to_74.exposure + device_users_75_and_over.exposure + confined_under_65.exposure + confined_65_to_74.exposure + confined_75_and_over.exposure) in [0,] @exposure_weighted
     "Person-hours without cooling in the heat wave"
 
-outstanding_work: formula(h) = formula(crews.remaining + crews.rework_left
-    + extra.work_left) in [0,]  @counts_work_done
+outstanding_work: formula(h) = formula(crews.remaining + crews.rework_left + extra.work_left) in [0,] @counts_work_done
     "Switching work still to do"
 
 supply.lose_power.start()
 
 options "Cooling response":
     "Standard cooling":
-        places.start_delay = 18 h  @open_by_response
+        places.start_delay = 18 h @open_by_response
     "Earlier cooling and outreach":
-        places.start_delay = 4 h  @open_by_response
-        places.moves_per_hour = 2000 people/h  @moves_by_response
-        outreach.start_time = 4 h  @by_response
+        places.start_delay = 4 h @open_by_response
+        places.moves_per_hour = 2000 people/h @moves_by_response
+        outreach.start_time = 4 h @by_response
     "Earlier cooling with backup power":
-        places.start_delay = 4 h  @open_by_response
-        places.moves_per_hour = 2000 people/h  @moves_by_response
-        outreach.start_time = 4 h  @by_response
-        places.powered_share = 1  @all_powered
+        places.start_delay = 4 h @open_by_response
+        places.moves_per_hour = 2000 people/h @moves_by_response
+        outreach.start_time = 4 h @by_response
+        places.powered_share = 1 @all_powered
 
 runs:
     standard = "Standard cooling"
@@ -1285,8 +1163,7 @@ notes:
             share_restored:
                 scope: "Supply to the homes and the compound"
             resident_hours:
-                about: "Hours without electricity summed over everyone on the supply: one person without power
-                    for a day counts 24. It measures how long the outage lasts, not the harm it does."
+                about: "Hours without electricity summed over everyone on the supply: one person without power for a day counts 24. It measures how long the outage lasts, not the harm it does."
                 scope: "The people on the supply and limited response resources."
             people_followed:
                 scope: "Everyone on the supply, in the compound and in the homes around it."
@@ -1301,31 +1178,18 @@ notes:
             cost:
                 scope: "The people on the supply; the extra effect of the outage, with the inputs in use."
         deaths:
-            about: "This counts the people in the homes and in the compound who die from the heat during the
-                heat wave, above the deaths of the same heat wave with power. Each person's risk follows the
-                temperature that the person feels at home without power, through two published curves, one for
-                all deaths and one for heat-related deaths; the model takes the larger. People with backup
-                cooling or power, in cooled places, moved away or in hospital are not at risk. The model does
-                not count deaths from other harms of the outage, such as failed home devices, generator fumes
-                or falls. These are expected numbers."
+            about: "This counts the people in the homes and in the compound who die from the heat during the heat wave, above the deaths of the same heat wave with power. Each person's risk follows the temperature that the person feels at home without power, through two published curves, one for all deaths and one for heat-related deaths; the model takes the larger. People with backup cooling or power, in cooled places, moved away or in hospital are not at risk. The model does not count deaths from other harms of the outage, such as failed home devices, generator fumes or falls. These are expected numbers."
             category: deaths
         casualties:
-            about: "Heat deaths plus people who survive heatstroke, the most severe heat illness; each person
-                is counted once. The model does not count milder heat illness or injuries from other harms of
-                the outage."
+            about: "Heat deaths plus people who survive heatstroke, the most severe heat illness; each person is counted once. The model does not count milder heat illness or injuries from other harms of the outage."
             category: casualties
         late_deaths:
-            about: "Heatstroke survivors as severe as intensive-care cases who die within a year of the heat
-                wave. It is a one-year figure, not a count within the period of the run, and these people are
-                among the serious casualties."
+            about: "Heatstroke survivors as severe as intensive-care cases who die within a year of the heat wave. It is a one-year figure, not a count within the period of the run, and these people are among the serious casualties."
             scope: "Heatstroke survivors on the supply, each person counted once."
         device_admissions:
-            about: "People on home oxygen concentrators and ventilators who are admitted to hospital after
-                their battery runs out and their power is still off."
+            about: "People on home oxygen concentrators and ventilators who are admitted to hospital after their battery runs out and their power is still off."
         economic_loss:
-            about: "Customers' costs of the interruption, plus the cost of the restoration work, cooled
-                places, private moves and extra medical care, in 2025 US dollars. It puts no money value on
-                lives lost or illness suffered."
+            about: "Customers' costs of the interruption, plus the cost of the restoration work, cooled places, private moves and extra medical care, in 2025 US dollars. It puts no money value on lives lost or illness suffered."
             scope: "The people on the supply; the extra effect of the outage, with the inputs in use."
             category: loss
         interruption_cost:
@@ -1335,8 +1199,7 @@ notes:
         clinical_cost:
             scope: "The people on the supply; the extra effect of the outage, with the inputs in use."
         clinical_demand:
-            scope: "Heatstroke survivors, each person counted once, with the share admitted to hospital taken
-                from the source."
+            scope: "Heatstroke survivors, each person counted once, with the share admitted to hospital taken from the source."
         thermal_exposure:
             scope: "The people on the supply and limited response resources."
         outstanding_work:
@@ -1549,8 +1412,8 @@ record felt_temperature_limits: assumption "The scenario chooses the limits of t
 
 record service_follows_work: assumption "Circuits come back one by one as crews do the switching work, so the
     share of people with power is the share of the switching work done. A circuit that is back stays back;
-    extra work affects only circuits still awaiting restoration. While the supply is
-    off, crews have not started to switch, so no circuit is back."
+    extra work affects only circuits still awaiting restoration. While the supply is off, crews have not
+    started to switch, so no circuit is back."
     assumption A-SC41-RESTORATION
 
 record people_on_supply: assumption "Everyone on the supply: the people in the compound and in the homes
@@ -1570,10 +1433,12 @@ record protection_check_time: assumption "Before crews switch any circuit back o
     claims:
         E-NASEM17-ENERGIZE
 
-record order_of_work: assumption "Crews clear extra inspection work first, then repeat work, then ordinary restoration."
+record order_of_work: assumption "Crews clear extra inspection work first, then repeat work, then ordinary
+    restoration."
     assumption A-SC41-REWORK
 
-record switching_starts: assumption "Crews wait for isolation, assessment and safety checks before restoring service."
+record switching_starts: assumption "Crews wait for isolation, assessment and safety checks before restoring
+    service."
     assumption A-SC41-RESTORATION
 
 record work_cost: assumption "The standard crews are 40 lineworkers. A lineworker-hour costs twice the median
@@ -1702,6 +1567,6 @@ record hazus_severity: convention "Serious casualties are the people who die and
     serious harm that lasts: the Hazus severity levels S4 and S3."
     convention HAZUS-SEVERITY
 
-
-record recovery_inputs: assumption "The outage observation, safety holds, and work orders are supplied by the model user. They are not forecasts."
+record recovery_inputs: assumption "The outage observation, safety holds, and work orders are supplied by the
+    model user. They are not forecasts."
     assumption A-SC41-RESTORATION
