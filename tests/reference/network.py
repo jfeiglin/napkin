@@ -219,13 +219,8 @@ def _moving(run, comps):
     the moment."""
     view = run.view
     for _ in range(len(comps) + 1):
-        view.levels, view.rates, _, _ = _carried(run)
         try:
-            changed = [
-                comp
-                for comp in comps
-                if (view.levels or view.rates) and _after(run, comp)['signature'] != comp.signature
-            ]
+            changed, _, _, _ = _trajectories(run, settling=True)
             for comp in changed:
                 comp.done = False
             for comp in changed:
@@ -1034,22 +1029,28 @@ def _carried(run, follow=None):
     return levels, rates, moving, follow
 
 
-def motion(run):
-    """Set `view.levels` and `view.rates` for the time after this moment, and return the stops:
-    the times (after the moment) at which a rate input changes or a store meets a bound."""
+def _trajectories(run, *, settling):
+    """Propagate polynomial requests, rates and store levels over the incoming dependencies.
+
+    The problems immediately after a contact depend on these same trajectories as the
+    contact search. A first pass can see the clock's rate but still hold a store-driven
+    or downstream rate constant. Only the converged pass can choose an outgoing branch.
+    """
     view = run.view
     view.levels, view.rates = {}, {}
     view.levels, view.rates, moving, follow = _carried(run)
-    # A request can follow a store that another flow moves. Each pass carries an exact polynomial
-    # one flow further. When the polynomials agree, their integrals give the stated store levels.
+    if settling and not (view.levels or view.rates):
+        return [], moving, [], []
     for depth in range(len(view.live) + 1):
-        stops, contacts, again = [], [], {}
+        changed, stops, contacts, again = [], [], [], {}
         for comp in run.components:
             ev = Ev(run, view, None, mode='germ', unknowns=set(comp.vars))
-            assemble(run, comp, ev, again)
+            problem = assemble(run, comp, ev, again)
+            if settling and problem['signature'] != comp.signature:
+                changed.append(comp)
             stops += ev.shared.stops
             contacts.extend(ev.shared.contacts)
-        changed = next(
+        difference = next(
             (
                 f
                 for f in view.live
@@ -1057,13 +1058,19 @@ def motion(run):
             ),
             None,
         )
-        if changed is None:
-            break
+        if difference is None:
+            return changed, moving, stops, contacts
         if depth == len(view.live):
             raise NotCovered(
-                f'{changed.label}: a request that reads a store while that store moves in a feedback loop'
+                f'{difference.label}: a request that reads a store while that store moves in a feedback loop'
             )
         view.levels, view.rates, moving, follow = _carried(run, again)
+
+
+def motion(run):
+    """Set the exact store and rate trajectories and find their first setting and bound contacts."""
+    view = run.view
+    _, moving, stops, contacts = _trajectories(run, settling=False)
     run.bound_contacts = []
     for cell, p in view.levels.items():
         lo, hi = view.bounds.get(cell, (None, None))
