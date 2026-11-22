@@ -134,5 +134,67 @@
     },
     "scale": 1000.0,
     "description": "Thousands of US dollars of the year that the claim states."
+  },
+  "facility_hours": {
+    "kind": "exposure",
+    "dimensions": {
+      "facilities": 1,
+      "time": 1
+    },
+    "scale": 1,
+    "description": "Hours summed over facilities: one facility for one hour counts one."
+  },
+  "acre_feet_per_year": {
+    "kind": "rate",
+    "dimensions": {
+      "L": 1,
+      "time": -1
+    },
+    "scale": 140.80842894378083,
+    "description": "Acre-feet a year, a year being 365 days."
+  },
+  "acre_feet": {
+    "kind": "volume",
+    "dimensions": {
+      "L": 1
+    },
+    "scale": 1233481.83754752,
+    "description": "Acre-feet: 43,560 cubic feet, about 325,851 US gallons."
+  },
+  "gallons_per_year": {
+    "kind": "rate",
+    "dimensions": {
+      "L": 1,
+      "time": -1
+    },
+    "scale": 0.00043212463287671234,
+    "description": "US gallons a year, a year being 365 days."
+  },
+  "gallons_per_minute": {
+    "kind": "rate",
+    "dimensions": {
+      "L": 1,
+      "time": -1
+    },
+    "scale": 227.12470704,
+    "description": "US gallons a minute."
+  },
+  "megagallons_per_year": {
+    "kind": "rate",
+    "dimensions": {
+      "L": 1,
+      "time": -1
+    },
+    "scale": 432.1246328767123,
+    "description": "Million US gallons a year, a year being 365 days."
+  },
+  "cubic_feet_per_second": {
+    "kind": "rate",
+    "dimensions": {
+      "L": 1,
+      "time": -1
+    },
+    "scale": 101940.6477312,
+    "description": "Cubic feet a second."
   }
 }

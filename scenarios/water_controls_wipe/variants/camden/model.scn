@@ -1,50 +1,46 @@
-# Water systems' controls wiped through a shared remote-support platform: Camden, New Jersey
 variant "Camden, New Jersey"
-    summary "An AI agent wipes the controls of the water system of Camden, New Jersey through the
-        remote-support platform of the OT integrator that it uses."
+    summary "Water service, stored supplies and restoration work in Camden, New Jersey after an observed
+        controls outage."
     scope "The people that the water system of Camden, New Jersey serves, the hospitals that it supplies and
         the businesses that need public water there."
 
 raritan: Utility
     "New Jersey American Water - Raritan System. Its ID in the federal inventory is NJ2004002."
     title "The Raritan system"
-    let buys = []
-    let sells = []
+    buys = <>
+    sells = <>
     name = "The Raritan system"
-    demand = 161.784 Mgal/day  @raritan_demand
-    nameplate = 245.155 Mgal/day  @raritan_nameplate
-    storage = 26 Mgal  @raritan_storage
-    sold = 10.126 Mgal/day  @raritan_sold
-    va_rate = 6304055.58 USD2025/h  @raritan_va_rate
+    demand = 161.784 Mgal/day @raritan_demand
+    nameplate = 245.155 Mgal/day @raritan_nameplate
+    storage = 26 Mgal @raritan_storage
+    sold = 10.126 Mgal/day @raritan_sold
+    va_rate = 6304055.58 USD2025/h @raritan_va_rate
 
 raritan_homes: Households
     "The people that the Raritan system serves."
     title "The Raritan system: homes"
-    let utility = raritan
-    population = 615430 people  @raritan_homes_population
+    utility = raritan
+    population = 615430 people @raritan_homes_population
 
 raritan_hospitals: Hospitals
     "The 3 hospitals that the Raritan system supplies: Hunterdon Medical Center; Robert Wood Johnson
         University Hospital - Somerset; University Medical Center of Princeton at Plainsboro."
     title "The Raritan system: hospitals"
-    let utility = raritan
+    utility = raritan
     name = "The Raritan system"
-    facilities = 3 facilities  @raritan_hospitals_facilities
+    facilities = 3 facilities @raritan_hospitals_facilities
 
 notes:
     limitations:
-        one-site-storage: "The storage is the 26 Mgal of the Oak Tree site, about 3.7 hours of the peak day's
-            use; no source gives the system's total, which is probably several times larger. So the stored
-            water runs out much sooner here than in fact."  @raritan_storage
-        bulk-sales: "Eight of the nine bulk customers, among them Liberty Water for Elizabeth and Edison
-            Water, have no published volumes, so the sales are a floor and the system's own use a
-            ceiling."  @raritan_sold
+        one-site-storage: "The storage is the 26 Mgal of the Oak Tree site, about 3.7 hours of the peak day's use; no source gives the system's total, which is probably several times larger. So the stored water runs out much sooner here than in fact." @raritan_storage
+        bulk-sales: "Eight of the nine bulk customers, among them Liberty Water for Elizabeth and Edison Water, have no published volumes, so the sales are a floor and the system's own use a ceiling." @raritan_sold
     verification:
         research: "variants/camden/evidence/research.md"
 
-record raritan_demand: assumption A-SC43-PEAK-DAY "The peak use is the highest day reported, about 180 MGD of
-    production in summer 2025, which includes sales. Less the known sales at the peak ratio 180 / 124.427 =
-    1.4466 (7.0 MGD x 1.4466 = 10.126 MGD), over 1.05: (180 - 10.126) / 1.05 = 161.784 MGD."
+record raritan_demand: assumption "The peak use is the highest day reported, about 180 MGD of production in
+    summer 2025, which includes sales. Less the known sales at the peak ratio 180 / 124.427 = 1.4466 (7.0 MGD
+    x 1.4466 = 10.126 MGD), over 1.05: (180 - 10.126) / 1.05 = 161.784 MGD."
+    assumption A-SC43-PEAK-DAY
     claims:
         E-SC43-CAMDEN-RARITAN-MAXDAY
         E-SC43-CAMDEN-RARITAN-AVERAGE
@@ -66,25 +62,28 @@ record raritan_storage: source "The four tanks at the Oak Tree site in Edison (1
         E-SC43-CAMDEN-RARITAN-STORAGE
             datum: oak_tree_storage
 
-record raritan_sold: assumption A-SC43-PEAK-DAY "Known average sales outside the scenario: 3.0 MGD take-or-pay
-    to Middlesex Water and at least 4 MGD transferred to NJAW's Passaic Basin system through Diamond Hill, 7.0
-    MGD, at the peak ratio 1.4466: 10.126 MGD. A floor: the other eight bulk customers (among them Liberty
-    Water for Elizabeth and Edison Water) have no published volumes."
+record raritan_sold: assumption "Known average sales outside the scenario: 3.0 MGD take-or-pay to Middlesex
+    Water and at least 4 MGD transferred to NJAW's Passaic Basin system through Diamond Hill, 7.0 MGD, at the
+    peak ratio 1.4466: 10.126 MGD. A floor: the other eight bulk customers (among them Liberty Water for
+    Elizabeth and Edison Water) have no published volumes."
+    assumption A-SC43-PEAK-DAY
     claims:
         E-SC43-CAMDEN-RARITAN-MSEX-CONTRACT
         E-SC43-CAMDEN-RARITAN-PASSAIC-TRANSFER
         E-SC43-CAMDEN-RARITAN-MAXDAY
         E-SC43-CAMDEN-RARITAN-AVERAGE
 
-record raritan_homes_population: assumption A-SC43-REACH "SDWIS federal data list 615,430 people served by the
-    Raritan system (NJ2004002), the system's own report through its state."
+record raritan_homes_population: assumption "SDWIS federal data list 615,430 people served by the Raritan
+    system (NJ2004002), the system's own report through its state."
+    assumption A-SC43-REACH
     claims:
         E-SC43-SDWIS-NJ2004002
             datum: population_served
 
-record raritan_va_rate: assumption A-SC43-ECONOMY "615,430 people served times the 2024 GDP per resident of
-    its county (Union County, New Jersey (34039): 51,947,451 thousand dollars and 594,160 people: 87,430.07
-    dollars a resident) times the price factor 1.026324, over 8,760 h: 6,304,055.58 USD2025/h."
+record raritan_va_rate: assumption "615,430 people served times the 2024 GDP per resident of its county (Union
+    County, New Jersey (34039): 51,947,451 thousand dollars and 594,160 people: 87,430.07 dollars a resident)
+    times the price factor 1.026324, over 8,760 h: 6,304,055.58 USD2025/h."
+    assumption A-SC43-ECONOMY
     claims:
         E-SC43-SDWIS-NJ2004002
         E-SC43-SDWIS-COUNTIES
@@ -92,8 +91,9 @@ record raritan_va_rate: assumption A-SC43-ECONOMY "615,430 people served times t
         E-SC43-BEA-POP-34039
         E-SC43-GDP-DEFLATOR
 
-record raritan_hospitals_facilities: assumption A-SC43-HOSPITAL-JOIN "The CMS hospital list gives 3 hospitals
-    of the counted types whose geocoded address lies in the EPA service area of the Raritan system."
+record raritan_hospitals_facilities: assumption "The CMS hospital list gives 3 hospitals of the counted types
+    whose geocoded address lies in the EPA service area of the Raritan system."
+    assumption A-SC43-HOSPITAL-JOIN
     claims:
         E-SC43-HOSPITALS-RARITAN
             datum: hospitals_supplied

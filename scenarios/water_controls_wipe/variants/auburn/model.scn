@@ -1,53 +1,50 @@
-# Water systems' controls wiped through a shared remote-support platform: Auburn, Washington
 variant "Auburn, Washington"
-    summary "An AI agent wipes the controls of the water system of Auburn, Washington through the
-        remote-support platform of the OT integrator that it uses."
+    summary "Water service, stored supplies and restoration work in Auburn, Washington after an observed
+        controls outage."
     scope "The people that the water system of Auburn, Washington serves, the hospitals that it supplies and
         the businesses that need public water there."
 
 auburn: Utility
     "City of Auburn, Washington. Its ID in the federal inventory is WA5303350."
     title "Auburn"
-    let buys = []
-    let sells = []
+    buys = <>
+    sells = <>
     name = "Auburn"
-    demand = 11.1622 Mgal/day  @auburn_demand
-    nameplate = 12055 gal/min  @auburn_nameplate
-    storage = 15.86 Mgal  @auburn_storage
-    bought = 0 Mgal/yr  @auburn_bought
-    sold = 0.709704 Mgal/day  @auburn_sold
-    va_rate = 2571690.02 USD2025/h  @auburn_va_rate
-    pump_disabled = 0.7  @depth
-    manual_share = 0.8  @manual
-    activation_delay = 1 h  @manual
-    controls_load = 400 work_h  @work
-    field_load = 80 work_h  @work
+    demand = 11.1622 Mgal/day @auburn_demand
+    nameplate = 12055 gallons_per_minute @auburn_nameplate
+    storage = 15.86 Mgal @auburn_storage
+    bought = 0 megagallons_per_year @auburn_bought
+    sold = 0.709704 Mgal/day @auburn_sold
+    va_rate = 2571690.02 USD2025/h @auburn_va_rate
+    pump_disabled = 0.7 @depth
+    manual_share = 0.8 @manual
+    activation_delay = 1 h @manual
+    controls_load = 400 work_h @work
+    field_load = 80 work_h @work
 
 auburn_homes: Households
     "The people that Auburn serves."
     title "Auburn: homes"
-    let utility = auburn
-    population = 107655 people  @auburn_homes_population
+    utility = auburn
+    population = 107655 people @auburn_homes_population
 
 auburn_hospitals: Hospitals
     "The hospital that Auburn supplies: Multicare Auburn Medical Center."
     title "Auburn: hospitals"
-    let utility = auburn
+    utility = auburn
     name = "Auburn"
-    facilities = 1 facilities  @auburn_hospitals_facilities
+    facilities = 1 facilities @auburn_hospitals_facilities
 
 notes:
     limitations:
-        standby-supply: "Auburn can call on Tacoma through two interties and on emergency interties with seven
-            systems, and its plan counts the Tacoma interties in its supply. The model gives it no water from
-            outside the place during the event, so its interruption can be longer here than in
-            fact."  @auburn_bought
+        standby-supply: "Auburn can call on Tacoma through two interties and on emergency interties with seven systems, and its plan counts the Tacoma interties in its supply. The model gives it no water from outside the place during the event, so its interruption can be longer here than in fact." @auburn_bought
     verification:
         research: "variants/auburn/evidence/research.md"
 
-record auburn_demand: assumption A-SC43-PEAK-DAY "The highest day of the present system is 12.43 Mgal/day on
-    July 29, 2020, with an average day of 6.32 Mgal/day (ratio 1.96677). Less the Algona sale at that ratio
-    (0.360847 x 1.96677 = 0.709704) it is 11.7203, and 11.7203 / 1.05 = 11.1622."
+record auburn_demand: assumption "The highest day of the present system is 12.43 Mgal/day on July 29, 2020,
+    with an average day of 6.32 Mgal/day (ratio 1.96677). Less the Algona sale at that ratio (0.360847 x
+    1.96677 = 0.709704) it is 11.7203, and 11.7203 / 1.05 = 11.1622."
+    assumption A-SC43-PEAK-DAY
     claims:
         E-SC43-AUBURN-AUBURN-PEAK-DAY
         E-SC43-AUBURN-AUBURN-SALES
@@ -67,28 +64,32 @@ record auburn_storage: source "The plan's 2024 storage analysis gives a maximum 
         E-SC43-AUBURN-AUBURN-STORAGE
             datum: maximum_storage_capacity
 
-record auburn_bought: assumption A-SC43-PEAK-DAY "The City has bought no water from Tacoma since 2016, and
-    Table 2-7 shows no purchase from 2017 to 2022, so it buys nothing on a normal day."
+record auburn_bought: assumption "The City has bought no water from Tacoma since 2016, and Table 2-7 shows no
+    purchase from 2017 to 2022, so it buys nothing on a normal day."
+    assumption A-SC43-PEAK-DAY
     claims:
         E-SC43-AUBURN-AUBURN-PURCHASES
             datum: purchases_after_2016
 
-record auburn_sold: assumption A-SC43-PEAK-DAY "Algona, the only regular wholesale customer, used 132.07 MG in
-    2020, or 0.360847 Mgal/day over 366 days. At the 2020 peak ratio of 1.96677 this is 0.709704 Mgal/day.
-    Lake Meridian Water District buys only on an interruptible basis and bought nothing from 2017 to 2022."
+record auburn_sold: assumption "Algona, the only regular wholesale customer, used 132.07 MG in 2020, or
+    0.360847 Mgal/day over 366 days. At the 2020 peak ratio of 1.96677 this is 0.709704 Mgal/day. Lake
+    Meridian Water District buys only on an interruptible basis and bought nothing from 2017 to 2022."
+    assumption A-SC43-PEAK-DAY
     claims:
         E-SC43-AUBURN-AUBURN-SALES
         E-SC43-AUBURN-AUBURN-PEAK-DAY
 
-record auburn_homes_population: assumption A-SC43-REACH "SDWIS federal data list 107,655 people served by
-    Auburn (WA5303350), the system's own report through its state."
+record auburn_homes_population: assumption "SDWIS federal data list 107,655 people served by Auburn
+    (WA5303350), the system's own report through its state."
+    assumption A-SC43-REACH
     claims:
         E-SC43-SDWIS-WA5303350
             datum: population_served
 
-record auburn_va_rate: assumption A-SC43-ECONOMY "107,655 people served times the 2024 GDP per resident of its
-    county (King County, Washington (53033): 477,154,354 thousand dollars and 2,340,211 people: 203,893.73
-    dollars a resident) times the price factor 1.026324, over 8,760 h: 2,571,690.02 USD2025/h."
+record auburn_va_rate: assumption "107,655 people served times the 2024 GDP per resident of its county (King
+    County, Washington (53033): 477,154,354 thousand dollars and 2,340,211 people: 203,893.73 dollars a
+    resident) times the price factor 1.026324, over 8,760 h: 2,571,690.02 USD2025/h."
+    assumption A-SC43-ECONOMY
     claims:
         E-SC43-SDWIS-WA5303350
         E-SC43-SDWIS-COUNTIES
@@ -96,8 +97,9 @@ record auburn_va_rate: assumption A-SC43-ECONOMY "107,655 people served times th
         E-SC43-BEA-POP-53033
         E-SC43-GDP-DEFLATOR
 
-record auburn_hospitals_facilities: assumption A-SC43-HOSPITAL-JOIN "The CMS hospital list gives 1 hospital of
-    the counted types whose geocoded address lies in the EPA service area of Auburn."
+record auburn_hospitals_facilities: assumption "The CMS hospital list gives 1 hospital of the counted types
+    whose geocoded address lies in the EPA service area of Auburn."
+    assumption A-SC43-HOSPITAL-JOIN
     claims:
         E-SC43-HOSPITALS-AUBURN
             datum: hospitals_supplied

@@ -1,27 +1,26 @@
-# Water systems' controls wiped through a shared remote-support platform: Los Angeles, California
 variant "Los Angeles, California"
-    summary "An AI agent wipes the controls of the water system of Los Angeles, California through the
-        remote-support platform of the OT integrator that it uses."
+    summary "Water service, stored supplies and restoration work in Los Angeles, California after an observed
+        controls outage."
     scope "The people that the water system of Los Angeles, California serves, the hospitals that it supplies
         and the businesses that need public water there."
 
 ladwp: Utility
     "Los Angeles Department of Water and Power, California. Its ID in the federal inventory is CA1910067."
     title "LADWP"
-    let buys = []
-    let sells = []
+    buys = <>
+    sells = <>
     name = "LADWP"
-    demand = 612.821811 Mgal/day  @ladwp_demand
-    nameplate = 600 Mgal/day  @ladwp_nameplate
-    storage = 13056 acre-ft  @ladwp_storage
-    bought = 329.64212 Mgal/day  @ladwp_bought
-    va_rate = 46674233.55 USD2025/h  @ladwp_va_rate
+    demand = 612.821811 Mgal/day @ladwp_demand
+    nameplate = 600 Mgal/day @ladwp_nameplate
+    storage = 13056 acre_feet @ladwp_storage
+    bought = 329.64212 Mgal/day @ladwp_bought
+    va_rate = 46674233.55 USD2025/h @ladwp_va_rate
 
 ladwp_homes: Households
     "The people that LADWP serves."
     title "LADWP: homes"
-    let utility = ladwp
-    population = 3875566 people  @ladwp_homes_population
+    utility = ladwp
+    population = 3875566 people @ladwp_homes_population
 
 ladwp_hospitals: Hospitals
     "The 28 hospitals that LADWP supplies: Adventist Health White Memorial; California Hospital Medical Center
@@ -36,26 +35,21 @@ ladwp_hospitals: Hospitals
         Sherman Oaks Hospital; Southern California Hospital at Hollywood; UCLA West Valley Medical Center;
         Valley Presbyterian Hospital."
     title "LADWP: hospitals"
-    let utility = ladwp
+    utility = ladwp
     name = "LADWP"
-    facilities = 28 facilities  @ladwp_hospitals_facilities
+    facilities = 28 facilities @ladwp_hospitals_facilities
 
 notes:
     limitations:
-        untreated-purchases: "Part of the water bought from the Metropolitan Water District is untreated and
-            goes through the filtration plant, so a wipe of the plant's controls would stop it; the model
-            counts all purchases as treated water from outside. So LADWP keeps more water here than in
-            fact."  @ladwp_bought
-        raw-water: "The filtration plant's 600 Mgal a day is more than the two aqueducts can carry (about 437
-            Mgal a day) and much more than they delivered on average in fiscal 2020 to 2024 (about 172). So
-            production by hand can be higher here than in fact, most of all in a dry year."  @ladwp_nameplate
+        untreated-purchases: "Part of the water bought from the Metropolitan Water District is untreated and goes through the filtration plant, so a wipe of the plant's controls would stop it; the model counts all purchases as treated water from outside. So LADWP keeps more water here than in fact." @ladwp_bought
+        raw-water: "The filtration plant's 600 Mgal a day is more than the two aqueducts can carry (about 437 Mgal a day) and much more than they delivered on average in fiscal 2020 to 2024 (about 172). So production by hand can be higher here than in fact, most of all in a dry year." @ladwp_nameplate
     verification:
         research: "variants/los_angeles/evidence/research.md"
 
-record ladwp_demand: assumption A-SC43-PEAK-DAY "No source reports a highest day, so the peak use is the
-    FY2020-FY2024 average potable demand, 466,866 acre-feet a year (416.792 MGD), times the family median
-    ratio 1.54385: 643.4629 MGD. LADWP sells no water to other systems, so demand = 643.4629 / 1.05 = 612.8218
-    MGD."
+record ladwp_demand: assumption "No source reports a highest day, so the peak use is the FY2020-FY2024 average
+    potable demand, 466,866 acre-feet a year (416.792 MGD), times the family median ratio 1.54385: 643.4629
+    MGD. LADWP sells no water to other systems, so demand = 643.4629 / 1.05 = 612.8218 MGD."
+    assumption A-SC43-PEAK-DAY
     claims:
         E-SC43-LOSANGELES-LADWP-DEMAND
 
@@ -73,21 +67,24 @@ record ladwp_storage: source "The in-city (local) reservoirs and tanks, 13,056 a
         E-SC43-LOSANGELES-LADWP-STORAGE
             datum: local_reservoirs_storage
 
-record ladwp_bought: assumption A-SC43-PEAK-DAY "Purchases from the Metropolitan Water District averaged
-    239,173 acre-feet a year in FY2020-FY2024 (213.520 MGD), at the family median ratio 1.54385: 329.6421 MGD.
-    Metropolitan's recorded summer peak days for LADWP were about 292 to 409 MGD in 2021-2023."
+record ladwp_bought: assumption "Purchases from the Metropolitan Water District averaged 239,173 acre-feet a
+    year in FY2020-FY2024 (213.520 MGD), at the family median ratio 1.54385: 329.6421 MGD. Metropolitan's
+    recorded summer peak days for LADWP were about 292 to 409 MGD in 2021-2023."
+    assumption A-SC43-PEAK-DAY
     claims:
         E-SC43-LOSANGELES-LADWP-MWD
 
-record ladwp_homes_population: assumption A-SC43-REACH "SDWIS federal data list 3,875,566 people served by
-    LADWP (CA1910067), the system's own report through its state."
+record ladwp_homes_population: assumption "SDWIS federal data list 3,875,566 people served by LADWP
+    (CA1910067), the system's own report through its state."
+    assumption A-SC43-REACH
     claims:
         E-SC43-SDWIS-CA1910067
             datum: population_served
 
-record ladwp_va_rate: assumption A-SC43-ECONOMY "3,875,566 people served times the 2024 GDP per resident of
-    its county (Los Angeles County, California (06037): 1,002,965,029 thousand dollars and 9,757,179 people:
-    102,792.52 dollars a resident) times the price factor 1.026324, over 8,760 h: 46,674,233.55 USD2025/h."
+record ladwp_va_rate: assumption "3,875,566 people served times the 2024 GDP per resident of its county (Los
+    Angeles County, California (06037): 1,002,965,029 thousand dollars and 9,757,179 people: 102,792.52
+    dollars a resident) times the price factor 1.026324, over 8,760 h: 46,674,233.55 USD2025/h."
+    assumption A-SC43-ECONOMY
     claims:
         E-SC43-SDWIS-CA1910067
         E-SC43-SDWIS-COUNTIES
@@ -95,10 +92,10 @@ record ladwp_va_rate: assumption A-SC43-ECONOMY "3,875,566 people served times t
         E-SC43-BEA-POP-06037
         E-SC43-GDP-DEFLATOR
 
-record ladwp_hospitals_facilities: assumption A-SC43-HOSPITAL-JOIN "The CMS hospital list gives 28 hospitals
-    of the counted types whose geocoded address lies in the EPA service area of LADWP. The count is a floor:
-    the Census geocoder does not match the CMS address of VA Greater Los Angeles Healthcare System, so the
-    join does not place it."
+record ladwp_hospitals_facilities: assumption "The CMS hospital list gives 28 hospitals of the counted types
+    whose geocoded address lies in the EPA service area of LADWP. The count is a floor: the Census geocoder
+    does not match the CMS address of VA Greater Los Angeles Healthcare System, so the join does not place it."
+    assumption A-SC43-HOSPITAL-JOIN
     claims:
         E-SC43-HOSPITALS-LADWP
             datum: hospitals_supplied

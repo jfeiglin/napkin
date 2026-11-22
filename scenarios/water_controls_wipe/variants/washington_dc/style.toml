@@ -6,9 +6,9 @@ stocks = 6
 card_width = 320
 
 [place]
-attacker            = { column = 1, row = 1 }
+
 responders          = { column = 1, row = 2 }
-platform            = { column = 2 }
+
 washington_aqueduct = { column = 3, row = 1 }
 wssc_water          = { column = 3, row = 2 }
 Tie                 = { column = 4, row = 1 }
@@ -32,6 +32,15 @@ box      = ["parts"]
 house    = ["Households"]
 hospital = ["Hospitals"]
 
+# Who plays each thing: the old model's `role` lines (PLAN.md, change 23 after G0).
+[role]
+operator = ["incident", "Utility", "Tie"]
+
+responder = ["responders", "CrewPool", "relief"]
+environment = ["parts"]
+community = ["Households"]
+clinician = ["Hospitals"]
+
 # Each of these three only marks one part of the repair as done; "Controls" shows the repair.
 [state.Utility]
 controls_fixed = "hidden"
@@ -42,8 +51,8 @@ parts_fixed    = "hidden"
 Utility = ["finished", "room", "controls_work", "field_work", "unserved", "direct_loss"]
 
 [triggers]
-rules = ["attacker", "washington_aqueduct"]
-names = ["platform", "responders", "parts", "relief", "Hospitals"]
+rules = ["washington_aqueduct"]
+names = ["incident", "responders", "parts", "relief", "Hospitals"]
 count = ["CrewPool", "dc_water", "arlington", "fairfax_water", "wssc_water"]
 
 [equations]

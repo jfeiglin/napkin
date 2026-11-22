@@ -1,12 +1,9 @@
 # water_controls_wipe:el_dorado
 
-[Scenario brief](results/brief.md) · [Model](model.scn) · [Methods](results/methods.md) ·
+[Historical scenario brief](results/brief.md) · [Model](model.scn) · [Historical methods](results/methods.md) ·
 [The `water_controls_wipe` package](../../README.md)
 
-El Dorado County, California, as a place of the `water_controls_wipe` family: an AI agent wipes the controls of the place's water
-systems through the remote-support platform of the OT integrator they share. The package's module (`water.scn`)
-gives the mechanism, the response and the outcomes; this folder gives the place's systems, their evidence,
-stylesheet, tests and published results.
+This variant follows water service and recovery in El Dorado County, California. The initial controls outage is an incident input. The model computes storage, deliveries, crew queues and advisory clearance over time. The checked-in results describe the historical study at legacy revision `8488047`.
 
 ## The place
 
@@ -24,14 +21,8 @@ The systems' peak days, use, sales, plants and storage come from the reviews of 
 water plans of the two districts. Their people served, value added and hospital come from the package's
 evidence. The package's shared tests check this place with the others.
 
-## Run and publish
-
-Run from the repository root:
+## Run
 
 ```sh
-napkin run scenarios/water_controls_wipe --variant el_dorado
-python -B -m pytest --scenario water_controls_wipe:el_dorado
-python -B -m tools.publish --write --scenario water_controls_wipe:el_dorado
+napkin run scenarios/water_controls_wipe/variants/el_dorado --run delayed_none --value unserved_volume
 ```
-
-The publisher owns files in `results/`. Evidence changes go through `tools.evidence.integrate`.

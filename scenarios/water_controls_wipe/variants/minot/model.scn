@@ -1,77 +1,72 @@
-# Water systems' controls wiped through a shared remote-support platform: Minot, North Dakota
 variant "Minot, North Dakota"
-    summary "An AI agent wipes the controls of the water systems of Minot, North Dakota at once, through the
-        remote-support platform of the OT integrator that they share: Minot and NAWS."
+    summary "Water service, stored supplies and restoration work in Minot, North Dakota after an observed
+        controls outage."
     scope "The people that the water systems of Minot, North Dakota serve, the hospitals that those systems
         supply and the businesses that need public water there."
 
 minot: Utility
     "City of Minot. Its ID in the federal inventory is ND5100660."
     title "Minot"
-    let buys = []
-    let sells = [minot_to_naws]
+    buys = <>
+    sells = <minot_to_naws>
     name = "Minot"
-    demand = 10.2021 Mgal/day  @minot_demand
-    nameplate = 18 Mgal/day  @minot_nameplate
-    storage = 14 Mgal  @minot_storage
-    bought = 0 Mgal/day  @minot_bought
-    sold = 717000 gal/day  @minot_sold
-    va_rate = 425105.14 USD2025/h  @minot_va_rate
-    pump_disabled = 0.7  @depth
-    manual_share = 0.8  @manual
-    activation_delay = 1 h  @manual
-    controls_load = 400 work_h  @work
-    field_load = 80 work_h  @work
+    demand = 10.2021 Mgal/day @minot_demand
+    nameplate = 18 Mgal/day @minot_nameplate
+    storage = 14 Mgal @minot_storage
+    bought = 0 Mgal/day @minot_bought
+    sold = 717000 gal/day @minot_sold
+    va_rate = 425105.14 USD2025/h @minot_va_rate
+    pump_disabled = 0.7 @depth
+    manual_share = 0.8 @manual
+    activation_delay = 1 h @manual
+    controls_load = 400 work_h @work
+    field_load = 80 work_h @work
 
 naws: Utility
     "Northwest Area Water Supply (NAWS), North Dakota. Its ID in the federal inventory is ND5101687."
     title "NAWS"
-    let buys = [minot_to_naws]
-    let sells = []
+    buys = <minot_to_naws>
+    sells = <>
     name = "NAWS"
-    demand = 0 Mgal/day  @naws_demand
-    nameplate = 0 Mgal/day  @naws_nameplate
-    storage = 8.5 Mgal  @naws_storage
-    bought = 0 Mgal/day  @naws_bought
-    sold = 1.24789 Mgal/day  @naws_sold
-    va_rate = 0 USD2025/h  @naws_va_rate
+    demand = 0 Mgal/day @naws_demand
+    nameplate = 0 Mgal/day @naws_nameplate
+    storage = 8.5 Mgal @naws_storage
+    bought = 0 Mgal/day @naws_bought
+    sold = 1.24789 Mgal/day @naws_sold
+    va_rate = 0 USD2025/h @naws_va_rate
 
 minot_to_naws: Tie
     "Minot sells water to NAWS."
-    let seller = minot
-    let buyer = naws
-    capacity = 1439300 gal/day  @minot_to_naws_capacity
+    seller = minot
+    buyer = naws
+    capacity = 1439300 gal/day @minot_to_naws_capacity
 
 minot_homes: Households
     "The people that Minot serves."
     title "Minot: homes"
-    let utility = minot
-    population = 48743 people  @minot_homes_population
+    utility = minot
+    population = 48743 people @minot_homes_population
 
 minot_hospitals: Hospitals
     "The hospital that Minot supplies: Trinity Hospitals."
     title "Minot: hospitals"
-    let utility = minot
+    utility = minot
     name = "Minot"
-    facilities = 1 facilities  @minot_hospitals_facilities
+    facilities = 1 facilities @minot_hospitals_facilities
 
 notes:
     limitations:
-        naws-pipeline: "About half of Minot's own water runs through the NAWS pumps and pipeline, but the
-            model counts it as Minot's own delivery. A stop of the NAWS pumps or pipeline would also cut those
-            city connections, so the model can show a smaller loss for the city than in
-            fact."  @minot_to_naws_capacity
-        peak-statement: "Minot's peak of 13 Mgal a day rests on a general statement of 2020, and later reports
-            are lower. So the peak here can be high, and Minot's stored water can run out sooner here than in
-            fact."  @minot_demand
+        naws-pipeline: "About half of Minot's own water runs through the NAWS pumps and pipeline, but the model counts it as Minot's own delivery. A stop of the NAWS pumps or pipeline would also cut those city connections, so the model can show a smaller loss for the city than in fact." @minot_to_naws_capacity
+        peak-statement: "Minot's peak of 13 Mgal a day rests on a general statement of 2020, and later reports are lower. So the peak here can be high, and Minot's stored water can run out sooner here than in fact." @minot_demand
     verification:
         research: "variants/minot/evidence/research.md"
 
-record minot_demand: assumption A-SC43-PEAK-DAY "The highest day that a source reports is 13 million gallons,
-    the lower end of the 13 to 14 million gallons a day that peak summer use often reaches (2020). The 2024
-    pumped average is 6.6896 million gallons a day, so the peak ratio is 1.9433. Less the sales to NAWS at
-    that ratio (0.8083 x 1.9433 = 1.5708) and about 0.717 million gallons a day to North Prairie Rural Water,
-    over 1.05: (13 - 1.5708 - 0.717) / 1.05 = 10.2021."
+record minot_demand: assumption "The highest day that a source reports is 13 million gallons, the lower end of
+    the 13 to 14 million gallons a day that peak summer use often reaches (2020). The 2024 pumped average is
+    6.6896 million gallons a day, so the peak ratio is 1.9433. Less the sales to NAWS at that ratio (0.8083 x
+    1.9433 = 1.5708) and about 0.717 million gallons a day to North Prairie Rural Water, over 1.05: (13 -
+    1.5708 - 0.717) / 1.05 = 10.2021."
+    assumption A-SC43-PEAK-DAY
     claims:
         E-SC43-MINOT-MINOT-PEAK
         E-SC43-MINOT-MINOT-PRODUCTION
@@ -104,24 +99,26 @@ record minot_bought: source "Minot produces all its water from its own wells and
         E-SC43-MINOT-NAWS-BIOTA
         E-SC43-MINOT-MINOT-CAPACITY
 
-record minot_sold: assumption A-SC43-PEAK-DAY "About 717,000 gallons a day to North Prairie Rural Water, which
-    the NAWS flow table counts inside the Minot estimated peak usage; it is taken as the peak-day sale. North
-    Prairie is outside the scenario, and the rate memo of November 2025 bills its NAWS connections under the
-    city rate."
+record minot_sold: assumption "About 717,000 gallons a day to North Prairie Rural Water, which the NAWS flow
+    table counts inside the Minot estimated peak usage; it is taken as the peak-day sale. North Prairie is
+    outside the scenario, and the rate memo of November 2025 bills its NAWS connections under the city rate."
+    assumption A-SC43-PEAK-DAY
     claims:
         E-SC43-MINOT-NAWS-CONTRACT
             datum: nprw_daily_use
         E-SC43-MINOT-NAWS-BUYERS
 
-record minot_homes_population: assumption A-SC43-REACH "SDWIS federal data list 48,743 people served by Minot
-    (ND5100660), the system's own report through its state."
+record minot_homes_population: assumption "SDWIS federal data list 48,743 people served by Minot (ND5100660),
+    the system's own report through its state."
+    assumption A-SC43-REACH
     claims:
         E-SC43-SDWIS-ND5100660
             datum: population_served
 
-record minot_va_rate: assumption A-SC43-ECONOMY "48,743 people served times the 2024 GDP per resident of its
-    county (Ward County, North Dakota (38101): 5,093,673 thousand dollars and 68,427 people: 74,439.52 dollars
-    a resident) times the price factor 1.026324, over 8,760 h: 425,105.14 USD2025/h."
+record minot_va_rate: assumption "48,743 people served times the 2024 GDP per resident of its county (Ward
+    County, North Dakota (38101): 5,093,673 thousand dollars and 68,427 people: 74,439.52 dollars a resident)
+    times the price factor 1.026324, over 8,760 h: 425,105.14 USD2025/h."
+    assumption A-SC43-ECONOMY
     claims:
         E-SC43-SDWIS-ND5100660
         E-SC43-SDWIS-COUNTIES
@@ -129,8 +126,9 @@ record minot_va_rate: assumption A-SC43-ECONOMY "48,743 people served times the 
         E-SC43-BEA-POP-38101
         E-SC43-GDP-DEFLATOR
 
-record minot_hospitals_facilities: assumption A-SC43-HOSPITAL-JOIN "The CMS hospital list gives 1 hospital of
-    the counted types whose geocoded address lies in the EPA service area of Minot."
+record minot_hospitals_facilities: assumption "The CMS hospital list gives 1 hospital of the counted types
+    whose geocoded address lies in the EPA service area of Minot."
+    assumption A-SC43-HOSPITAL-JOIN
     claims:
         E-SC43-HOSPITALS-MINOT
             datum: hospitals_supplied
@@ -162,15 +160,16 @@ record naws_bought: source "NAWS buys all its water from Minot, which is in the 
         E-SC43-MINOT-NAWS-BIOTA
         E-SC43-MINOT-MINOT-PRODUCTION
 
-record naws_sold: assumption A-SC43-PEAK-DAY "The nine NAWS contract customers used 295,837,470 gallons in
-    2024, 0.8083 million gallons a day. No source reports a NAWS highest day, so the family median ratio
-    1.54385 applies: 0.8083 x 1.54385 = 1.2479."
+record naws_sold: assumption "The nine NAWS contract customers used 295,837,470 gallons in 2024, 0.8083
+    million gallons a day. No source reports a NAWS highest day, so the family median ratio 1.54385 applies:
+    0.8083 x 1.54385 = 1.2479."
+    assumption A-SC43-PEAK-DAY
     claims:
         E-SC43-MINOT-MINOT-PRODUCTION
 
-record naws_va_rate: assumption A-SC43-ECONOMY "NAWS (ND5101687) is a wholesale system with no retail
-    customers: SDWIS lists 0 people, so its own homes and businesses add no value added; its buyers carry
-    theirs."
+record naws_va_rate: assumption "NAWS (ND5101687) is a wholesale system with no retail customers: SDWIS lists
+    0 people, so its own homes and businesses add no value added; its buyers carry theirs."
+    assumption A-SC43-ECONOMY
     claims:
         E-SC43-SDWIS-ND5101687
 

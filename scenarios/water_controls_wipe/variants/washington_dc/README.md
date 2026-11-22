@@ -1,12 +1,9 @@
 # water_controls_wipe:washington_dc
 
-[Scenario brief](results/brief.md) · [Model](model.scn) · [Methods](results/methods.md) ·
+[Historical scenario brief](results/brief.md) · [Model](model.scn) · [Historical methods](results/methods.md) ·
 [The `water_controls_wipe` package](../../README.md)
 
-Washington, DC, as a place of the `water_controls_wipe` family: an AI agent wipes the controls of the place's water systems
-through the remote-support platform of the OT integrator they share. The package's module (`water.scn`) gives
-the mechanism, the response and the outcomes; this folder gives the place's systems, the sales between them, its
-evidence, stylesheet, tests and published results.
+This variant follows water service and recovery in Washington, DC. The initial controls outage is an incident input. The model computes storage, deliveries, crew queues and advisory clearance over time. The checked-in results describe the historical study at legacy revision `8488047`.
 
 ## The place
 
@@ -24,14 +21,8 @@ The systems' peak days, sales, plants, storage and connections come from the 202
 from the systems' own reports, budgets and plans. Their people served, value added and hospitals come from the
 package's evidence. The package's shared tests check this place with the others.
 
-## Run and publish
-
-Run from the repository root:
+## Run
 
 ```sh
-napkin run scenarios/water_controls_wipe --variant washington_dc
-python -B -m pytest --scenario water_controls_wipe:washington_dc
-python -B -m tools.publish --write --scenario water_controls_wipe:washington_dc
+napkin run scenarios/water_controls_wipe/variants/washington_dc --run delayed_none --value unserved_volume
 ```
-
-The publisher owns files in `results/`. Evidence changes go through `tools.evidence.integrate`.

@@ -9,18 +9,21 @@ place. This folder holds what the places share: the main file `model.scn`, which
 its own systems, the sales between them, its own evidence, stylesheet, brief settings, tests and
 published results. The package runs as its variants: `water_controls_wipe:<place>` names the variant of a place.
 
-## Mechanism family
+## How service recovers
 
-Service loss from stored water; sales between systems; restoration and verification queues; causal
-adversary interference.
+The initial incident time and each participating system's exposure determine when its controls stop
+responding. Operators draw on usable storage and start manual production after their activation
+delay. Sellers serve their own customers before exporting water. Shared crews and replacement parts
+work through the outstanding jobs. A utility restores automatic operation when those jobs finish.
+If storage runs out, the advisory stays in force until control and supply return and its laboratory
+clearance period ends.
 
-An AI agent takes over the remote-support platform of an OT integrator and wipes the controls of the water
-systems of one place at once. Each system keeps delivering from its usable stored water, then from what its
-operators can produce by hand and what its sellers can still send it. A system that sells water to another
-system of the place serves its own customers first. Controls engineers, field crews and replacement
-controllers are finite pools that the systems of the place share. With a hidden credential that the first
-cleanup misses, the AI wipes each system's restored controls again within minutes, until responders remove
-the credential.
+`incident.begins` sets the time of the initial report. Each utility accepts a further field report
+through `has_setback`, `setback_at` and `setback_work`. The report posts additional controls work
+at that instant. An authored stage may also start `utility.observed_setback.start(work)` for each
+observed interruption. The model computes subsequent service and restoration from its current stocks.
+The historical study also generated interruptions from an attacker policy. The recovery runs accept
+those interruptions as observations. The checked-in historical results use the original policy.
 
 ## The places
 
@@ -57,26 +60,14 @@ water and hospital reserves, and the transfer of business losses. It also gives 
 (SDWIS), the value added of the counties it serves (BEA) and the hospitals in its service area (CMS and the
 EPA service areas). Each place's own evidence gives its systems' plants, storage, use and sales.
 
-The shared tests check every place: each resident is counted once, the delivered and unserved water add to
-normal use, the person-days follow the unserved water, the AI adds more rework than the human team, and every
-advisory ends. On places of different shapes they also check the water balance that decides when stored water
-runs out, the processor sharing of the crews, the value-added loss in closed form, the capacity that bounds
-emergency water and a seller that serves its own customers first.
-
 ## Run
 
-Run from the repository root:
+From the checkout:
 
 ```sh
-napkin run scenarios/water_controls_wipe --variant washington_dc
-python -B -m pytest scenarios/water_controls_wipe/tests -m "deep or not deep"
-python -B -m tools.publish --write --scenario water_controls_wipe:washington_dc
+napkin run scenarios/water_controls_wipe/variants/jamestown --run delayed_none --at 24h,2160h --value unserved_volume
 ```
 
-For `tools.check` and `pytest`, `--scenario water_controls_wipe` selects every variant of the package; the publisher
-takes each variant by its name. Evidence changes go through `tools.evidence.integrate`: a pack for
-`water_controls_wipe` writes this folder, a pack for a place (`water_controls_wipe:<place>`) writes that place's folder.
-
-The package's live view, a page that plays each place's runs, is in [ui/](ui/README.md).
-
-[Shared testing rules](../../CONTRIBUTING.md#testing)
+Each place offers early, standard and delayed response settings. Washington, DC also offers
+`delayed_aqueduct`, which changes the initial exposure. For a package's historical inputs and
+publication, see its variant folder. `ui/` contains the historical dashboard.

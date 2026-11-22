@@ -1,12 +1,9 @@
 # water_controls_wipe:austin
 
-[Scenario brief](results/brief.md) · [Model](model.scn) · [Methods](results/methods.md) ·
+[Historical scenario brief](results/brief.md) · [Model](model.scn) · [Historical methods](results/methods.md) ·
 [The `water_controls_wipe` package](../../README.md)
 
-Austin, Texas, as a place of the `water_controls_wipe` family: an AI agent wipes the controls of the place's water system
-through the remote-support platform of the OT integrator it uses. The package's module (`water.scn`) gives the
-mechanism, the response and the outcomes; this folder gives the place's system, its evidence,
-stylesheet, tests and published results.
+This variant follows water service and recovery in Austin, Texas. The initial controls outage is an incident input. The model computes storage, deliveries, crew queues and advisory clearance over time. The checked-in results describe the historical study at legacy revision `8488047`.
 
 ## The place
 
@@ -23,14 +20,8 @@ The system's peak day, sales, plants, storage and purchases come from the City's
 and the preliminary statement for its 2026 water bonds. Its people served, value added and hospitals come from
 the package's evidence. The package's shared tests check this place with the others.
 
-## Run and publish
-
-Run from the repository root:
+## Run
 
 ```sh
-napkin run scenarios/water_controls_wipe --variant austin
-python -B -m pytest --scenario water_controls_wipe:austin
-python -B -m tools.publish --write --scenario water_controls_wipe:austin
+napkin run scenarios/water_controls_wipe/variants/austin --run delayed_none --value unserved_volume
 ```
-
-The publisher owns files in `results/`. Evidence changes go through `tools.evidence.integrate`.

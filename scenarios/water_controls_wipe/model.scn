@@ -1,5 +1,5 @@
-# Water systems' controls wiped through a shared remote-support platform
-scenario "Water systems' controls wiped through a shared remote-support platform"
+# Water service recovery after a controls outage
+scenario "Water service recovery after a controls outage"
     horizon 2160 h
     scope "The people that the water systems of the place serve, the hospitals that those systems supply and
         the businesses that need public water there."

@@ -1,12 +1,9 @@
 # water_controls_wipe:minot
 
-[Scenario brief](results/brief.md) · [Model](model.scn) · [Methods](results/methods.md) ·
+[Historical scenario brief](results/brief.md) · [Model](model.scn) · [Historical methods](results/methods.md) ·
 [The `water_controls_wipe` package](../../README.md)
 
-Minot, North Dakota, as a place of the `water_controls_wipe` family: an AI agent wipes the controls of the place's water systems
-through the remote-support platform of the OT integrator they share. The package's module (`water.scn`) gives
-the mechanism, the response and the outcomes; this folder gives the place's systems, the sales between them, its
-evidence, stylesheet, tests and published results.
+This variant follows water service and recovery in Minot, North Dakota. The initial controls outage is an incident input. The model computes storage, deliveries, crew queues and advisory clearance over time. The checked-in results describe the historical study at legacy revision `8488047`.
 
 ## The place
 
@@ -24,14 +21,8 @@ The systems' peak day, sales, plant, storage and connection come from the report
 Department of Water Resources, the city's plans and news reports. Their people served, value added and hospital come
 from the package's evidence. The package's shared tests check this place with the others.
 
-## Run and publish
-
-Run from the repository root:
+## Run
 
 ```sh
-napkin run scenarios/water_controls_wipe --variant minot
-python -B -m pytest --scenario water_controls_wipe:minot
-python -B -m tools.publish --write --scenario water_controls_wipe:minot
+napkin run scenarios/water_controls_wipe/variants/minot --run delayed_none --value unserved_volume
 ```
-
-The publisher owns files in `results/`. Evidence changes go through `tools.evidence.integrate`.

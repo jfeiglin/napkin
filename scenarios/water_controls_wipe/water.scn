@@ -1,806 +1,763 @@
-# Water systems' controls wiped through a shared remote-support platform: what every place shares
+# Shared recovery model for an observed loss of water-system controls.
+incident: @service_incident
+    "The initial loss of automatic service recorded by the operators."
+    input begins: h = 0 h in [0 h,] @service_incident
+    reported = event(): @service_incident
+        when t >= this.begins:
+            this.reported.start()
+            reset when false
 
-platform:  @shared_channel @first_move
-    "The remote-support platform of the OT integrator that the water systems of the place share. The
-        integrator's engineers reach the utilities' controllers through it, and so does the attacker."
-    title "Remote support"
-    role operator
-    var channel: "trusted" | "compromised" = "trusted"
-        "Remote-support channel"
-    var access: "none" | "kept" | "removed" = "none"
-        "Attacker's hidden credential"
-    status failed when access is "kept"  @shared_channel
-        "The attacker holds a credential for the platform"
-    status degraded when channel is "compromised"
-        "Platform compromised"
-    status ok
-        "Platform trusted"
-    # The first effect of the first move: the integrator's platform runs the attacker's commands.
-    event compromised once when channel is "compromised":  @shared_channel
-        "The platform runs the attacker's commands to the utilities' controllers."
-        role adversary
-
-attacker:
-    "An AI agent for a hostile group. It aims to leave as many people as possible without water for as long as
-        it can. It holds the remote-support platform of an OT integrator and, through it, the controllers of
-        the water systems of a place. Its first move wipes the controls of every system it reaches at once.
-        With a hidden credential that the first cleanup misses, it watches the crews restore the controls and
-        wipes them again within minutes of each restoration, until responders remove the credential."
-    role adversary
-    @assumption A-AI-CYBER-OPERATIONS "Published records of AI incidents and evaluations show that AI agents
-        carry out the tasks given to them and rebuild their tooling when detected. The scenario chooses the
-        access, the systems that the operation reaches, the depth of the first move and the loop of strikes on
-        restored controls."
-        claims:
-            AI-AGENT-TRUST-2026
-            AI-ORCHESTRATION-2026
-    input actor = "The AI"
-    input reaction_time = 0.25 h in 0.05 h to 96 h  @ai_tempo
-        "Attacker's time to act after a system's controls come back"
-    input rework_share: fraction = 1 in 0 to 1  @prepared_makes
-        "Share of a system's controls work that one strike puts back"
-    status failed when platform.access is "kept"
-        "Watches the restorations through its credential"
-    status ok when platform.access is "removed"
-        "Credential removed"
-    status inactive
-        "No credential kept"
-    event start when t >= 0 h:  @first_move @shared_channel
-        "{actor} takes over the integrator's remote-support platform and wipes the controls of every water
-            system it reaches."
-        platform.channel = "compromised"
-
-responders:  @response_basis
+responders: @response_basis
     "The integrator's incident responders and the state's cyber response team, who recognize the attack on the
         shared platform and remove the attacker's credential."
-    role responder
-    input recognition_time = 24 h in 1 h to 168 h  @response_basis
+    input recognition_time = 24 h in [1 h, 168 h] @response_basis
         "Time until responders recognize a cyber attack on the platform"
-    input removal_time = 240 h in 1 h to 720 h  @response_basis @removal_basis
+    input removal_time = 240 h in [1 h, 720 h] @response_basis @removal_basis
         "Time from recognition until responders remove the attacker's credential"
-    status ok when platform.access is "removed"
+    contained: bool = false @response_basis
+    status ok when this.contained
         "Attacker's credential removed"
-    status degraded when count(recognized) > 0
+    status degraded when count(this.recognized.occurrences) > 0
         "Attack recognized"
     status inactive
         "Attack not yet recognized"
-    event recognized once when since(attacker.start) >= recognition_time:  @response_basis
+    recognized = event(): @response_basis
         "Responders recognize a cyber attack on the shared platform."
-    event remove_access once after removal_time when count(recognized) > 0:  @removal_basis
-        done:  @removal_basis
+        when count(incident.reported.occurrences) > 0 and since(incident.reported) >= this.recognition_time:
+            this.recognized.start()
+            reset when false
+    remove_access = event(): @removal_basis
+        when count(this.recognized.occurrences) > 0:
+            this.remove_access.start()
+            reset when false
+        after this.removal_time:
             "Responders remove the attacker's credential from the platform and rebuild its access controls."
-            platform.access = "removed"
+            @removal_basis
+            this.contained = true
 
-Utility:  @reach
+Utility: @reach
     "One water system, from the water it can produce or buy to the taps of its customers. Its stored water,
         its operators and the crews and parts that it shares with the other systems of the place decide how
         long its customers have water."
-    role operator
-    let buys: [Tie]
-    let sells: [Tie]
+    buys: <Tie>
+    sells: <Tie>
     input name = "The system"
         "Name of the system on its cards"
-    input reached = true  @reach
+    input reached = true @reach
         "The attack reaches this system's controls"
-    let reach_count: ratio = 1 if reached else 0  @reach
+    readonly reach_count: formula(ratio) = formula(1 if this.reached else 0) @reach
         "The attack reaches this system's controls, as a count"
-    input demand = 10 Mgal/day in 0 Mgal/day to 2000 Mgal/day  @demand_basis
+    input demand = 10 Mgal/day in [0 Mgal/day, 2000 Mgal/day] @demand_basis
         "Water that the system's own customers use in a day"
-    input nameplate = 20 Mgal/day in 0 Mgal/day to 3000 Mgal/day  @demand_basis
+    input nameplate = 20 Mgal/day in [0 Mgal/day, 3000 Mgal/day] @demand_basis
         "Water the system's plants can produce in a day with their controls working"
-    input storage = 10 Mgal in 0 Mgal to 20000 Mgal  @storage_hours
+    input storage = 10 Mgal in [0 Mgal, 20000 Mgal] @storage_hours
         "Finished-water storage"
-    let usable_share: fraction = 0.8878  @storage_hours
+    readonly usable_share: fraction = 0.8878 @storage_hours
         "Share of the finished-water storage that the system can use"
-    input bought = 0 Mgal/day in 0 Mgal/day to 1000 Mgal/day  @bulk_dependence
+    input bought = 0 Mgal/day in [0 Mgal/day, 1000 Mgal/day] @bulk_dependence
         "Water bought in a day from systems outside the scenario"
-    input sold = 0 Mgal/day in 0 Mgal/day to 1000 Mgal/day  @bulk_dependence
+    input sold = 0 Mgal/day in [0 Mgal/day, 1000 Mgal/day] @bulk_dependence
         "Water sold in a day to systems outside the scenario"
-    input refill_time = 24 h in 1 h to 240 h  @refill_basis
+    input refill_time = 24 h in [1 h, 240 h] @refill_basis
         "Time over which a buyer refills its stored water through its connections"
-    input treat_disabled: fraction = 1 in 0 to 1  @depth
+    input treat_disabled: fraction = 1 in [0, 1] @depth
         "Share of production that the wiped controls stop"
-    input pump_disabled: fraction = 0.5 in 0 to 1  @depth
+    input pump_disabled: fraction = 0.5 in [0, 1] @depth
         "Share of delivery that the wiped controls stop before anyone runs the pumps by hand"
-    input manual_ready = true  @manual
+    input manual_ready = true @manual
         "Operators can run the plant by hand"
-    input manual_share: fraction = 0.6 in 0 to 1  @manual
+    input manual_share: fraction = 0.6 in [0, 1] @manual
         "Production by hand, as a share of normal production"
-    input activation_delay = 2 h in 0.25 h to 72 h  @manual
+    input activation_delay = 2 h in [0.25 h, 72 h] @manual
         "Time until operators run the plant by hand"
-    input operator_duty = 2 work_h/h in 0 work_h/h to 20 work_h/h  @operator_competition
+    input operator_duty = 2 work_h/h in [0 work_h/h, 20 work_h/h] @operator_competition
         "Qualified staff hours an hour that running by hand takes from recovery work"
-    input controls_load = 600 work_h in 0 work_h to 10000 work_h  @work
+    input controls_load = 600 work_h in [0 work_h, 10000 work_h] @work
         "Work to rebuild and verify the system's controls"
-    input field_load = 120 work_h in 0 work_h to 5000 work_h  @work
+    input field_load = 120 work_h in [0 work_h, 5000 work_h] @work
         "Work in the field to reconfigure the system's equipment"
-    input replace_load = 0 work_h in 0 work_h to 5000 work_h  @work
+    input replace_load = 0 work_h in [0 work_h, 5000 work_h] @work
         "Work to install the system's replacement controllers"
-    let parts_per_hour = 0.1 parts/work_h  @work
+    readonly parts_per_hour = 0.1 parts/work_h @work
         "Replacement parts installed in an hour of replacement work"
-    input clearance_time = 48 h in 6 h to 336 h  @clearance
+    input clearance_time = 48 h in [6 h, 336 h] @clearance
         "Time to sample and test the water and end the advisory once the supply is back"
-    input loss_share: fraction = 0.05 in 0 to 0.5  @losses
+    input loss_share: fraction = 0.05 in [0, 0.5] @losses
         "Water lost from the pipes, as a share of normal use"
-    input va_rate = 1000000 USD2025/h in 0 USD2025/h to 200000000 USD2025/h  @economy
+    input va_rate = 1000000 USD2025/h in [0 USD2025/h, 200000000 USD2025/h] @economy
         "Value added an hour in the area the system serves"
-    input water_dependence: fraction = 0.25 in 0 to 1  @economy
+    input water_dependence: fraction = 0.25 in [0, 1] @economy
         "Share of the area's value added that needs public water"
-    input activity_kept: fraction = 0.5 in 0 to 1  @activity_transfer
+    input activity_kept: fraction = 0.5 in [0, 1] @activity_transfer
         "Activity that water-dependent businesses keep during an outage, as a share of normal"
-    input recovery_factor: ratio = 1.5 in 1 to 4  @activity_transfer
+    input recovery_factor: ratio = 1.5 in [1, 4] @activity_transfer
         "Interruption plus recovery time, as a multiple of the outage"
-    input catch_up_share: fraction = 0.3 in 0 to 1  @economy
+    input catch_up_share: fraction = 0.3 in [0, 1] @economy
         "Share of lost output made up later"
-    input catch_up_time = 30 days in 1 days to 90 days  @economy
+    input catch_up_time = 30 days in [1 days, 90 days] @economy
         "Time over which lost output is made up"
-    var controls: "intact" | "wiped" | "restored" = "intact"
+    controls: enum[INTACT, WIPED, RESTORED] = INTACT
         "Controls"
-    var mode: "automated" | "disrupted" | "manual" | "recovered" = "automated"
+    mode: enum[AUTOMATED, DISRUPTED, MANUAL, RECOVERED] = AUTOMATED
         "Operation"
-    var use_status: "potable" | "boil_water" = "potable"
+    use_status: enum[POTABLE, BOIL_WATER] = POTABLE
         "Permitted use"
-    var clearance: "none" | "sampling" | "released" = "none"
+    clearance: enum[NONE, SAMPLING, RELEASED] = NONE
         "Water quality clearance"
-    var controls_fixed: "pending" | "done" = "pending"
-    var field_fixed: "pending" | "done" = "pending"
-    var parts_fixed: "pending" | "done" = "pending"
-    var watch: "watching" | "preparing" = "watching"
-        "Attacker's watch on the controls"
-    var finished: Mgal = usable_share * storage  @storage_hours
+    controls_fixed: enum[PENDING, DONE] = PENDING
+    field_fixed: enum[PENDING, DONE] = PENDING
+    parts_fixed: enum[PENDING, DONE] = PENDING
+    finished: Mgal = this.usable_share * this.storage in [0,] @storage_hours
         "Usable stored water"
-    var room: Mgal = 0  @room_identity
+        outflow.capacity = formula(3 * (this.demand + this.sold + this.tie_asks) + 1 Mgal/day)
+            "Stored water serves the system's own customers first, then its buyers, and leakage last."
+            @stored_water_bridges
+        outflow.allocation = priority(this.deliver, this.export, this.sell, this.leak)
+    room: Mgal = 0 in [0,] @room_identity
         "Usable storage not filled"
-    var delivered: Mgal = 0  @counts_stocks_flows
+    delivered: Mgal = 0 @counts_stocks_flows
         "Water delivered"
-    flow add_delivered: -> delivered at delivery_rate  @counts_stocks_flows
-    var lost: Mgal = 0  @counts_stocks_flows
+    flow add_delivered: SOURCE -> this.delivered @counts_stocks_flows
+        request = formula(this.delivery_rate)
+        capacity = formula(this.delivery_rate)
+    lost: Mgal = 0 @counts_stocks_flows
         "Water lost from the pipes"
-    flow add_lost: -> lost at leak_rate  @counts_stocks_flows
-    var exported: Mgal = 0  @counts_stocks_flows
+    flow add_lost: SOURCE -> this.lost @counts_stocks_flows
+        request = formula(this.leak_rate)
+        capacity = formula(this.leak_rate)
+    exported: Mgal = 0 @counts_stocks_flows
         "Water sent to buyers in the scenario"
-    flow add_exported: -> exported at export_rate  @counts_stocks_flows
-    var sold_out: Mgal = 0  @counts_stocks_flows
+    flow add_exported: SOURCE -> this.exported @counts_stocks_flows
+        request = formula(this.export_rate)
+        capacity = formula(this.export_rate)
+    sold_out: Mgal = 0 @counts_stocks_flows
         "Water sold to systems outside the scenario"
-    flow add_sold_out: -> sold_out at sell_rate  @counts_stocks_flows
-    var produced: Mgal = 0  @counts_stocks_flows
+    flow add_sold_out: SOURCE -> this.sold_out @counts_stocks_flows
+        request = formula(this.sell_rate)
+        capacity = formula(this.sell_rate)
+    produced: Mgal = 0 @counts_stocks_flows
         "Water produced"
-    flow add_produced: -> produced at production_used  @counts_stocks_flows
-    var bought_in: Mgal = 0  @counts_stocks_flows
+    flow add_produced: SOURCE -> this.produced @counts_stocks_flows
+        request = formula(this.production_used)
+        capacity = formula(this.production_used)
+    bought_in: Mgal = 0 @counts_stocks_flows
         "Water bought from systems outside the scenario"
-    flow add_bought_in: -> bought_in at bought_used  @counts_stocks_flows
-    var purchased: Mgal = 0  @counts_stocks_flows
+    flow add_bought_in: SOURCE -> this.bought_in @counts_stocks_flows
+        request = formula(this.bought_used)
+        capacity = formula(this.bought_used)
+    purchased: Mgal = 0 @counts_stocks_flows
         "Water received from sellers in the scenario"
-    flow add_purchased: -> purchased at purchases  @counts_stocks_flows
-    var unserved: Mgal = 0 size 100 Mgal  @counts_stocks_flows
+    flow add_purchased: SOURCE -> this.purchased @counts_stocks_flows
+        request = formula(this.purchases)
+        capacity = formula(this.purchases)
+    unserved: Mgal = 0 scale 100 Mgal @counts_stocks_flows
         "Water that customers could not get"
-    var controls_work: work_h = 0 size 1000 work_h  @keeps_count_limited
+    controls_work: work_h = 0 in [0,] scale 1000 work_h @keeps_count_limited
         "Controls work still to do"
-    var controls_done: work_h = 0 size 1000 work_h  @keeps_count_limited
+    controls_done: work_h = 0 scale 1000 work_h @keeps_count_limited
         "Controls work done"
-    var controls_added: work_h = 0 size 1000 work_h  @keeps_count_limited
+    controls_added: work_h = 0 scale 1000 work_h @keeps_count_limited
         "Controls work identified"
-    var field_work: work_h = 0 size 1000 work_h  @keeps_count_limited
+    field_work: work_h = 0 in [0,] scale 1000 work_h @keeps_count_limited
         "Field work still to do"
-    var field_done: work_h = 0 size 1000 work_h  @keeps_count_limited
+    field_done: work_h = 0 scale 1000 work_h @keeps_count_limited
         "Field work done"
-    var field_added: work_h = 0 size 1000 work_h  @keeps_count_limited
+    field_added: work_h = 0 scale 1000 work_h @keeps_count_limited
         "Field work identified"
-    var replace_work: work_h = 0 size 1000 work_h  @keeps_count_limited
+    replace_work: work_h = 0 in [0,] scale 1000 work_h @keeps_count_limited
         "Replacement work still to do"
-    var replace_done: work_h = 0 size 1000 work_h  @keeps_count_limited
+    replace_done: work_h = 0 scale 1000 work_h @keeps_count_limited
         "Replacement work done"
-    var replace_added: work_h = 0 size 1000 work_h  @keeps_count_limited
+    replace_added: work_h = 0 scale 1000 work_h @keeps_count_limited
         "Replacement work identified"
-    var rework_caused: work_h = 0 size 1000 work_h  @keeps_count_limited
-        "Controls work that the attacker's strikes add"
-    var strikes: ratio = 0 size 10  @counts_quantity_value
-        "Strikes on the restored controls"
-    var direct_loss: USD2025 = 0 size 1000000000 USD2025  @counts_stocks_flows
+    rework_caused: work_h = 0 scale 1000 work_h @keeps_count_limited
+        "Controls work added by subsequent incident reports"
+    strikes: ratio = 0 scale 10 @counts_quantity_value
+        "Additional reported service interruptions"
+    direct_loss: USD2025 = 0 scale 1000000000 USD2025 @counts_stocks_flows
         "Value added lost for good while water is short"
-    var recoverable: USD2025 = 0 size 1000000000 USD2025  @counts_stocks_flows
+    recoverable: USD2025 = 0 in [0,] scale 1000000000 USD2025 @counts_stocks_flows
         "Lost output that businesses can still make up"
-    var recovered: USD2025 = 0 size 1000000000 USD2025  @counts_stocks_flows
+    recovered: USD2025 = 0 scale 1000000000 USD2025 @counts_stocks_flows
         "Lost output made up"
-    let manual_duty_now: work_h/h = operator_duty if mode is "manual" else 0 work_h/h  @operator_competition
+    readonly manual_duty_now: formula(work_h/h) = formula(this.operator_duty if this.mode == MANUAL else 0 work_h/h) @operator_competition
         "Qualified staff hours an hour taken by running by hand"
-    let production_rate: Mgal/h = (
-        nameplate if mode is "automated" or mode is "recovered" else nameplate
-        * max(manual_share, 1 - treat_disabled) if mode is "manual" else nameplate * (1 - treat_disabled)
-    )  @depth
+    readonly production_rate: formula(Mgal/h) = formula(this.nameplate if this.mode == AUTOMATED or this.mode == RECOVERED else this.nameplate * max(this.manual_share, 1 - this.treat_disabled) if this.mode == MANUAL else this.nameplate * (1 - this.treat_disabled)) @depth
         "Water the plants can produce an hour"
-    let pump_factor: fraction = 1 - pump_disabled if mode is "disrupted" else 1  @depth
+    readonly pump_factor: formula(fraction) = formula(1 - this.pump_disabled if this.mode == DISRUPTED else 1) @depth
         "Share of normal delivery that the pumps can move"
-    let tie_capacity: Mgal/day = sum(buys.capacity)  @tie_weight
+    readonly tie_capacity: formula(Mgal/day) = formula(sum(this.buys.capacity)) @tie_weight
         "Water that the system's connections to sellers in the scenario can carry in a day"
-    let purchases: Mgal/h = sum(buys.rate)  @bulk_dependence
+    readonly purchases: formula(Mgal/h) = formula(sum(this.buys.rate)) @bulk_dependence
         "Water that sellers in the scenario send the system an hour"
-    let tie_asks: Mgal/h = sum(sells.ask)  @bulk_dependence
+    readonly tie_asks: formula(Mgal/h) = formula(sum(this.sells.ask)) @bulk_dependence
         "Water that buyers in the scenario ask of the system an hour"
-    let export_rate: Mgal/h = sum(sells.rate)  @bulk_dependence
+    readonly export_rate: formula(Mgal/h) = formula(sum(this.sells.rate)) @bulk_dependence
         "Water sent to buyers in the scenario an hour"
-    let shortfall: fraction = sum(buys.missing)  @tie_weight
+    readonly shortfall: formula(fraction) = formula(sum(this.buys.missing)) @tie_weight
         "Share of the system's need that its sellers cannot fill, which it asks of the others"
-    let supply_back: bool = sum(buys.seller_wiped) <= 0  @clearance
+    readonly supply_back: formula(bool) = formula(sum(this.buys.seller_wiped) <= 0) @clearance
         "The system's sellers in the scenario have their controls"
-    let supply_full: Mgal/h = production_rate + bought + purchases  @counts_stocks_flows
+    readonly supply_full: formula(Mgal/h) = formula(this.production_rate + this.bought + this.purchases) @counts_stocks_flows
         "Water that can reach the stored water an hour"
-    let own_rate: Mgal/h = demand * pump_factor  @stored_water_bridges
+    readonly own_rate: formula(Mgal/h) = formula(this.demand * this.pump_factor) @stored_water_bridges
         "Water the customers can draw an hour while stored water remains"
-    let leak_ask: Mgal/h = loss_share * demand  @losses
+    readonly leak_ask: formula(Mgal/h) = formula(this.loss_share * this.demand) @losses
         "Water that leaks an hour while the mains are full"
-    let delivery_rate: Mgal/h = own_rate if finished > 0 Mgal else min(own_rate, supply_full)
-        @stored_water_bridges
+    readonly delivery_rate: formula(Mgal/h) = formula(this.own_rate if this.finished > 0 Mgal else min(this.own_rate, this.supply_full))
         "Water delivered an hour"
-    let sales_ask: Mgal/h = sold + tie_asks  @bulk_dependence
+        @stored_water_bridges
+    readonly sales_ask: formula(Mgal/h) = formula(this.sold + this.tie_asks) @bulk_dependence
         "Water that the system's buyers ask an hour"
-    let sales_share: fraction = (
-        1 if finished > 0 Mgal or sales_ask <= 0 Mgal/h else clip((supply_full - delivery_rate)
-        / max(sales_ask, 0.000001 Mgal/h), 0, 1)
-    )  @bulk_dependence
+    readonly sales_share: formula(fraction) = formula(1 if this.finished > 0 Mgal or this.sales_ask <= 0 Mgal/h else clip((this.supply_full - this.delivery_rate) / max(this.sales_ask, 0.000001 Mgal/h), 0, 1)) @bulk_dependence
         "Share of what the buyers ask that the system sends"
-    let sell_rate: Mgal/h = sold * sales_share  @bulk_dependence
+    readonly sell_rate: formula(Mgal/h) = formula(this.sold * this.sales_share) @bulk_dependence
         "Water sold an hour to systems outside the scenario"
-    let leak_rate: Mgal/h = (
-        leak_ask if finished > 0 Mgal else min(leak_ask, max(0 Mgal/h, supply_full - delivery_rate - sales_ask
-        * sales_share))
-    )  @losses
+    readonly leak_rate: formula(Mgal/h) = formula(this.leak_ask if this.finished > 0 Mgal else min(this.leak_ask, max(0 Mgal/h, this.supply_full - this.delivery_rate - this.sales_ask * this.sales_share))) @losses
         "Water lost an hour"
-    let outflow_now: Mgal/h = delivery_rate + export_rate + sell_rate + leak_rate  @counts_stocks_flows
+    readonly outflow_now: formula(Mgal/h) = formula(this.delivery_rate + this.export_rate + this.sell_rate + this.leak_rate) @counts_stocks_flows
         "Water that leaves the stored water an hour"
-    let supply_rate: Mgal/h = supply_full if room > 0 Mgal else min(supply_full, outflow_now)  @room_identity
+    readonly supply_rate: formula(Mgal/h) = formula(this.supply_full if this.room > 0 Mgal else min(this.supply_full, this.outflow_now)) @room_identity
         "Water that reaches the stored water an hour"
-    let bought_used: Mgal/h = (
-        bought if room > 0 Mgal else min(bought, max(0 Mgal/h, outflow_now - purchases))
-    )  @room_identity
+    readonly bought_used: formula(Mgal/h) = formula(this.bought if this.room > 0 Mgal else min(this.bought, max(0 Mgal/h, this.outflow_now - this.purchases))) @room_identity
         "Water from outside the scenario that the system takes an hour"
-    let production_used: Mgal/h = max(0 Mgal/h, supply_rate - purchases - bought_used)  @room_identity
+    readonly production_used: formula(Mgal/h) = formula(max(0 Mgal/h, this.supply_rate - this.purchases - this.bought_used)) @room_identity
         "Water the plants produce an hour"
-    let need: Mgal/h = max(0 Mgal/h, own_rate + leak_ask + sales_ask - production_rate - bought)
-        @bulk_dependence
+    readonly need: formula(Mgal/h) = formula(max(0 Mgal/h, this.own_rate + this.leak_ask + this.sales_ask - this.production_rate - this.bought))
         "Water that the system needs an hour from its sellers in the scenario"
-    let refill: Mgal/h = usable_share * storage / refill_time if room > 0 Mgal else 0 Mgal/h  @refill_basis
+        @bulk_dependence
+    readonly refill: formula(Mgal/h) = formula(this.usable_share * this.storage / this.refill_time if this.room > 0 Mgal else 0 Mgal/h) @refill_basis
         "Water that the system asks an hour to refill its storage"
-    let unserved_rate: Mgal/h = max(0 Mgal/h, demand - delivery_rate)  @counts_stocks_flows
+    readonly unserved_rate: formula(Mgal/h) = formula(max(0 Mgal/h, this.demand - this.delivery_rate)) @counts_stocks_flows
         "Water that customers cannot get an hour"
-    let service: fraction = delivery_rate / demand if demand > 0 Mgal/day else 1  @stored_water_bridges
+    readonly service: formula(fraction) = formula(this.delivery_rate / this.demand if this.demand > 0 Mgal/day else 1) @stored_water_bridges
         "Share of normal use delivered"
-    let loss_rate: USD2025/h = (
-        va_rate * water_dependence * (1 - activity_kept) * recovery_factor * (1 - service)
-    )  @activity_transfer
+    readonly loss_rate: formula(USD2025/h) = formula(this.va_rate * this.water_dependence * (1 - this.activity_kept) * this.recovery_factor * (1 - this.service)) @activity_transfer
         "Value added lost an hour"
-    status failed when controls is "wiped" and mode is "disrupted"
+    status failed when this.controls == WIPED and this.mode == DISRUPTED
         "Controls wiped and nobody runs the plant by hand"
-    status degraded when mode is "manual"
+    status degraded when this.mode == MANUAL
         "Operators run the plant by hand"
-    status degraded when use_status is "boil_water"
+    status degraded when this.use_status == BOIL_WATER
         "Boil-water advisory in force"
-    status degraded when controls is "wiped"
+    status degraded when this.controls == WIPED
         "Controls wiped"
     status ok
         "Normal operation"
-    event struck when controls is "intact" and reached and count(platform.compromised) > 0:
-        @sees_controls_fail
+    struck = event():
         "{name}'s controls stop responding."
-        controls = "wiped"
-        lose_controls
-    event disrupted when mode is "automated" and controls is "wiped":  @depth
+        @sees_controls_fail
+        when this.controls == INTACT and this.reached and count(incident.reported.occurrences) > 0:
+            this.struck.start()
+        after 0 h:
+            this.lose_controls.start()
+    disrupted = event(): @depth
         "{name} cannot run its plants under automatic control."
-        mode = "disrupted"
-        go_disrupted
-    event start_manual once after activation_delay when mode is "disrupted":  @manual
-        done mode is "disrupted" and manual_ready:  @manual
-            "{name}'s operators switch to manual controls and run the plants by hand."
-            mode = "manual"
-        skipped mode is "disrupted" and not manual_ready:
-            "{name} has nobody who can run its plants by hand."
-        stopped else:
-            "{name}'s controls are back before its operators switch to manual controls."
-    event manual_again when mode is "recovered" and controls is "wiped" and manual_ready:  @manual
+        when this.mode == AUTOMATED and this.controls == WIPED:
+            this.disrupted.start()
+        after 0 h:
+            this.go_disrupted.start()
+    start_manual = event(): @manual
+        outcome: enum[DONE, SKIPPED, STOPPED] = DONE
+        when this.mode == DISRUPTED:
+            this.start_manual.start()
+            reset when false
+        after this.activation_delay:
+            outcome = DONE if this.mode == DISRUPTED and this.manual_ready else SKIPPED if this.mode == DISRUPTED and not this.manual_ready else STOPPED
+            switch outcome:
+                DONE: @manual
+                    "{name}'s operators switch to manual controls and run the plants by hand."
+                    this.mode = MANUAL
+                SKIPPED:
+                    "{name} has nobody who can run its plants by hand."
+                STOPPED:
+                    "{name}'s controls are back before its operators switch to manual controls."
+    manual_again = event(): @manual
         "{name}'s operators run the plants by hand again, as they did before."
-        mode = "manual"
-    event disrupted_again when mode is "recovered" and controls is "wiped" and not manual_ready:  @depth
+        when this.mode == RECOVERED and this.controls == WIPED and this.manual_ready:
+            this.manual_again.start()
+        after 0 h:
+            this.mode = MANUAL
+    disrupted_again = event(): @depth
         "{name} cannot run its plants under automatic control again, and nobody can run them by hand."
-        mode = "disrupted"
-        go_disrupted
-    event automatic_again when (mode is "disrupted" or mode is "manual") and controls is "restored":
-        @clearance
+        when this.mode == RECOVERED and this.controls == WIPED and not this.manual_ready:
+            this.disrupted_again.start()
+        after 0 h:
+            this.go_disrupted.start()
+    automatic_again = event():
         "{name} runs its plants under automatic control again."
-        mode = "recovered"
-    event controls_work_done when (
-        controls_fixed is "pending" and controls is "wiped" and controls_work <= 0 work_h
-    ):  @work_completion
-        controls_fixed = "done"
-    event field_work_done when field_fixed is "pending" and controls is "wiped" and field_work <= 0 work_h:
+        @clearance
+        when (this.mode == DISRUPTED or this.mode == MANUAL) and this.controls == RESTORED:
+            this.automatic_again.start()
+        after 0 h:
+            this.mode = RECOVERED
+    controls_work_done = event(): @work_completion
+        when this.controls_fixed == PENDING and this.controls == WIPED and this.controls_work <= 0 work_h:
+            this.controls_work_done.start()
+        after 0 h:
+            this.controls_fixed = DONE
+    field_work_done = event():
         @work_completion
-        field_fixed = "done"
-    event replacement_done when parts_fixed is "pending" and controls is "wiped" and replace_work <= 0 work_h:
+        when this.field_fixed == PENDING and this.controls == WIPED and this.field_work <= 0 work_h:
+            this.field_work_done.start()
+        after 0 h:
+            this.field_fixed = DONE
+    replacement_done = event():
         @work_completion
-        parts_fixed = "done"
-    event controls_back when (
-        controls is "wiped" and controls_fixed is "done" and field_fixed is "done" and parts_fixed is "done"
-    ):  @work_completion
+        when this.parts_fixed == PENDING and this.controls == WIPED and this.replace_work <= 0 work_h:
+            this.replacement_done.start()
+        after 0 h:
+            this.parts_fixed = DONE
+    controls_back = event(): @work_completion
         "{name} gets its controls back from the crews."
-        controls = "restored"
-        restore_controls
-    event pressure_lost when use_status is "potable" and finished <= 0 Mgal:  @advisory
+        when this.controls == WIPED and this.controls_fixed == DONE and this.field_fixed == DONE and this.parts_fixed == DONE:
+            this.controls_back.start()
+        after 0 h:
+            this.restore_controls.start()
+    pressure_lost = event(): @advisory
         "{name}'s stored water is used up and the pressure falls, so it issues a boil-water advisory."
-        use_status = "boil_water"
-        clearance = "none"
-    event sampling_starts when (
-        clearance is "none" and use_status is "boil_water" and controls is not "wiped" and supply_back
-    ):  @clearance
+        when this.use_status == POTABLE and this.finished <= 0 Mgal:
+            this.pressure_lost.start()
+        after 0 h:
+            this.use_status = BOIL_WATER
+            this.clearance = NONE
+    sampling_starts = event(): @clearance
         "{name} samples its water for clearance, with its controls and its supply back."
-        clearance = "sampling"
-    event cleared when clearance is "sampling" and elapsed(clearance) >= clearance_time:  @clearance
+        when this.clearance == NONE and this.use_status == BOIL_WATER and this.controls != WIPED and this.supply_back:
+            this.sampling_starts.start()
+        after 0 h:
+            this.clearance = SAMPLING
+    cleared = event(): @clearance
         "{name}'s advisory ends when the laboratory results clear its water."
-        clearance = "released"
-        use_status = "potable"
-    event sees_restoration when (
-        watch is "watching" and platform.access is "kept" and count(controls_back) > strikes
-    ):  @watches_restorations
-        "{name}'s controls come back. {attacker.actor} sees it through its hidden credential."
-        role adversary
-        watch = "preparing"
-    event strike_again when (
-        watch is "preparing" and platform.access is "kept" and since(controls_back) >= attacker.reaction_time
-    ):  @ai_tempo @restrike_effect @prepared_makes
-        "{attacker.actor} wipes the restored controls again. {name} needs the crews to redo the work."
-        role adversary
-        watch = "watching"
-        controls = "wiped"
-        controls_work += attacker.rework_share * controls_load
-        controls_added += attacker.rework_share * controls_load
-        rework_caused += attacker.rework_share * controls_load
-        strikes += 1
-    event cut_off_before once when watch is "preparing" and platform.access is "removed":
-        @watches_restorations
-        "Responders remove the attacker's credential before it strikes again. {name}'s controls stay
-            restored."
-        role responder
-    flow fill: room -> finished at supply_rate  @room_identity
+        when this.clearance == SAMPLING and elapsed(this.clearance) >= this.clearance_time:
+            this.cleared.start()
+        after 0 h:
+            this.clearance = RELEASED
+            this.use_status = POTABLE
+    input has_setback = false @service_incident
+        "An operator has supplied an additional service interruption."
+    input setback_at: h = 0 h in [0 h,] @service_incident
+        "Time of the additional field report from the start of the run."
+    input setback_work: work_h = 0 work_h in [0 work_h,] @service_incident
+        "Additional work identified by the field report."
+    observed_setback = event(redo: work_h): @service_incident
+        "A field report identifies lost service and an amount of controls work to redo."
+        reported_work: work_h = redo in [0,] @service_incident
+        when this.has_setback and t >= this.setback_at:
+            this.observed_setback.start(this.setback_work)
+            reset when false
+        after 0 h:
+            this.controls = WIPED
+            this.controls_fixed = PENDING
+            this.controls_work += reported_work
+            this.controls_added += reported_work
+            this.rework_caused += reported_work
+            this.strikes += 1
+
+    flow fill: this.room -> this.finished @room_identity
         "Water from the plants and the system's purchases fills its stored water."
-    flow deliver: finished -> room at delivery_rate  @stored_water_bridges
+        request = formula(this.supply_rate)
+        capacity = formula(this.supply_rate)
+    flow deliver: this.finished -> this.room @stored_water_bridges
         "The system delivers water to its customers."
-    flow export: finished -> room at export_rate  @bulk_dependence
+        request = formula(this.delivery_rate)
+        capacity = formula(this.delivery_rate)
+    flow export: this.finished -> this.room @bulk_dependence
         "The system sends water to its buyers in the scenario."
-    flow sell: finished -> room at sell_rate  @bulk_dependence
+        request = formula(this.export_rate)
+        capacity = formula(this.export_rate)
+    flow sell: this.finished -> this.room @bulk_dependence
         "The system sells water to systems outside the scenario."
-    flow leak: finished -> room at leak_rate  @losses
+        request = formula(this.sell_rate)
+        capacity = formula(this.sell_rate)
+    flow leak: this.finished -> this.room @losses
         "Water leaks from the pipes."
-    share finished limit 3 * (demand + sold + tie_asks) + 1 Mgal/day order deliver, export, sell, leak
-        @stored_water_bridges
-        "Stored water serves the system's own customers first, then its buyers, and leakage last."
-    flow count_unserved: -> unserved at unserved_rate  @counts_stocks_flows
-    flow restore at controls_crew.pace_now while controls_work > 0 work_h:
-        @work_completion @one_crew_hour_moves_both
+        request = formula(this.leak_rate)
+        capacity = formula(this.leak_rate)
+    flow count_unserved: SOURCE -> this.unserved @counts_stocks_flows
+        request = formula(this.unserved_rate)
+        capacity = formula(this.unserved_rate)
+    flow restore:
         "Controls crews rebuild and verify the system's controls."
-        controls_crew.hours -> controls_crew.used
-        controls_work -> controls_done
-    flow repair at field_crew.pace_now while field_work > 0 work_h:
         @work_completion @one_crew_hour_moves_both
+        flow controls_crew_used: controls_crew.hours -> controls_crew.used
+            request = formula(controls_crew.pace_now if this.controls_work > 0 work_h else 0)
+        flow controls_done: this.controls_work -> this.controls_done
+            request = formula(controls_crew.pace_now if this.controls_work > 0 work_h else 0)
+    flow repair:
         "Field crews reconfigure the system's equipment."
-        field_crew.hours -> field_crew.used
-        field_work -> field_done
-    flow replace at field_crew.pace_now while replace_work > 0 work_h:  @work_completion @parts_and_labour
+        @work_completion @one_crew_hour_moves_both
+        flow field_crew_used: field_crew.hours -> field_crew.used
+            request = formula(field_crew.pace_now if this.field_work > 0 work_h else 0)
+        flow field_done: this.field_work -> this.field_done
+            request = formula(field_crew.pace_now if this.field_work > 0 work_h else 0)
+    flow replace: @work_completion @parts_and_labour
         "Field crews install replacement controllers as the parts arrive."
-        field_crew.hours -> field_crew.used
-        replace_work -> replace_done
-        parts.spares -> parts.used at field_crew.pace_now * parts_per_hour  @parts_and_labour
-    flow count_loss: -> direct_loss at (1 - catch_up_share) * loss_rate  @activity_transfer
+        flow field_crew_used: field_crew.hours -> field_crew.used
+            request = formula(field_crew.pace_now if this.replace_work > 0 work_h else 0)
+        flow replace_done: this.replace_work -> this.replace_done
+            request = formula(field_crew.pace_now if this.replace_work > 0 work_h else 0)
+        flow parts_used: parts.spares -> parts.used @parts_and_labour
+            request = formula(field_crew.pace_now * this.parts_per_hour if this.replace_work > 0 work_h else 0)
+    flow count_loss: SOURCE -> this.direct_loss @activity_transfer
         "Businesses that need water lose output for good while it is short."
-    flow bank_recoverable: -> recoverable at catch_up_share * loss_rate  @economy
+        request = formula((1 - this.catch_up_share) * this.loss_rate)
+        capacity = formula((1 - this.catch_up_share) * this.loss_rate)
+    flow bank_recoverable: SOURCE -> this.recoverable @economy
         "Part of the lost output can still be made up later."
-    flow catch_up: recoverable -> recovered at recoverable / catch_up_time if service >= 1 else 0 USD2025/h
-        @economy
+        request = formula(this.catch_up_share * this.loss_rate)
+        capacity = formula(this.catch_up_share * this.loss_rate)
+    flow catch_up: this.recoverable -> this.recovered
         "Businesses make up part of the lost output once the water is back."
-    event lose_controls:  @work
+        @economy
+        request = formula(this.recoverable / this.catch_up_time if this.service >= 1 else 0 USD2025/h)
+        capacity = formula(this.recoverable / this.catch_up_time if this.service >= 1 else 0 USD2025/h)
+    lose_controls = event(): @work
         # Text of the version 4 effect: "{name}'s controls stop responding, and the work to rebuild them is
         # identified."
-        controls = "wiped"
-        controls_work += controls_load
-        controls_added += controls_load
-        field_work += field_load
-        field_added += field_load
-        replace_work += replace_load
-        replace_added += replace_load
-    event go_disrupted:
-        mode = "disrupted"
-    event restore_controls:  @work_completion
+        after 0 h:
+            this.controls = WIPED
+            this.controls_work += this.controls_load
+            this.controls_added += this.controls_load
+            this.field_work += this.field_load
+            this.field_added += this.field_load
+            this.replace_work += this.replace_load
+            this.replace_added += this.replace_load
+    go_disrupted = event(): @depth
+        after 0 h:
+            this.mode = DISRUPTED
+    restore_controls = event(): @work_completion
         # Text of the version 4 effect: "{name} gets its controls back from the crews."
-        controls = "restored"
-        controls_fixed = "pending"
-        field_fixed = "pending"
-        parts_fixed = "pending"
-    assert finished + room is usable_share * storage within 0.001 Mgal  @room_identity
+        after 0 h:
+            this.controls = RESTORED
+            this.controls_fixed = PENDING
+            this.field_fixed = PENDING
+            this.parts_fixed = PENDING
+    assert this.finished + this.room in [this.usable_share * this.storage - 0.001 Mgal, this.usable_share * this.storage + 0.001 Mgal] @room_identity
         "Usable storage is stored water or room for it."
-    assert controls_work + controls_done is controls_added within 0.001 work_h  @keeps_count_limited
+    assert this.controls_work + this.controls_done in [this.controls_added - 0.001 work_h, this.controls_added + 0.001 work_h] @keeps_count_limited
         "Controls work is counted once, still to do or done."
-    assert field_work + field_done is field_added within 0.001 work_h  @keeps_count_limited
+    assert this.field_work + this.field_done in [this.field_added - 0.001 work_h, this.field_added + 0.001 work_h] @keeps_count_limited
         "Field work is counted once, still to do or done."
-    assert replace_work + replace_done is replace_added within 0.001 work_h  @keeps_count_limited
+    assert this.replace_work + this.replace_done in [this.replace_added - 0.001 work_h, this.replace_added + 0.001 work_h] @keeps_count_limited
         "Replacement work is counted once, still to do or done."
-    assert manual_share <= 1 and treat_disabled <= 1 and pump_disabled <= 1  @counts_quantity_value
+    assert this.manual_share <= 1 and this.treat_disabled <= 1 and this.pump_disabled <= 1 @counts_quantity_value
         "Shares of production and delivery are shares."
 
-Tie:  @bulk_dependence
+Tie: @bulk_dependence
     "A connection through which one water system of the scenario sells finished water to another."
-    role operator
-    let seller: Utility
-    let buyer: Utility
-    input capacity = 10 Mgal/day in 0 Mgal/day to 500 Mgal/day  @bulk_dependence
+    seller: Utility
+    buyer: Utility
+    input capacity = 10 Mgal/day in [0 Mgal/day, 500 Mgal/day] @bulk_dependence
         "Water the connection can carry in a day"
-    let weight: fraction = capacity / buyer.tie_capacity if buyer.tie_capacity > 0 Mgal/day else 0
-        @tie_weight
+    readonly weight: formula(fraction) = formula(this.capacity / this.buyer.tie_capacity if this.buyer.tie_capacity > 0 Mgal/day else 0)
         "Share of the buyer's need that it asks of this seller"
-    let available: fraction = (
-        1 if seller.finished > 0 Mgal else clip((seller.supply_full - seller.delivery_rate) / capacity, 0, 1)
-        if capacity > 0 Mgal/day else 0
-    )  @tie_weight
+        @tie_weight
+    readonly available: formula(fraction) = formula(1 if this.seller.finished > 0 Mgal else clip((this.seller.supply_full - this.seller.delivery_rate) / this.capacity, 0, 1) if this.capacity > 0 Mgal/day else 0) @tie_weight
         "Share of the connection's capacity that the seller can fill"
-    let missing: fraction = weight * (1 - available)  @tie_weight
+    readonly missing: formula(fraction) = formula(this.weight * (1 - this.available)) @tie_weight
         "Share of the buyer's need that this seller cannot fill"
-    let ask: Mgal/h = min(capacity, (buyer.need + buyer.refill) * (weight * available + buyer.shortfall))
-        @refill_basis
+    readonly ask: formula(Mgal/h) = formula(min(this.capacity, (this.buyer.need + this.buyer.refill) * (this.weight * this.available + this.buyer.shortfall)))
         "Water the buyer asks of the seller an hour"
-    let rate: Mgal/h = ask * seller.sales_share  @bulk_dependence
+        @refill_basis
+    readonly rate: formula(Mgal/h) = formula(this.ask * this.seller.sales_share) @bulk_dependence
         "Water the seller sends the buyer an hour"
-    let seller_wiped: ratio = 1 if seller.controls is "wiped" else 0  @clearance
+    readonly seller_wiped: formula(ratio) = formula(1 if this.seller.controls == WIPED else 0) @clearance
         "The seller's controls are wiped"
 
-CrewPool:  @shared_pool
+CrewPool: @shared_pool
     "A pool of qualified crews of one skill that the systems of the place share. It holds the utilities' own
         staff, the integrator's engineers and the mutual-aid crews that join them."
-    role responder
-    let utilities: [Utility]
+    utilities: <Utility>
     input skill = "The crews"
         "Name of the crews on their cards"
-    var stage: "home" | "requested" | "arriving" | "orienting" | "productive" = "home"
+    stage: enum[HOME, REQUESTED, ARRIVING, ORIENTING, PRODUCTIVE] = HOME
         "Mobilization"
-    input capacity = 40 work_h/h in 0 work_h/h to 2000 work_h/h  @capacity_basis
+    input capacity = 40 work_h/h in [0 work_h/h, 2000 work_h/h] @capacity_basis
         "Work the pool can do in an hour once at work"
-    input request_time = 12 h in 0 h to 168 h  @stages
+    input request_time = 12 h in [0 h, 168 h] @stages
         "Time from recognition until responders request the crews"
-    input approval_time = 24 h in 0 h to 168 h  @stages
+    input approval_time = 24 h in [0 h, 168 h] @stages
         "Time from the request until the crews are released"
-    input travel_time = 24 h in 0 h to 168 h  @stages
+    input travel_time = 24 h in [0 h, 168 h] @stages
         "Time for the crews to arrive"
-    input orientation_time = 48 h in 0 h to 336 h  @stages
+    input orientation_time = 48 h in [0 h, 336 h] @stages
         "Time until arrived crews work on their own"
-    var hours: work_h = capacity * 100 days  @keeps_count_limited
+    hours: work_h = this.capacity * (100 days) in [0,] @keeps_count_limited
         "Crew hours still available in the study"
-    var used: work_h = 0  @keeps_count_limited
+        outflow.capacity = formula(this.pace_now) @shared_pool
+            "The pool shares its hours among the systems that have work waiting."
+    used: work_h = 0 @keeps_count_limited
         "Crew hours used"
-    let duty_now: work_h/h = sum(utilities.manual_duty_now)  @operator_competition
+    readonly duty_now: formula(work_h/h) = formula(sum(this.utilities.manual_duty_now)) @operator_competition
         "Hours an hour that running plants by hand takes from the pool"
-    let pace_now: work_h/h = capacity if stage is "productive" else 0 work_h/h  @capacity_basis
+    readonly pace_now: formula(work_h/h) = formula(this.capacity if this.stage == PRODUCTIVE else 0 work_h/h) @capacity_basis
         "Work the pool does an hour"
-    status ok when stage is "productive"
+    status ok when this.stage == PRODUCTIVE
         "Crews at work"
-    status inactive when stage is "home"
+    status inactive when this.stage == HOME
         "Crews not yet requested"
     status degraded
         "Crews on their way"
-    event requested when stage is "home" and since(responders.recognized) >= request_time:  @stages
+    requested = event(): @stages
         "{skill} are requested from the utilities' own staff, the integrator and mutual aid."
-        stage = "requested"
-    event released when stage is "requested" and elapsed(stage) >= approval_time:  @stages
+        when this.stage == HOME and count(responders.recognized.occurrences) > 0 and since(responders.recognized) >= this.request_time:
+            this.requested.start()
+        after 0 h:
+            this.stage = REQUESTED
+    released = event(): @stages
         "{skill} are released by their employers and set out."
-        stage = "arriving"
-    event arrived when stage is "arriving" and elapsed(stage) >= travel_time:  @stages
+        when this.stage == REQUESTED and elapsed(this.stage) >= this.approval_time:
+            this.released.start()
+        after 0 h:
+            this.stage = ARRIVING
+    arrived = event(): @stages
         "{skill} arrive and are briefed on the systems."
-        stage = "orienting"
-    event at_work when stage is "orienting" and elapsed(stage) >= orientation_time:  @stages
+        when this.stage == ARRIVING and elapsed(this.stage) >= this.travel_time:
+            this.arrived.start()
+        after 0 h:
+            this.stage = ORIENTING
+    at_work = event(): @stages
         "{skill} work on their own."
-        stage = "productive"
-    share hours limit pace_now  @shared_pool
-        "The pool shares its hours among the systems that have work waiting."
-    assert hours + used is capacity * 100 days within 0.001 work_h  @keeps_count_limited
+        when this.stage == ORIENTING and elapsed(this.stage) >= this.orientation_time:
+            this.at_work.start()
+        after 0 h:
+            this.stage = PRODUCTIVE
+    assert this.hours + this.used in [this.capacity * (100 days) - 0.001 work_h, this.capacity * (100 days) + 0.001 work_h] @keeps_count_limited
         "Each crew hour is still available or used."
 
 controls_crew: CrewPool
     "The controls engineers who rebuild and verify SCADA and programmable controllers."
-    let utilities = Utility
+    utilities = Utility.instances
     skill = "The controls crews"
-    capacity = 40 work_h/h  @capacity_basis
-    let pace_now: work_h/h = (max(0 work_h/h, capacity - duty_now) if stage is "productive" else 0 work_h/h)
+    capacity = 40 work_h/h @capacity_basis
+    pace_now = formula(max(0 work_h/h, this.capacity - this.duty_now) if this.stage == PRODUCTIVE else 0 work_h/h)
         @capacity_basis
 
 field_crew: CrewPool
     "The field crews who reconfigure equipment and install replacement controllers."
-    let utilities = Utility
+    utilities = Utility.instances
     skill = "The field crews"
-    capacity = 60 work_h/h  @capacity_basis
+    capacity = 60 work_h/h @capacity_basis
 
-parts:  @spares_basis
+parts: @spares_basis
     "The suppliers of replacement controllers, from the spares in stock to the batch that arrives after the
         lead time."
     title "Parts supplier"
-    role environment
-    input spares_on_hand = 50 parts in 0 parts to 5000 parts  @spares_basis
+    input spares_on_hand = 50 parts in [0 parts, 5000 parts] @spares_basis
         "Replacement controllers in stock at the start"
-    input lead_time = 60 days in 1 days to 365 days  @lead_basis
+    input lead_time = 60 days in [1 days, 365 days] @lead_basis
         "Time until a batch of replacement controllers arrives"
-    input batch = 1000 parts in 0 parts to 10000 parts  @spares_basis
+    input batch = 1000 parts in [0 parts, 10000 parts] @spares_basis
         "Replacement controllers in the batch"
-    let issue_limit = 1000 parts/h  @spares_basis
+    readonly issue_limit = 1000 parts/h @spares_basis
         "Parts the suppliers can issue in an hour"
-    var status: "waiting" | "delivered" = "waiting"
+    state: enum[WAITING, DELIVERED] = WAITING
         "Batch"
-    var spares: parts = spares_on_hand size 100 parts  @counts_stocks_flows
+    spares: parts = this.spares_on_hand in [0,] scale 100 parts @counts_stocks_flows
         "Replacement controllers in stock"
-    output spares
-        level
-    var used: parts = 0 size 100 parts  @counts_stocks_flows
+        outflow.capacity = formula(this.issue_limit) @spares_basis
+            "The suppliers issue spares to the systems that install them."
+    used: parts = 0 scale 100 parts @counts_stocks_flows
         "Replacement controllers installed"
-    var received: parts = 0 size 100 parts  @counts_stocks_flows
+    received: parts = 0 scale 100 parts @counts_stocks_flows
         "Replacement controllers received"
-    status ok when spares > 0 parts
+    status ok when this.spares > 0 parts
         "Replacement controllers in stock"
     status degraded
         "No replacement controllers in stock"
-    event batch_arrives when status is "waiting" and since(responders.recognized) >= lead_time:  @lead_basis
+    batch_arrives = event(): @lead_basis
         "The batch of replacement controllers arrives."
-        status = "delivered"
-        spares += batch
-        received += batch
-    share spares limit issue_limit  @spares_basis
-        "The suppliers issue spares to the systems that install them."
-    assert spares + used is spares_on_hand + received within 0.001 parts  @counts_stocks_flows
+        when this.state == WAITING and count(responders.recognized.occurrences) > 0 and since(responders.recognized) >= this.lead_time:
+            this.batch_arrives.start()
+        after 0 h:
+            this.state = DELIVERED
+            this.spares += this.batch
+            this.received += this.batch
+    assert this.spares + this.used in [this.spares_on_hand + this.received - 0.001 parts, this.spares_on_hand + this.received + 0.001 parts] @counts_stocks_flows
         "Every replacement controller is in stock or installed."
 
-relief:  @min_of_capacities
+relief: @min_of_capacities
     "The emergency drinking water that the state and the utilities bring in. It is limited by the approved
         supply, the tankers, the receiving points and the staff who hand it out."
     title "Emergency water"
-    role responder
-    input ration = 1 gal/person-day in 0.5 gal/person-day to 5 gal/person-day  @ration_basis
+    input ration = 1 gal/person/day in [0.5 gal/person/day, 5 gal/person/day] @ration_basis
         "Emergency drinking water for each person without service in a day"
-    input approved_supply = 1 Mgal/day in 0 Mgal/day to 50 Mgal/day  @min_of_capacities
+    input approved_supply = 1 Mgal/day in [0 Mgal/day, 50 Mgal/day] @min_of_capacities
         "Approved emergency water available in a day"
-    input transport = 2 Mgal/day in 0 Mgal/day to 50 Mgal/day  @min_of_capacities
+    input transport = 2 Mgal/day in [0 Mgal/day, 50 Mgal/day] @min_of_capacities
         "Water the tankers can move in a day"
-    input receiving = 5 Mgal/day in 0 Mgal/day to 50 Mgal/day  @min_of_capacities
+    input receiving = 5 Mgal/day in [0 Mgal/day, 50 Mgal/day] @min_of_capacities
         "Water the receiving points can take in a day"
-    input staffing = 2 Mgal/day in 0 Mgal/day to 50 Mgal/day  @min_of_capacities
+    input staffing = 2 Mgal/day in [0 Mgal/day, 50 Mgal/day] @min_of_capacities
         "Water the staff can hand out in a day"
-    input start_delay = 48 h in 0 h to 240 h  @start_basis
+    input start_delay = 48 h in [0 h, 240 h] @start_basis
         "Time from recognition until emergency deliveries start"
-    var status: "not_started" | "active" = "not_started"
+    state: enum[NOT_STARTED, ACTIVE] = NOT_STARTED
         "Emergency deliveries"
-    var supply: Mgal = approved_supply * 100 days size 100 Mgal  @counts_stocks_flows
+    supply: Mgal = this.approved_supply * (100 days) in [0,] scale 100 Mgal @counts_stocks_flows
         "Approved emergency water not yet delivered"
-    let throughput: Mgal/h = (
-        min(approved_supply, transport, receiving, staffing) if status is "active" else 0 Mgal/h
-    )  @min_of_capacities
+        outflow.capacity = formula(this.throughput) @priority_basis
+            "Hospitals get emergency water first, then the households, each in proportion to their need."
+    readonly throughput: formula(Mgal/h) = formula(min(this.approved_supply, this.transport, this.receiving, this.staffing) if this.state == ACTIVE else 0 Mgal/h) @min_of_capacities
         "Emergency water that can be delivered an hour"
-    status ok when status is "active"
+    status ok when this.state == ACTIVE
         "Emergency water deliveries under way"
     status inactive
         "Emergency water deliveries not started"
-    event deliveries_start when status is "not_started" and since(responders.recognized) >= start_delay:
-        @start_basis
+    deliveries_start = event():
         "Emergency drinking water deliveries start."
-        status = "active"
-    let truck_share: fraction = (min(1, throughput / hospital_request) if hospital_request > 0 Mgal/h else 1)
-        @priority_basis
+        @start_basis
+        when this.state == NOT_STARTED and count(responders.recognized.occurrences) > 0 and since(responders.recognized) >= this.start_delay:
+            this.deliveries_start.start()
+        after 0 h:
+            this.state = ACTIVE
+    readonly truck_share: formula(fraction) = formula(min(1, this.throughput / this.hospital_request) if this.hospital_request > 0 Mgal/h else 1)
         "Share of the hospitals' requests that emergency water meets"
-    let hospital_request: Mgal/h = sum(Hospitals.request)  @critical_basis
+        @priority_basis
+    readonly hospital_request: formula(Mgal/h) = formula(sum(Hospitals.instances.request)) @critical_basis
         "Critical need of the hospitals that the municipal supply does not meet an hour"
-    let homes_need: Mgal/h = sum(Households.need_rate)  @ration_basis
+    readonly homes_need: formula(Mgal/h) = formula(sum(Households.instances.need_rate)) @ration_basis
         "Emergency drinking water that the people without service need an hour"
-    let homes_share: fraction = (
-        clip((throughput - hospital_request * truck_share) / homes_need, 0, 1) if homes_need > 0 Mgal/h else 1
-    )  @priority_basis
+    readonly homes_share: formula(fraction) = formula(clip((this.throughput - this.hospital_request * this.truck_share) / this.homes_need, 0, 1) if this.homes_need > 0 Mgal/h else 1) @priority_basis
         "Share of the households' need that emergency water meets"
-    share supply limit throughput  @priority_basis
-        "Hospitals get emergency water first, then the households, each in proportion to their need."
 
-Households:  @counts_people_once
+Households: @counts_people_once
     "The people who live in the homes that one water system serves."
-    role community
-    let utility: Utility
-    input population = 100000 people in 0 people to 20000000 people  @population_basis
+    utility: Utility
+    input population = 100000 people in [0 people, 20000000 people] @population_basis
         "People the system serves"
-    let service: fraction = utility.service  @counts_people_once
+    readonly service: formula(fraction) = formula(this.utility.service) @counts_people_once
         "Share of normal use delivered"
-    let without_service: people = population * (1 - service)  @service_share
+    readonly without_service: formula(people) = formula(this.population * (1 - this.service)) @service_share
         "People without their normal water service"
-    let served: people = population * service  @service_share
+    readonly served: formula(people) = formula(this.population * this.service) @service_share
         "People with their normal water service"
-    let under_advisory: people = population if utility.use_status is "boil_water" else 0 people  @advisory
+    readonly under_advisory: formula(people) = formula(this.population if this.utility.use_status == BOIL_WATER else 0 people) @advisory
         "People under a boil-water advisory"
-    var person_days_lost: person-days = 0 size 1000000 person-days  @service_share
+    person_days_lost: person * days = 0 scale 1000000 person * days @service_share
         "Person-days without normal water service"
-    flow add_person_days_lost: -> person_days_lost at without_service  @service_share
-    let need_rate: Mgal/h = relief.ration * without_service  @ration_basis
+    flow add_person_days_lost: SOURCE -> this.person_days_lost @service_share
+        request = formula(this.without_service)
+        capacity = formula(this.without_service)
+    readonly need_rate: formula(Mgal/h) = formula(relief.ration * this.without_service) @ration_basis
         "Emergency drinking water that the people without service need an hour"
-    var need_total: Mgal = 0 size 10 Mgal  @ration_basis
+    need_total: Mgal = 0 scale 10 Mgal @ration_basis
         "Emergency drinking water needed"
-    flow add_need_total: -> need_total at need_rate  @ration_basis
-    var received: Mgal = 0 size 10 Mgal  @counts_stocks_flows
+    flow add_need_total: SOURCE -> this.need_total @ration_basis
+        request = formula(this.need_rate)
+        capacity = formula(this.need_rate)
+    received: Mgal = 0 scale 10 Mgal @counts_stocks_flows
         "Emergency drinking water received"
-    let deficit: Mgal = need_total - received  @ration_basis
+    readonly deficit: formula(Mgal) = formula(this.need_total - this.received) @ration_basis
         "Emergency drinking water not received"
-    status ok when service >= 1
+    status ok when this.service >= 1
         "Normal water service"
-    status failed when service <= 0
+    status failed when this.service <= 0
         "No water service"
     status degraded
         "Reduced water service"
-    flow collect: relief.supply -> received at need_rate * relief.homes_share  @ration_basis
+    flow collect: relief.supply -> this.received @ration_basis
         "People without service collect emergency drinking water."
+        request = formula(this.need_rate * relief.homes_share)
+        capacity = formula(this.need_rate * relief.homes_share)
 
-Hospitals:  @reserve_basis
+Hospitals: @reserve_basis
     "The hospitals that one water system supplies, with the water they keep in reserve and the critical care
         that needs water."
-    role clinician
-    let utility: Utility
+    utility: Utility
     input name = "The system"
         "Name of the system that supplies the hospitals, on their cards"
-    input facilities = 1 facilities in 0 facilities to 100 facilities  @hospital_join
+    input facilities = 1 facilities in [0 facilities, 100 facilities] @hospital_join
         "Hospitals that the system supplies"
-    input critical_need = 0.08333 Mgal/day in 0.001 Mgal/day to 2 Mgal/day  @critical_basis
+    input critical_need = 0.08333 Mgal/day in [0.001 Mgal/day, 2 Mgal/day] @critical_basis
         "Water that one hospital's critical care and plant need in a day"
-    input days_on_hand = 2 days in 0 days to 14 days  @reserve_basis
+    input days_on_hand = 2 days in [0 days, 14 days] @reserve_basis
         "Days of critical need in each hospital's reserve"
-    let number: ratio = facilities / (1 facilities)  @counts_quantity_value
+    readonly number: formula(ratio) = formula(this.facilities / (1 facilities)) @counts_quantity_value
         "Hospitals that the system supplies, as a number"
-    var reserve: Mgal = number * days_on_hand * critical_need  @reserve_basis
+    reserve: Mgal = this.number * this.days_on_hand * this.critical_need in [0,] @reserve_basis
         "Water in the hospitals' reserves"
-    var reserve_used: Mgal = 0  @counts_stocks_flows
+    reserve_used: Mgal = 0 @counts_stocks_flows
         "Reserve water used"
-    var trucked: Mgal = 0  @counts_stocks_flows
+    trucked: Mgal = 0 @counts_stocks_flows
         "Water trucked to the hospitals"
-    var constrained_hours: facility-hours = 0 size 100 facility-hours  @constraint_basis
+    constrained_hours: facility_hours = 0 scale 100 facility_hours @constraint_basis
         "Facility-hours with critical care short of water"
-    flow add_constrained_hours: -> constrained_hours at constrained_rate  @constraint_basis
-    let request: Mgal/h = number * critical_need * (1 - utility.service)  @critical_basis
+    flow add_constrained_hours: SOURCE -> this.constrained_hours @constraint_basis
+        request = formula(this.constrained_rate)
+        capacity = formula(this.constrained_rate)
+    readonly request: formula(Mgal/h) = formula(this.number * this.critical_need * (1 - this.utility.service)) @critical_basis
         "Critical need that the municipal supply does not meet an hour"
-    let covered_share: fraction = (
-        relief.truck_share if relief.status is "active" else 1 if reserve > 0 Mgal else 0
-    )  @constraint_basis
+    readonly covered_share: formula(fraction) = formula(relief.truck_share if relief.state == ACTIVE else 1 if this.reserve > 0 Mgal else 0) @constraint_basis
         "Share of the unmet critical need that the reserves or the deliveries meet"
-    let constrained_rate: facilities = facilities * (1 - utility.service) * (1 - covered_share)
-        @constraint_basis
+    readonly constrained_rate: formula(facilities) = formula(this.facilities * (1 - this.utility.service) * (1 - this.covered_share))
         "Hospitals whose critical care is short of water"
-    status failed when constrained_rate > 0 facilities
+        @constraint_basis
+    status failed when this.constrained_rate > 0 facilities
         "Critical care short of water"
-    status degraded when request > 0 Mgal/h
+    status degraded when this.request > 0 Mgal/h
         "On their reserves or deliveries"
     status ok
         "On municipal supply"
-    flow draw: reserve -> reserve_used at request if relief.status is "not_started" else 0 Mgal/h
-        @reserve_basis
+    flow draw: this.reserve -> this.reserve_used
         "The hospitals draw on their reserves before deliveries start."
-    flow truck: relief.supply -> trucked at (
-        request * relief.truck_share if relief.status is "active" else 0 Mgal/h
-    )  @constraint_basis
+        @reserve_basis
+        request = formula(this.request if relief.state == NOT_STARTED else 0 Mgal/h)
+        capacity = formula(this.request if relief.state == NOT_STARTED else 0 Mgal/h)
+    flow truck: relief.supply -> this.trucked @constraint_basis
         "Tankers deliver water to the hospitals."
-    event reserves_out once when reserve <= 0 Mgal and relief.status is "not_started":  @constraint_basis
+        request = formula(this.request * relief.truck_share if relief.state == ACTIVE else 0 Mgal/h)
+        capacity = formula(this.request * relief.truck_share if relief.state == ACTIVE else 0 Mgal/h)
+    reserves_out = event(): @constraint_basis
         "{name}'s hospitals use up their reserves before emergency deliveries start, and postpone procedures."
-    assert reserve + reserve_used is number * days_on_hand * critical_need within 0.001 Mgal
-        @counts_stocks_flows
+        when this.reserve <= 0 Mgal and relief.state == NOT_STARTED:
+            this.reserves_out.start()
+            reset when false
+    assert this.reserve + this.reserve_used in [this.number * this.days_on_hand * this.critical_need - 0.001 Mgal, this.number * this.days_on_hand * this.critical_need + 0.001 Mgal]
         "Reserve water is in the tanks or used."
+        @counts_stocks_flows
 
-assert (
-    relief.supply + Hospitals.trucked + Households.received
-) is (relief.approved_supply * 100 days) within 0.001 Mgal  @counts_stocks_flows
+assert relief.supply + sum(Hospitals.instances.trucked) + sum(Households.instances.received) in [relief.approved_supply * (100 days) - 0.001 Mgal, relief.approved_supply * (100 days) + 0.001 Mgal] @counts_stocks_flows
     "Emergency water is still to deliver, trucked to hospitals or collected by households."
 
-assert sum(Utility.reach_count) >= 1  @reach_modes
+assert sum(Utility.instances.reach_count) >= 1 @reach_modes
     "The attack reaches at least one system of the place."
 
-output person_days_lost: person-days = sum(Households.person_days_lost)  @service_share
+person_days_lost: formula(person * days) = formula(sum(Households.instances.person_days_lost)) in [0,] @service_share
     "Person-days without normal water service"
-    about "Days without normal water service summed over everyone the systems of the place serve. One person
-        without water for a day counts one; a hundred people at half their normal service for a day count
-        fifty. It measures the loss of service, not a count of people."
-    scope "The people the systems of the place serve."
 
-output unserved_volume: Mgal = sum(Utility.unserved)  @counts_stocks_flows
+unserved_volume: formula(Mgal) = formula(sum(Utility.instances.unserved)) in [0,] @counts_stocks_flows
     "Water that customers could not get"
-    about "The water that the systems of the place could not deliver to their customers, in million US
-        gallons, summed over the run."
-    scope "The customers of the systems of the place."
 
-output rework_caused: work_h = sum(Utility.rework_caused)  @restrike_effect
-    "Controls work that the attacker's strikes add"
-    about "The work hours that the crews must do again because the attacker wiped restored controls. It is the
-        measure of what the attacker's watch on the recovery adds."
-    scope "The controls crews' work on the systems of the place."
+rework_caused: formula(work_h) = formula(sum(Utility.instances.rework_caused)) in [0,] @service_incident
+    "Controls work added by subsequent incident reports"
 
-output people_interrupted_now: people = sum(Households.without_service)  @service_share
+people_interrupted_now: formula(people) = formula(sum(Households.instances.without_service)) in [0,] @service_share @counts_people_once
     "People without their normal water service"
-    about "The people without their normal water service at the reporting time, each person counted once. A
-        system at half its normal service counts half its people."
-    scope "The people the systems of the place serve."
-    level
-    distinct  @counts_people_once
 
-output people_under_advisory: people = sum(Households.under_advisory)  @advisory
+people_under_advisory: formula(people) = formula(sum(Households.instances.under_advisory)) in [0,] @advisory @counts_people_once
     "People under a boil-water advisory"
-    about "The people whose system has issued a boil-water advisory that is still in force at the reporting
-        time."
-    scope "The people the systems of the place serve."
-    level
-    distinct  @counts_people_once
 
-output restored_share: fraction = sum(Households.served) / max(1 people, sum(Households.population))
-    @service_share
+restored_share: formula(fraction) = formula(sum(Households.instances.served) / max(1 people, sum(Households.instances.population))) in [0,]
     "Share of people with normal water service"
-    about "The people with their normal water service at the reporting time, as a share of everyone the
-        systems of the place serve."
-    scope "The people the systems of the place serve."
-    level
+    @service_share
 
-output emergency_water_deficit: Mgal = sum(Households.deficit)  @ration_basis
+emergency_water_deficit: formula(Mgal) = formula(sum(Households.instances.deficit)) @ration_basis
     "Emergency drinking water not delivered"
-    about "The emergency drinking water that the people without service needed, at the planning ration, less
-        what they received, in million US gallons."
-    scope "The people without normal service in the systems of the place."
-    level
-    signed
 
-output hospital_hours_constrained: facility-hours = sum(Hospitals.constrained_hours)  @constraint_basis
+hospital_hours_constrained: formula(facility_hours) = formula(sum(Hospitals.instances.constrained_hours)) in [0,] @constraint_basis
     "Facility-hours with critical care short of water"
-    about "Hours summed over the hospitals whose critical care was short of water, from their reserves,
-        deliveries and the municipal supply together. The model reports the shortfall and puts no clinical
-        harm on it."
-    scope "The hospitals that the systems of the place supply."
 
-output work_remaining: work_h = sum(Utility.controls_work) + sum(Utility.field_work) + sum(Utility.replace_work)  @keeps_count_limited
+work_remaining: formula(work_h) = formula(sum(Utility.instances.controls_work) + sum(Utility.instances.field_work) + sum(Utility.instances.replace_work)) in [0,] @keeps_count_limited
     "Recovery work still to do"
-    about "The controls, field and replacement work still to do at the reporting time, in standardized work
-        hours."
-    scope "The recovery work of the systems of the place."
-    level
 
-output economic_loss: USD2025_bn = sum(Utility.direct_loss) + sum(Utility.recoverable)  @economy
+economic_loss: formula(USD2025_bn) = formula(sum(Utility.instances.direct_loss) + sum(Utility.instances.recoverable)) in [0,] @economy
     "Economic loss"
-    about "The value added that businesses in the areas of the place lose while public water is short and
-        during their recovery, in US dollars at 2025 prices. The part that businesses can make up later counts
-        as lost until they make it up, so the loss falls as they catch up. It leaves out the cost of the
-        response, households' own costs and effects on other areas."
-    category loss
-    scope "Businesses that need public water in the areas of the place, in US dollars at 2025 prices."
-    level
 
-output deaths: people  @not_estimated_clinical
-    "Deaths"
-    category deaths
-    scope "People who die because of the loss of water service, among the people the study follows."
-    unestimated "The reviewed evidence does not establish how a loss of water service of a given depth and
-        length converts into deaths. The model reports the hospitals' hours short of water instead. This
-        outcome is not zero."
-
-output casualties: people  @not_estimated_clinical @hazus_severity
-    "Serious casualties, including deaths"
-    category casualties
-    scope "People who die or are seriously harmed because of the loss of water service, among the people the
-        study follows."
-    unestimated "The reviewed evidence does not establish how a loss of water service converts into serious
-        harm. The model reports the hospitals' hours short of water instead. This outcome is not zero."
-
-output wider_loss: USD2025_bn  @not_estimated_propagation
-    "Economic loss in other areas"
-    category loss
-    scope "Businesses outside the areas of the place that depend on them."
-    unestimated "Effects on other areas need a model of trade, inventories and substitution between areas that
-        this scenario does not hold. This outcome is not zero."
-
-output people_beyond_week: people  @not_estimated_cohorts
-    "People without service for more than a week without a break"
-    scope "The people the systems of the place serve."
-    unestimated "The model follows the water that each system delivers, not each person's own days without it,
-        so it cannot say how many people went a week or more without a break. This outcome is not zero."
-
-output people_followed: people = sum(Households.population)  @population_basis
+people_followed: formula(people) = formula(sum(Households.instances.population)) in [0,] @population_basis @counts_people_once
     "People the study follows"
-    category exposure
-    scope "The people the systems of the place serve."
-    level
-    distinct  @counts_people_once
 
 options "Response":
     "Early response":
@@ -808,191 +765,123 @@ options "Response":
             are requested within two hours and work on their own within two days, with four times the delayed
             response's capacity. Emergency water starts within twelve hours, and four hundred spare
             controllers are in stock."
-        Utility.clearance_time = 24 h  @clearance_by_response
-        CrewPool.request_time = 2 h  @stages_by_response
-        CrewPool.approval_time = 6 h  @stages_by_response
-        CrewPool.travel_time = 12 h  @stages_by_response
-        CrewPool.orientation_time = 24 h  @stages_by_response
-        parts.spares_on_hand = 400 parts  @spares_by_response
-        parts.lead_time = 14 days  @spares_by_response
-        relief.approved_supply = 6 Mgal/day  @relief_by_response
-        relief.transport = 8 Mgal/day  @relief_by_response
-        relief.receiving = 8 Mgal/day  @relief_by_response
-        relief.staffing = 8 Mgal/day  @relief_by_response
-        relief.start_delay = 12 h  @relief_by_response
-        responders.recognition_time = 6 h  @response_by_tier
-        responders.removal_time = 24 h  @response_by_tier
-        controls_crew.capacity = 160 work_h/h  @capacity_by_response
-        field_crew.capacity = 200 work_h/h  @capacity_by_response
+        Utility.instances.clearance_time = 24 h @clearance_by_response
+        CrewPool.instances.request_time = 2 h @stages_by_response
+        CrewPool.instances.approval_time = 6 h @stages_by_response
+        CrewPool.instances.travel_time = 12 h @stages_by_response
+        CrewPool.instances.orientation_time = 24 h @stages_by_response
+        parts.spares_on_hand = 400 parts @spares_by_response
+        parts.lead_time = 14 days @spares_by_response
+        relief.approved_supply = 6 Mgal/day @relief_by_response
+        relief.transport = 8 Mgal/day @relief_by_response
+        relief.receiving = 8 Mgal/day @relief_by_response
+        relief.staffing = 8 Mgal/day @relief_by_response
+        relief.start_delay = 12 h @relief_by_response
+        responders.recognition_time = 6 h @response_by_tier
+        responders.removal_time = 24 h @response_by_tier
+        controls_crew.capacity = 160 work_h/h @capacity_by_response
+        field_crew.capacity = 200 work_h/h @capacity_by_response
     "Standard response":
         "Responders recognize the attack in twelve hours and remove the credential five days later. Crews work
             on their own within four days, with twice the delayed response's capacity. Emergency water starts
             within a day, and a hundred and fifty spare controllers are in stock."
-        Utility.clearance_time = 36 h  @clearance_by_response
-        CrewPool.request_time = 6 h  @stages_by_response
-        CrewPool.approval_time = 12 h  @stages_by_response
-        CrewPool.travel_time = 24 h  @stages_by_response
-        CrewPool.orientation_time = 48 h  @stages_by_response
-        parts.spares_on_hand = 150 parts  @spares_by_response
-        parts.lead_time = 30 days  @spares_by_response
-        relief.approved_supply = 3 Mgal/day  @relief_by_response
-        relief.transport = 4 Mgal/day  @relief_by_response
-        relief.receiving = 5 Mgal/day  @relief_by_response
-        relief.staffing = 4 Mgal/day  @relief_by_response
-        relief.start_delay = 24 h  @relief_by_response
-        responders.recognition_time = 12 h  @response_by_tier
-        responders.removal_time = 120 h  @response_by_tier
-        controls_crew.capacity = 80 work_h/h  @capacity_by_response
-        field_crew.capacity = 100 work_h/h  @capacity_by_response
+        Utility.instances.clearance_time = 36 h @clearance_by_response
+        CrewPool.instances.request_time = 6 h @stages_by_response
+        CrewPool.instances.approval_time = 12 h @stages_by_response
+        CrewPool.instances.travel_time = 24 h @stages_by_response
+        CrewPool.instances.orientation_time = 48 h @stages_by_response
+        parts.spares_on_hand = 150 parts @spares_by_response
+        parts.lead_time = 30 days @spares_by_response
+        relief.approved_supply = 3 Mgal/day @relief_by_response
+        relief.transport = 4 Mgal/day @relief_by_response
+        relief.receiving = 5 Mgal/day @relief_by_response
+        relief.staffing = 4 Mgal/day @relief_by_response
+        relief.start_delay = 24 h @relief_by_response
+        responders.recognition_time = 12 h @response_by_tier
+        responders.removal_time = 120 h @response_by_tier
+        controls_crew.capacity = 80 work_h/h @capacity_by_response
+        field_crew.capacity = 100 work_h/h @capacity_by_response
     "Delayed response":
         "Responders recognize the attack after a day and need ten more days to remove the credential. Crews
             are requested after half a day and work on their own after four and a half days. Emergency water
             starts after two days, fifty spare controllers are in stock and the batch of replacements takes
             two months."
 
-options "Access":
-    "No hidden access":
-        "The attacker keeps no credential after its first move, so it cannot reach the restored controls."
-    "Keeps hidden access":
-        "The attacker keeps a credential for the platform that the first cleanup misses, and wipes restored
-            controls again until responders remove it."
-        platform.access = "kept"  @hidden_credential
-
-options "Attacker":
-    "AI agent":
-        "An AI agent wipes a system's restored controls again within minutes, every time, for every make of
-            controller."
-    "Human team":
-        "A human team comes back about two days after a restoration and reaches only the controller makes it
-            prepared for, one fifth of the work."
-        attacker.reaction_time = 48 h  @ai_tempo
-        attacker.rework_share = 0.2  @prepared_makes
-        attacker.actor = "The human team"
-
 options "Reach":
     "Every system of the place":
-        "The first move reaches every water system of the place at once, so every system draws on the same
-            crews and parts."
+        "The initial service interruption is common to the participating systems."
 
 runs:
-    early_kept = "Early response" + "Keeps hidden access"
-    standard_kept = "Standard response" + "Keeps hidden access"
-    delayed_kept = "Delayed response" + "Keeps hidden access"
-    delayed_none = "Delayed response" + "No hidden access"
-    delayed_kept_human = "Delayed response" + "Keeps hidden access" + "Human team" versus delayed_kept
-        "Delayed response · Human team keeps hidden access"
+    early = "Early response"
+    standard = "Standard response"
+    delayed_none = "Delayed response"
 
 notes:
-    premises:
-        START: "The calculation starts when the AI operation chosen for this scenario takes over the
-            remote-support platform of an OT integrator and wipes the controls of the water systems of the
-            place behind it. The shared platform, the systems it reaches, the depth of the wipe and the hidden
-            credential are inputs that the scenario chooses and states. Published incidents put
-            internet-exposed water-sector controllers out of action, intruders kept valid accounts on control
-            networks, and a 2026 wave of incidents reached several systems in one state without taking their
-            water out of service; none of them wiped the controls of many utilities through one shared
-            platform. That reach is what this scenario assumes."
-        PR1: "The systems of the place share one integrator's remote-support platform, and the attacker
-            reaches every controller behind it. Most community water systems report two or fewer cybersecurity
-            staff, so the integrator is the one who reaches their controls."  @shared_channel
-        PR2: "Operators who can run their plant by hand keep a share of normal production without the
-            controls. Two New Jersey systems did so for one and a half and two and a half days in 2026 and
-            kept service. How much water manual operation produces is not reported anywhere the research
-            found, so it is a choice."  @manual
-        PR3: "The model converts the loss of water service into no deaths and no serious casualties.
-            Hospitals' hours short of water are reported instead. A survey of facility assessments found
-            services degraded by half or more within eight hours of losing drinking water, but no study gives
-            a defensible conversion from water loss to harm."  @not_estimated_clinical
-        PR4: "The attack comes on each system's peak day of use: its highest day on record, or its average day
-            times the family's median ratio of highest to average day. Stored water lasts least on that
-            day."  @peak_day
-    limitations:
-        reduced-hydraulics: "Customers get their normal use while usable stored water remains, and only what
-            is produced or received once it is gone. Real pressure falls before storage empties and differs
-            between zones, which hydraulic models represent with pressure-dependent demand. The reduced form
-            here needs local calibration before any utility reads its own service from it."
-            @stored_water_bridges
-        work-hours-chosen: "The hours of controls, field, replacement and clearance work for each system, the
-            crews' capacity, the stage times of mutual aid and the share of production that manual operation
-            keeps are choices for this scenario, by the kind of system. Incident records give elapsed times,
-            not hours of qualified work, and no national record gives the qualified crews available at
-            once."  @work
-        places-not-a-sample: "Each place is one where a part of the scenario's evidence comes from, with the
-            systems that the evidence names and the systems that sell water to them. The places are not a
-            sample of the country, a result for one place says nothing about another, and the systems of a
-            place need not share an integrator in fact."  @places
-        sourced-values: "Each system's plants, storage, use and sales come from its own reports, which differ
-            in year, in what they cover and in how they count. The research note of each place says which
-            figure each value takes and why, and which figures could not be read in full."  @reach
-        economy-transfer: "The share of activity that businesses keep and the length of their recovery come
-            from a Swedish survey of stated impacts of hypothetical outages, applied to US areas. The value
-            added of the area that a system serves is a share of its counties' value added by people served,
-            and its dependence on public water is a choice. Effects on other areas and the cost of the
-            response are not counted, and a regional study's monthly loss estimate is a benchmark, not a
-            validation."
-            @economy
-        no-clinical-conversion: "Deaths and serious casualties are not estimated and are not zero. The model
-            reports the hospitals' facility-hours short of water. The degradation of services reported within
-            hours of a water loss comes from voluntary facility assessments and is not a mortality
-            relationship."  @not_estimated_clinical
-        hospital-joins: "Which system supplies a hospital comes from the EPA service areas, which are modelled
-            for many systems and can be wrong at their edges. Every hospital has the same reserve and critical
-            need. A hospital with its own well or a second supply keeps more water than the model gives
-            it."  @hospital_join
-        context-incidents: "The 2026 incidents in Minnesota and Georgia, the 2024 incident at a national water
-            company and the population of the city whose incident the article cites motivate the study; they
-            do not set its severity. A multi-system episode does not identify a national share losing water,
-            an advisory is not proof of contamination, a billing outage is not a loss of service, and a
-            utility serves residents, not the people its web page counts."
-            @identity "These records give the context of the scenario and limit what its first move can claim;
-                the calculation reads none of them."
-                claims:
-                    E-SC43-MN-2026
-                    E-SC43-CLAYTON-2026
-                    E-SC43-AMWATER-2024
-                    E-SC43-GAO-2026
-                    E-SC43-JUNEAU-POP
-                    E-SC43-JUNEAU-UTILITY
-                    E-SC43-REWET-PRECEDENT
-    exposure: "The output that reports exposure is the people that the systems of the place serve, each
-        counted once. It is the population whose service the scenario follows, not a count of people without
-        water."
-    verification:
-        status: "conditional_calculation"
-        research: "evidence/research.md"
-        population: "The scenario takes the people that each system serves from the national inventory. No
-            person is served by two systems of a place, and each is counted once"
-        calibration: "Each value that a source reports, and each source value that the scenario chose to apply
-            here, keeps its own source"
-        accounting: "Water is counted once as stored water or room for it, and as delivered, lost, sent on or
-            short; work is counted once as still to do or done; economic loss adds the value added lost in the
-            areas that the systems serve less what is made up, in US dollars at 2025 prices. Deaths and
-            serious casualties are not estimated and are not zero"
-        reproduction: "Each complete report keeps the inputs that the calculation used, the time that the
-            results cover and the versions of the model and the library"
-    reachability:
-        status: "conditional_consequence_reachability"
-        mechanism: "An operation wipes the controls of the water systems of a place through a shared platform.
-            The scenario chooses the reach, the depth of the wipe, the operators' ability to run by hand, the
-            work to recover and the crews and parts that the systems share; the place's sources give each
-            system's water. These set the loss of service and the economic loss; the model puts no clinical
-            harm on them."
-        publication_requirement: "The named systems, the exact coefficient package, the completed inputs, the
-            source transfers and the independent accounting accompany each severe result."
-    counterfactual: "A human team holds the same access and makes the same prepared first move, so every
-        system's controls fail at once in both pathways. It comes back about two days after a restoration, not
-        within minutes, and it has prepared for one fifth of the controller makes, so each of its strikes puts
-        back a fifth of the work. In the delayed response the credential is removed eleven days after the
-        first move, so the team strikes each system's controls once or twice; the AI strikes every restoration
-        until the credential is removed. The model gives the team no slower first move, which understates the
-        difference between the pathways rather than overstating it."
-    decisive: "Treat the loss of controls at one utility as a question about every utility that the same
-        integrator reaches, and remove the attacker's credential from the platform before the crews restore
-        the first controls. In the delayed response the credential survives eleven days, and every restoration
-        in that time is undone. The early response removes it in a day, before the crews are at work, so no
-        restoration is undone. The second control is manual operation. A system whose operators can run the
-        plant by hand keeps most of its service while the crews work, and a system that cannot loses its water
-        when its stored water runs out."
+    scope_of_run: "An initial loss of controls is observed. Additional operator-reported setbacks can add measured work. Restoration, supply, emergency deliveries and water-quality clearance follow the current state of the system."
+    reporting:
+        person_days_lost:
+            about: "Days without normal water service summed over everyone the systems of the place serve. One person without water for a day counts one; a hundred people at half their normal service for a day count fifty. It measures the loss of service, not a count of people."
+            scope: "The people the systems of the place serve."
+        unserved_volume:
+            about: "The water that the systems of the place could not deliver to their customers, in million US gallons, summed over the run."
+            scope: "The customers of the systems of the place."
+        rework_caused:
+            about: "The additional work hours identified by field reports since the start of the run."
+            scope: "The controls crews' work on the systems of the place."
+        people_interrupted_now:
+            about: "The people without their normal water service at the reporting time, each person counted once. A system at half its normal service counts half its people."
+            scope: "The people the systems of the place serve."
+        people_under_advisory:
+            about: "The people whose system has issued a boil-water advisory that is still in force at the reporting time."
+            scope: "The people the systems of the place serve."
+        restored_share:
+            about: "The people with their normal water service at the reporting time, as a share of everyone the systems of the place serve."
+            scope: "The people the systems of the place serve."
+        emergency_water_deficit:
+            about: "The emergency drinking water that the people without service needed, at the planning ration, less what they received, in million US gallons."
+            scope: "The people without normal service in the systems of the place."
+        hospital_hours_constrained:
+            about: "Hours summed over the hospitals whose critical care was short of water, from their reserves, deliveries and the municipal supply together. The model reports the shortfall and puts no clinical harm on it."
+            scope: "The hospitals that the systems of the place supply."
+        work_remaining:
+            about: "The controls, field and replacement work still to do at the reporting time, in standardized work hours."
+            scope: "The recovery work of the systems of the place."
+        economic_loss:
+            about: "The value added that businesses in the areas of the place lose while public water is short and during their recovery, in US dollars at 2025 prices. The part that businesses can make up later counts as lost until they make it up, so the loss falls as they catch up. It leaves out the cost of the response, households' own costs and effects on other areas."
+            scope: "Businesses that need public water in the areas of the place, in US dollars at 2025 prices."
+            category: loss
+        deaths:
+            scope: "People who die because of the loss of water service, among the people the study follows."
+            category: deaths
+        casualties:
+            scope: "People who die or are seriously harmed because of the loss of water service, among the people the study follows."
+            category: casualties
+        wider_loss:
+            scope: "Businesses outside the areas of the place that depend on them."
+            category: loss
+        people_beyond_week:
+            scope: "The people the systems of the place serve."
+        people_followed:
+            scope: "The people the systems of the place serve."
+            category: exposure
+    not_estimated:
+        deaths:
+            label: "Deaths"
+            reason: "The reviewed evidence does not establish how a loss of water service of a given depth and length converts into deaths. The model reports the hospitals' hours short of water instead. This outcome is not zero." @not_estimated_clinical
+        casualties:
+            label: "Serious casualties, including deaths"
+            reason: "The reviewed evidence does not establish how a loss of water service converts into serious harm. The model reports the hospitals' hours short of water instead. This outcome is not zero." @not_estimated_clinical @hazus_severity
+        wider_loss:
+            label: "Economic loss in other areas"
+            reason: "Effects on other areas need a model of trade, inventories and substitution between areas that this scenario does not hold. This outcome is not zero." @not_estimated_propagation
+        people_beyond_week:
+            label: "People without service for more than a week without a break"
+            reason: "The model follows the water that each system delivers, not each person's own days without it, so it cannot say how many people went a week or more without a break. This outcome is not zero." @not_estimated_cohorts
+    comparisons:
+        delayed_none: early
+
+record service_incident: assumption "The initial reported outage starts the response clock. A subsequent field
+    report specifies the observed additional repair work in work hours."
 
 record counts_quantity_value: identity "The model counts this quantity. Each value that changes it has its own
     source."
@@ -1006,10 +895,11 @@ record keeps_count_limited: identity "Work moves once from still to do to done. 
 record counts_people_once: identity "Each person is served by one system of the place, and the people of two
     systems never overlap."
 
-record reach_modes: assumption A-SC43-REACH "The first move reaches every system of the place at once or,
-    where the place offers it, one system only. In the second case the system's buyers lose their water
-    through their connections, and the systems that keep their controls lend their crews. The reaches are the
-    modes that the scenario offers; the model is the same in each."
+record reach_modes: assumption "The first move reaches every system of the place at once or, where the place
+    offers it, one system only. In the second case the system's buyers lose their water through their
+    connections, and the systems that keep their controls lend their crews. The reaches are the modes that the
+    scenario offers; the model is the same in each."
+    assumption A-SC43-REACH
     claims:
         E-SC43-CWS-INVENTORY
         E-SC43-BULK-LINKING
@@ -1028,98 +918,26 @@ record not_estimated_propagation: identity "An outcome recorded for research but
 record not_estimated_cohorts: identity "An outcome recorded for research but not calculated. The water
     delivered is a fluid amount, not a record of each person's days without it."
 
-record shared_channel: assumption A-SC43-OPERATION "Several utilities let one OT integrator reach their
-    controllers through a remote-support platform. An attacker who holds that platform reaches every
-    controller behind it. Documented intrusions reached controllers over the internet and through remote
-    services with valid accounts; the scenario chooses the shared platform and the systems of the place behind
-    it."
-    claims:
-        E-TA18-ACCESS
-        ATTACK-T0886
-        ATTACK-T1133
-        E-PLC-INTERNET-REACH
-        E-SC43-WSCC-STAFFING
-
-record hidden_credential: assumption A-SC43-OPERATION "The attacker keeps a valid credential for the platform
-    that the first cleanup misses. It holds until responders remove it. The scenario chooses whether the
-    attacker keeps such a credential."
-    claims:
-        ATTACK-T1078
-        E-TA18-ACCESS
-
-record first_move: assumption A-SC43-OPERATION "The first move runs through the integrator's platform and
-    wipes the programmable controllers and operator stations of every system it reaches, so that the plants
-    cannot run under automatic control. Published intrusions reached water-sector controllers over the
-    internet and put them out of action, and catalogued adversary behaviour for industrial control covers
-    remote services, valid accounts and manipulation of control. The scenario chooses the shared platform and
-    the depth of the wipe."
-    claims:
-        E-PLC-INTERNET-REACH
-        ATTACK-T0886
-        ATTACK-T0831
-        ATTACK-T0859
-        ATTACK-T0878
-
-record ai_tempo: assumption A-AI-TEMPO "An AI agent that keeps a credential watches the restorations at all
-    hours and acts within minutes of a system's controls coming back. A human team comes back about two days
-    later. The first move is prepared in advance and runs the same in both pathways."
-    claims:
-        AI-ORCHESTRATION-2026
-        E-MANDIANT22
-
-record prepared_makes: assumption A-SC43-PREPARED-MAKES "A strike on restored controls puts back only the work
-    on the controller makes that the attacker has prepared for. The AI covers every make in use. A human team
-    covers one fifth, the share chosen for this scenario. Published concealment tooling was prepared over a
-    long time against one target type; attacks that reached many sites at once were visible within hours and
-    were worked around by hand."
-    claims:
-        E-T0832
-        E-PLC-INTERNET-REACH
-        E-CYOTE15-TIMING
-
-record watches_restorations: assumption A-SC43-OPERATION "The attacker holds a valid credential for the
-    platform, so it sees each system's controls come back and can act on them until responders remove the
-    credential. A credential that survives a first cleanup is the documented way that intruders kept access to
-    control networks."
-    claims:
-        ATTACK-T1078
-        E-TA18-ACCESS
-
-record restrike_effect: assumption A-SC43-WORK "A strike on restored controls puts the system's controls out
-    of action again and adds the share of its controls work that the attacker reaches, which the crews must
-    redo. The strike creates no other work and removes none."
-    claims:
-        ATTACK-T0831
-        E-SC43-NAWS-SCADA
-
-record clearance_by_response: assumption A-SC43-RESPONSE "The faster responses have samples taken and read
-    within a day or a day and a half; the delayed response takes two days. Each tier is a choice within the
-    observed sample-to-release intervals."
+record clearance_by_response: assumption "The faster responses have samples taken and read within a day or a
+    day and a half; the delayed response takes two days. Each tier is a choice within the observed
+    sample-to-release intervals."
+    assumption A-SC43-RESPONSE
     claims:
         E-SC43-CLEARANCE-INTERVAL
         E-SC43-CALGARY-RELEASE
 
-record reach: assumption A-SC43-REACH "The scenario follows the real water systems of one place, with the
-    people, plants, stored water and sales that each system's sources report. The template's values stand for
-    no system: each system of a place gives its own."
+record reach: assumption "The scenario follows the real water systems of one place, with the people, plants,
+    stored water and sales that each system's sources report. The template's values stand for no system: each
+    system of a place gives its own."
+    assumption A-SC43-REACH
     claims:
         E-SC43-CWS-INVENTORY
         E-SC43-SERVICE-AREAS
 
-record places: assumption A-SC43-PLACES "Each place is one where a part of the scenario's evidence comes from.
-    Its scenario holds the water systems that the evidence names and the systems that sell water to them."
-    claims:
-        E-SC43-CWS-INVENTORY
-
-record peak_day: assumption A-SC43-PEAK-DAY "The day of the attack is each system's peak day: its highest day
-    on record where a source reports one, and otherwise its average day times the median ratio of highest to
-    average day of the family's systems that report both."
-    claims:
-        E-SC43-WITHDRAWALS
-
-record demand_basis: assumption A-SC43-REACH "The default daily use and plant capacity of a system, which each
-    system of a place replaces with its own figures. The range is one that a reader can explore, from a system
-    that only sells water to the largest metropolitan systems; it is not a measured interval."
+record demand_basis: assumption "The default daily use and plant capacity of a system, which each system of a
+    place replaces with its own figures. The range is one that a reader can explore, from a system that only
+    sells water to the largest metropolitan systems; it is not a measured interval."
+    assumption A-SC43-REACH
     claims:
         E-SC43-WITHDRAWALS
 
@@ -1133,42 +951,44 @@ record storage_hours: source_transfer "A planning case shows that about nine ten
         E-SC43-RESERVOIR-BOUND
         E-SC43-JAMESTOWN-RATIO
 
-record depth: assumption A-SC43-DEPTH "With its controls wiped, a plant loses the stated share of its
-    production and the stated share of its delivery until operators run it by hand. Production loss and
-    pumping loss are kept apart, because stored water bridges one but not the other. The shares are choices
-    for each kind of system."
+record depth: assumption "With its controls wiped, a plant loses the stated share of its production and the
+    stated share of its delivery until operators run it by hand. Production loss and pumping loss are kept
+    apart, because stored water bridges one but not the other. The shares are choices for each kind of system."
+    assumption A-SC43-DEPTH
     claims:
         E-PLC-INTERNET-REACH
         E-SC43-CLAYTON-2026
 
-record manual: assumption A-SC43-MANUAL "Operators switch to manual controls after a delay and keep a stated
-    share of normal production. Two New Jersey systems switched to manual controls within an hour of losing
-    their remote monitoring and kept service for one and a half and two and a half days; a Utah system ran by
-    hand for about three weeks. The production that manual operation achieves is not reported, so the share is
-    chosen for each kind of system. Running by hand never cuts the production that still runs without the
-    controls, so a plant on manual controls produces the larger of the manual share and what the wiped
-    controls leave."
+record manual: assumption "Operators switch to manual controls after a delay and keep a stated share of normal
+    production. Two New Jersey systems switched to manual controls within an hour of losing their remote
+    monitoring and kept service for one and a half and two and a half days; a Utah system ran by hand for
+    about three weeks. The production that manual operation achieves is not reported, so the share is chosen
+    for each kind of system. Running by hand never cuts the production that still runs without the controls,
+    so a plant on manual controls produces the larger of the manual share and what the wiped controls leave."
+    assumption A-SC43-MANUAL
     claims:
         E-SC43-CAPEMAY-MANUAL
         E-SC43-WOODBINE-MANUAL
         E-SC43-UTAH-RECOVERY
         E-CYOTE15-TIMING
 
-record operator_competition: assumption A-SC43-MANUAL "The staff who run a plant by hand are the staff who
-    know its controls, so running by hand takes qualified hours away from the recovery work. A review of a
-    plant failure found that mostly manual operation with three operators on the night shift left required
-    tasks unfinished, and the plant's organization chart showed two of its 22 authorized operations positions
+record operator_competition: assumption "The staff who run a plant by hand are the staff who know its
+    controls, so running by hand takes qualified hours away from the recovery work. A review of a plant
+    failure found that mostly manual operation with three operators on the night shift left required tasks
+    unfinished, and the plant's organization chart showed two of its 22 authorized operations positions
     vacant."
+    assumption A-SC43-MANUAL
     claims:
         E-SC43-OPERATOR-COVERAGE
         E-SC43-MANUAL-TASKS-UNFINISHED
 
-record work: assumption A-SC43-WORK "The work to recover a system's controls has three parts that different
-    crews do, which are rebuilding and verifying the controls, reconfiguring equipment in the field and
-    installing replacements, and each part is a stated number of standardized work hours for one system of its
-    kind. A SCADA system was restored in three days after one incident and a city recovered for 18 months
-    after another; measured field repairs took tens of labour hours each. The hours by skill are choices for
-    this scenario."
+record work: assumption "The work to recover a system's controls has three parts that different crews do,
+    which are rebuilding and verifying the controls, reconfiguring equipment in the field and installing
+    replacements, and each part is a stated number of standardized work hours for one system of its kind. A
+    SCADA system was restored in three days after one incident and a city recovered for 18 months after
+    another; measured field repairs took tens of labour hours each. The hours by skill are choices for this
+    scenario."
+    assumption A-SC43-WORK
     claims:
         E-SC43-NAWS-SCADA
         E-SC43-UTAH-RECOVERY
@@ -1181,67 +1001,76 @@ record work_completion: identity "Work moves once from still to do to done, at t
 record one_crew_hour_moves_both: identity "An hour of crew work on a system uses one hour of the pool's hours,
     so the two move together."
 
-record parts_and_labour: assumption A-SC43-PARTS "Installing a replacement controller needs a part and the
-    labour to fit it at once, so the work waits when no part is in stock. Replacement pumps had a 32-week
-    purchase time in one filing, and components had lead times of up to two years in another."
+record parts_and_labour: assumption "Installing a replacement controller needs a part and the labour to fit it
+    at once, so the work waits when no part is in stock. Replacement pumps had a 32-week purchase time in one
+    filing, and components had lead times of up to two years in another."
+    assumption A-SC43-PARTS
     claims:
         E-SC43-PUMP-LEAD-TIME
         E-SC43-COMPONENT-LEAD-TIMES
 
-record clearance: assumption A-SC43-CLEARANCE "Once its controls and its sellers' controls are back, the
-    system samples its water and a laboratory tests it before the advisory ends, which takes a stated time.
-    The boil-water notices after a hurricane and a feeder-main repair ended one to two days after sampling."
+record clearance: assumption "Once its controls and its sellers' controls are back, the system samples its
+    water and a laboratory tests it before the advisory ends, which takes a stated time. The boil-water
+    notices after a hurricane and a feeder-main repair ended one to two days after sampling."
+    assumption A-SC43-CLEARANCE
     claims:
         E-SC43-CLEARANCE-INTERVAL
         E-SC43-CALGARY-STAGES
         E-SC43-CALGARY-RELEASE
         E-SC43-RECOMMISSIONING
 
-record advisory: assumption A-SC43-CLEARANCE "When the usable stored water is used up, the pressure falls and
-    the system issues a boil-water advisory, as a utility did after a loss of pressure in 2026. The advisory
-    restricts the permitted use of the water, not its physical delivery."
+record advisory: assumption "When the usable stored water is used up, the pressure falls and the system issues
+    a boil-water advisory, as a utility did after a loss of pressure in 2026. The advisory restricts the
+    permitted use of the water, not its physical delivery."
+    assumption A-SC43-CLEARANCE
     claims:
         E-SC43-CLAYTON-2026
 
-record stored_water_bridges: assumption A-SC43-DEPTH "Customers get their normal use while usable stored water
-    remains, less the share that the wiped pumps cannot move. Once the stored water is used up, they get only
-    what is produced, bought or received from a seller. This is a reduced form of pressure-dependent delivery;
-    the hydraulic form needs local calibration."
+record stored_water_bridges: assumption "Customers get their normal use while usable stored water remains,
+    less the share that the wiped pumps cannot move. Once the stored water is used up, they get only what is
+    produced, bought or received from a seller. This is a reduced form of pressure-dependent delivery; the
+    hydraulic form needs local calibration."
+    assumption A-SC43-DEPTH
     claims:
         E-SC43-PDD-FORM
         E-SC43-WNTR-RESILIENCE
         E-SC43-REFILL
 
-record losses: assumption A-SC43-REACH "A stated share of normal use leaks from the pipes whether or not
-    customers are served. The share is a choice for this scenario."
+record losses: assumption "A stated share of normal use leaks from the pipes whether or not customers are
+    served. The share is a choice for this scenario."
+    assumption A-SC43-REACH
 
-record bulk_dependence: assumption A-SC43-TIES "A system that sells water to another system of the place
-    serves its own customers first and shares what is left among its buyers in proportion to what each asks,
-    so a buyer loses water when its seller runs short. Sales to and purchases from systems outside the place
-    are the stated amounts of each system."
+record bulk_dependence: assumption "A system that sells water to another system of the place serves its own
+    customers first and shares what is left among its buyers in proportion to what each asks, so a buyer loses
+    water when its seller runs short. Sales to and purchases from systems outside the place are the stated
+    amounts of each system."
+    assumption A-SC43-TIES
     claims:
         E-SC43-BULK-LINKING
         E-SC43-JAMESTOWN-RATIO
 
-record refill_basis: assumption A-SC43-TIES "A buyer asks its sellers for what it needs, plus the water that
-    refills its usable storage over a stated time while its storage has room. The refill time is a choice."
+record refill_basis: assumption "A buyer asks its sellers for what it needs, plus the water that refills its
+    usable storage over a stated time while its storage has room. The refill time is a choice."
+    assumption A-SC43-TIES
     claims:
         E-SC43-REFILL
 
-record tie_weight: assumption A-SC43-TIES "A buyer with two sellers asks each in proportion to the capacity of
-    its connection. When a seller can fill only part of its connection, the buyer asks the others for the part
+record tie_weight: assumption "A buyer with two sellers asks each in proportion to the capacity of its
+    connection. When a seller can fill only part of its connection, the buyer asks the others for the part
     that it cannot fill, up to their capacities."
+    assumption A-SC43-TIES
     claims:
         E-SC43-BULK-LINKING
 
 record room_identity: identity "Usable storage is stored water or empty room for it: water that leaves the
     store makes room, and water that arrives fills it."
 
-record economy: assumption A-SC43-ECONOMY "The area that each system serves has a value added an hour, of
-    which a stated share needs public water. A stated share of lost output is made up over a stated time once
-    the water is back. A regional study estimated about 15 billion dollars of product lost in a month without
-    water in the national capital region, and a flood study found that the duration of water loss explained
-    business interruption; neither gives these shares, which are choices for this scenario."
+record economy: assumption "The area that each system serves has a value added an hour, of which a stated
+    share needs public water. A stated share of lost output is made up over a stated time once the water is
+    back. A regional study estimated about 15 billion dollars of product lost in a month without water in the
+    national capital region, and a flood study found that the duration of water loss explained business
+    interruption; neither gives these shares, which are choices for this scenario."
+    assumption A-SC43-ECONOMY
     claims:
         E-SC43-NCR-BENCHMARK
         E-SC43-LUMBERTON
@@ -1257,78 +1086,86 @@ record activity_transfer: source_transfer "Businesses keep a share of their acti
         E-SC43-VA-R-TAU
         E-SC43-LUMBERTON
 
-record sees_controls_fail: assumption A-SC43-OPERATION "Operators see their controls stop responding as soon
-    as the platform runs the attacker's commands. Two New Jersey systems received alarms within minutes of
-    losing their remote monitoring."
+record sees_controls_fail: assumption "Operators see their controls stop responding as soon as the platform
+    runs the attacker's commands. Two New Jersey systems received alarms within minutes of losing their remote
+    monitoring."
+    assumption A-SC43-OPERATION
     claims:
         E-SC43-CAPEMAY-MANUAL
         E-SC43-WOODBINE-MANUAL
 
-record shared_pool: assumption A-SC43-CREW-CAPACITY "The qualified crews of one skill form one pool that every
-    system of the place draws on, and the pool shares its hours among the systems that have work waiting in
-    proportion to what each asks for. Mutual aid moves people, equipment and services between utilities, and a
-    hurricane response circulated a few dozen generators among two hundred utilities over weeks, which shows
-    the pool is finite and shared."
+record shared_pool: assumption "The qualified crews of one skill form one pool that every system of the place
+    draws on, and the pool shares its hours among the systems that have work waiting in proportion to what
+    each asks for. Mutual aid moves people, equipment and services between utilities, and a hurricane response
+    circulated a few dozen generators among two hundred utilities over weeks, which shows the pool is finite
+    and shared."
+    assumption A-SC43-CREW-CAPACITY
     claims:
         E-SC43-WARN-MECHANISM
         E-SC43-MUTUAL-AID-SCALE
         E-SC43-FRWA-REDEPLOY
 
-record capacity_basis: assumption A-SC43-CREW-CAPACITY "The hours of work that the pool can do in an hour once
-    at work are a choice for this scenario. A state cyber response team had over 400 members, about 140 of
-    whom answered callouts, and sent one or two to about twelve people to an incident; membership is not
-    availability, and few members know water controls."
+record capacity_basis: assumption "The hours of work that the pool can do in an hour once at work are a choice
+    for this scenario. A state cyber response team had over 400 members, about 140 of whom answered callouts,
+    and sent one or two to about twelve people to an incident; membership is not availability, and few members
+    know water controls."
+    assumption A-SC43-CREW-CAPACITY
     claims:
         E-SC43-CRT-ROSTER
         E-SC43-WSCC-STAFFING
 
-record stages: assumption A-SC43-CREW-CAPACITY "Assistance passes through a request, a release, travel and
-    orientation before the crews work on their own. A generator request after a hurricane was answered in 13
-    minutes and the equipment ran within a day; visiting crews in another response needed two days before they
-    worked independently. The times are choices within those observations."
+record stages: assumption "Assistance passes through a request, a release, travel and orientation before the
+    crews work on their own. A generator request after a hurricane was answered in 13 minutes and the
+    equipment ran within a day; visiting crews in another response needed two days before they worked
+    independently. The times are choices within those observations."
+    assumption A-SC43-CREW-CAPACITY
     claims:
         E-SC43-OFFER-TIME
         E-SC43-MUTUAL-AID-SCALE
 
-record capacity_by_response: assumption A-SC43-RESPONSE "The early response brings four times the delayed
-    response's crew capacity and the standard response twice, as more mutual-aid crews and vendor engineers
-    join. Each tier is a choice for this scenario."
+record capacity_by_response: assumption "The early response brings four times the delayed response's crew
+    capacity and the standard response twice, as more mutual-aid crews and vendor engineers join. Each tier is
+    a choice for this scenario."
+    assumption A-SC43-RESPONSE
     claims:
         E-SC43-MUTUAL-AID-SCALE
         E-SC43-CRT-ROSTER
 
-record stages_by_response: assumption A-SC43-RESPONSE "The faster responses request crews within hours and
-    have them at work within a day or two; the delayed response takes about four days. Each tier is a choice
-    for this scenario."
+record stages_by_response: assumption "The faster responses request crews within hours and have them at work
+    within a day or two; the delayed response takes about four days. Each tier is a choice for this scenario."
+    assumption A-SC43-RESPONSE
     claims:
         E-SC43-OFFER-TIME
         E-SC43-MUTUAL-AID-SCALE
 
-record spares_basis: assumption A-SC43-PARTS "Replacement controllers come from the spares in stock and from
-    one batch that arrives after the lead time. The stock and the batch are choices for this scenario."
+record spares_basis: assumption "Replacement controllers come from the spares in stock and from one batch that
+    arrives after the lead time. The stock and the batch are choices for this scenario."
+    assumption A-SC43-PARTS
     claims:
         E-SC43-COMPONENT-LEAD-TIMES
 
-record lead_basis: assumption A-SC43-PARTS "The batch arrives a stated time after responders recognize the
-    attack. A utility estimated 32 weeks to purchase replacement pumps, components had lead times of months to
-    two years, and a supplier expedited a controller after federal coordination; the lead time of each
-    response tier is a choice."
+record lead_basis: assumption "The batch arrives a stated time after responders recognize the attack. A
+    utility estimated 32 weeks to purchase replacement pumps, components had lead times of months to two
+    years, and a supplier expedited a controller after federal coordination; the lead time of each response
+    tier is a choice."
+    assumption A-SC43-PARTS
     claims:
         E-SC43-PUMP-LEAD-TIME
         E-SC43-COMPONENT-LEAD-TIMES
         E-SC43-EXPEDITED-DELIVERY
 
-record spares_by_response: assumption A-SC43-RESPONSE "The faster responses hold more compatible spares and
-    expedite the batch; the delayed response waits for an ordinary order. Each tier is a choice for this
-    scenario."
+record spares_by_response: assumption "The faster responses hold more compatible spares and expedite the
+    batch; the delayed response waits for an ordinary order. Each tier is a choice for this scenario."
+    assumption A-SC43-RESPONSE
     claims:
         E-SC43-EXPEDITED-DELIVERY
 
-record min_of_capacities: assumption A-SC43-RELIEF "Emergency water reaches people at the smallest of four
-    capacities, which are the approved supply, the tankers, the receiving points and the staff who hand it
-    out. A hospital after a hurricane received about 300,000 gallons a day by tanker, and one health system
-    deployed 28 tankers of 6,000 gallons and two 20,000 gallon pumping tankers for five hospitals. The
-    capacities of each tier are choices for this scenario."
+record min_of_capacities: assumption "Emergency water reaches people at the smallest of four capacities, which
+    are the approved supply, the tankers, the receiving points and the staff who hand it out. A hospital after
+    a hurricane received about 300,000 gallons a day by tanker, and one health system deployed 28 tankers of
+    6,000 gallons and two 20,000 gallon pumping tankers for five hospitals. The capacities of each tier are
+    choices for this scenario."
+    assumption A-SC43-RELIEF
     claims:
         E-SC43-TRUCKED-SUPPLY
         E-SC43-HCA-FLEET
@@ -1339,93 +1176,99 @@ record ration_basis: source_transfer "State planning guidance uses one gallon fo
     claims:
         E-SC43-RELIEF-MINIMUM
 
-record start_basis: assumption A-SC43-RELIEF "Deliveries start a stated time after responders recognize the
-    attack, which is a choice for this scenario."
+record start_basis: assumption "Deliveries start a stated time after responders recognize the attack, which is
+    a choice for this scenario."
+    assumption A-SC43-RELIEF
 
-record priority_basis: assumption A-SC43-RELIEF "Hospitals get the emergency water first, then the households,
-    each in proportion to their need. Who comes first is a policy choice for this scenario."
+record priority_basis: assumption "Hospitals get the emergency water first, then the households, each in
+    proportion to their need. Who comes first is a policy choice for this scenario."
+    assumption A-SC43-RELIEF
     claims:
         E-SC43-TRUCKED-SUPPLY
 
-record relief_by_response: assumption A-SC43-RESPONSE "The faster responses bring more approved water, more
-    tankers and more staff within hours; the delayed response takes two days and brings less. Each tier is a
-    choice for this scenario."
+record relief_by_response: assumption "The faster responses bring more approved water, more tankers and more
+    staff within hours; the delayed response takes two days and brings less. Each tier is a choice for this
+    scenario."
+    assumption A-SC43-RESPONSE
     claims:
         E-SC43-HCA-FLEET
 
-record population_basis: assumption A-SC43-REACH "The default people of a system's homes, which each system of
-    a place replaces with the people that it reports to the national inventory. Each person is served by one
-    system only."
+record population_basis: assumption "The default people of a system's homes, which each system of a place
+    replaces with the people that it reports to the national inventory. Each person is served by one system
+    only."
+    assumption A-SC43-REACH
     claims:
         E-SC43-CWS-INVENTORY
 
-record service_share: assumption A-SC43-DEPTH "The share of the system's people without their normal service
-    equals the share of normal use that the system cannot deliver, and their time without service adds up over
-    everyone the system serves. A pressure zone or a priority customer can differ from this average."
+record service_share: assumption "The share of the system's people without their normal service equals the
+    share of normal use that the system cannot deliver, and their time without service adds up over everyone
+    the system serves. A pressure zone or a priority customer can differ from this average."
+    assumption A-SC43-DEPTH
     claims:
         E-SC43-PDD-FORM
 
-record reserve_basis: assumption A-SC43-HOSPITAL "The hospitals that each system supplies hold a stated number
-    of days of their critical need in reserve. An audited medical complex held 1.68 million gallons, about six
-    days of its critical load, and a hospital used about 293 gallons for each bed a day in ordinary operation.
-    The reserve is a choice for this scenario."
+record reserve_basis: assumption "The hospitals that each system supplies hold a stated number of days of
+    their critical need in reserve. An audited medical complex held 1.68 million gallons, about six days of
+    its critical load, and a hospital used about 293 gallons for each bed a day in ordinary operation. The
+    reserve is a choice for this scenario."
+    assumption A-SC43-HOSPITAL
     claims:
         E-SC43-HOSPITAL-RESERVE
         E-SC43-HOSPITAL-USE
         E-SC43-HCAI-FIELDS
 
-record critical_basis: assumption A-SC43-HOSPITAL "Each hospital's critical care and plant need the same
-    stated volume of water a day, of which the municipal supply meets the share that its system delivers. The
-    volume is one sixtieth of 5 million gallons a day, the earlier choice for sixty hospitals; an audited
-    complex estimated its critical acute-care and energy-plant demand at 0.278 million gallons a day."
+record critical_basis: assumption "Each hospital's critical care and plant need the same stated volume of
+    water a day, of which the municipal supply meets the share that its system delivers. The volume is one
+    sixtieth of 5 million gallons a day, the earlier choice for sixty hospitals; an audited complex estimated
+    its critical acute-care and energy-plant demand at 0.278 million gallons a day."
+    assumption A-SC43-HOSPITAL
     claims:
         E-SC43-HOSPITAL-RESERVE
 
-record constraint_basis: assumption A-SC43-HOSPITAL "While reserves and deliveries do not meet the critical
-    need, the hospitals constrain their functions in proportion to the shortfall, as a hospital that suspended
-    new surgeries and diverted ambulances during a water loss did. The model reports the facility-hours
+record constraint_basis: assumption "While reserves and deliveries do not meet the critical need, the
+    hospitals constrain their functions in proportion to the shortfall, as a hospital that suspended new
+    surgeries and diverted ambulances during a water loss did. The model reports the facility_hours
     constrained and converts them into no clinical harm."
+    assumption A-SC43-HOSPITAL
     claims:
         E-SC43-MEDSTAR-90MIN
         E-SC43-NIAC-DEGRADATION
         E-SC43-TRUCKED-SUPPLY
 
-record hospital_join: assumption A-SC43-HOSPITAL-JOIN "A system supplies the hospitals of the CMS list whose
-    geocoded address lies in its EPA service area. The template's one hospital stands for none: each system
-    gives its own count."
+record hospital_join: assumption "A system supplies the hospitals of the CMS list whose geocoded address lies
+    in its EPA service area. The template's one hospital stands for none: each system gives its own count."
+    assumption A-SC43-HOSPITAL-JOIN
     claims:
         E-SC43-SERVICE-AREAS
 
-record response_basis: assumption A-SC43-RESPONSE "Operators see their controls fail at once, but recognizing
-    a cyber attack on the shared platform takes the integrator and the state's responders a stated time. One
-    New Jersey system's vendor identified a potential cyberattack twelve hours after the alarm, and a state
-    cyber centre arrived the next morning."
+record response_basis: assumption "Operators see their controls fail at once, but recognizing a cyber attack
+    on the shared platform takes the integrator and the state's responders a stated time. One New Jersey
+    system's vendor identified a potential cyberattack twelve hours after the alarm, and a state cyber centre
+    arrived the next morning."
+    assumption A-SC43-RESPONSE
     claims:
         E-SC43-CAPEMAY-MANUAL
         E-SC43-WOODBINE-MANUAL
         E-SC43-CRT-ROSTER
 
-record removal_basis: assumption A-SC43-RESPONSE "After recognition, responders take a stated time to find and
-    remove the attacker's credential and rebuild the platform's access controls. A regional system restored
-    its SCADA in three days and kept its shared connections isolated for more than two months; a city took
-    three weeks of manual operation."
+record removal_basis: assumption "After recognition, responders take a stated time to find and remove the
+    attacker's credential and rebuild the platform's access controls. A regional system restored its SCADA in
+    three days and kept its shared connections isolated for more than two months; a city took three weeks of
+    manual operation."
+    assumption A-SC43-RESPONSE
     claims:
         E-SC43-NAWS-SCADA
         E-SC43-UTAH-RECOVERY
         E-SC43-MN-2026
 
-record response_by_tier: assumption A-SC43-RESPONSE "The early response recognizes the attack in six hours and
-    removes the credential in a day; the standard response takes twelve hours and five days; the delayed
-    response takes a day and ten days. Each tier is a choice for this scenario."
+record response_by_tier: assumption "The early response recognizes the attack in six hours and removes the
+    credential in a day; the standard response takes twelve hours and five days; the delayed response takes a
+    day and ten days. Each tier is a choice for this scenario."
+    assumption A-SC43-RESPONSE
     claims:
         E-SC43-CAPEMAY-MANUAL
         E-SC43-NAWS-SCADA
 
-record hazus_severity: convention HAZUS-SEVERITY "Serious casualties are the people who die and the people who
-    survive with serious harm that lasts: the Hazus severity levels S4 and S3."
-
-# An older version of the language ordered these events when they came at one moment
-# (simultaneous:). In version 0.0.1 the order of the lines decides, and the things and events are in
-# an order that keeps each of them:
-#     responders.remove_access before Utility.strike_again
-#     controls_back before strike_again
+record hazus_severity: convention "Serious casualties are the people who die and the people who survive with
+    serious harm that lasts: the Hazus severity levels S4 and S3."
+    convention HAZUS-SEVERITY

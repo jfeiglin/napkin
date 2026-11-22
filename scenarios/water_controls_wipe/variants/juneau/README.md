@@ -1,12 +1,9 @@
 # water_controls_wipe:juneau
 
-[Scenario brief](results/brief.md) · [Model](model.scn) · [Methods](results/methods.md) ·
+[Historical scenario brief](results/brief.md) · [Model](model.scn) · [Historical methods](results/methods.md) ·
 [The `water_controls_wipe` package](../../README.md)
 
-Juneau, Alaska, as a place of the `water_controls_wipe` family: an AI agent wipes the controls of the place's water system through
-the remote-support platform of the OT integrator it uses. The package's module (`water.scn`) gives the mechanism,
-the response and the outcomes; this folder gives the place's system, its evidence, stylesheet, tests and
-published results.
+This variant follows water service and recovery in Juneau, Alaska. The initial controls outage is an incident input. The model computes storage, deliveries, crew queues and advisory clearance over time. The checked-in results describe the historical study at legacy revision `8488047`.
 
 ## The place
 
@@ -24,14 +21,8 @@ wellfield's output from a 2014 news report, and its plant and outages from the u
 served, value added and hospital come from the package's evidence. The package's shared tests check this place with
 the others.
 
-## Run and publish
-
-Run from the repository root:
+## Run
 
 ```sh
-napkin run scenarios/water_controls_wipe --variant juneau
-python -B -m pytest --scenario water_controls_wipe:juneau
-python -B -m tools.publish --write --scenario water_controls_wipe:juneau
+napkin run scenarios/water_controls_wipe/variants/juneau --run delayed_none --value unserved_volume
 ```
-
-The publisher owns files in `results/`. Evidence changes go through `tools.evidence.integrate`.
