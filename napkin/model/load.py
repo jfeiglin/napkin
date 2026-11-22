@@ -70,6 +70,11 @@ def dump_json(value, *, sort_keys=False, indent=None, ensure_ascii=True, separat
 
 def load_json(path, *, evidence=False, exact_numbers=False):
     """A JSON document (library, edits, package): duplicate keys and non-finite numbers rejected."""
+    return parse_json(Path(path).read_text(encoding='utf-8'), path, exact_numbers=evidence or exact_numbers)
+
+
+def parse_json(text, path, *, exact_numbers=False):
+    """Read captured UTF-8 text under the same rules as a file, with its path in diagnostics."""
 
     def pairs(items):
         result = {}
@@ -83,10 +88,10 @@ def load_json(path, *, evidence=False, exact_numbers=False):
         raise SourceError(path, 0, f'non-finite number {value!r}')
 
     return json.loads(
-        Path(path).read_text(encoding='utf-8'),
+        text,
         object_pairs_hook=pairs,
         parse_constant=bad_constant,
-        parse_float=_exact_number if evidence or exact_numbers else float,
+        parse_float=_exact_number if exact_numbers else float,
     )
 
 

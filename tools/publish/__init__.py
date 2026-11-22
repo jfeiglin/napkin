@@ -165,7 +165,7 @@ def _artifacts(name, ctx):
 def sample_spreads(ctx):
     """Run each declared spread of the selection at its authored settings through the public sampler."""
     from napkin.engine import edits_for
-    from napkin.model.load import load_json
+    from napkin.model.load import parse_json
     from napkin.spread import spread
 
     from . import paired
@@ -178,7 +178,8 @@ def sample_spreads(ctx):
         receipts = []
         for spec in brief.spreads:
             path = spread_document(model, spec)
-            body = load_json(path, exact_numbers=True)
+            edit_bytes = path.read_bytes()
+            body = parse_json(edit_bytes.decode('utf-8'), path, exact_numbers=True)
             if not isinstance(body, dict):
                 raise ValueError(f'{path}: an edit document is a JSON object')
             edits = edits_for(model, body)
@@ -193,9 +194,18 @@ def sample_spreads(ctx):
             for run in spec.runs:
                 ctx.progress(f'sampling {sid} {spec.id} {run}: {spec.samples} samples, seed {spec.seed}')
                 result = spread(
-                    model, paths, run=run, edits=edits, samples=spec.samples, seed=spec.seed, jobs=ctx.jobs
+                    model,
+                    paths,
+                    run=run,
+                    edits=edits,
+                    samples=spec.samples,
+                    seed=spec.seed,
+                    jobs=ctx.jobs,
+                    with_scales=run in needed,
                 )
-                values = paired.keyed_samples(result, spec, f'{sid} {spec.id} {run}')
+                values = paired.keyed_samples(
+                    result, spec, f'{sid} {spec.id} {run}', with_scales=run in needed
+                )
                 if run in needed:
                     studies[run] = (replace(result, samples=(), central=None), values)
                 total += len(values)
@@ -205,7 +215,7 @@ def sample_spreads(ctx):
                     'method': spec.method,
                     'seed': spec.seed,
                     'samples_per_run': spec.samples,
-                    'edit_sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                    'edit_sha256': hashlib.sha256(edit_bytes).hexdigest(),
                     'comparisons': [paired.comparison(pair, studies) for pair in pairs],
                 }
                 omitted = {name: reason for name, reason in reasons.items() if reason is not None}

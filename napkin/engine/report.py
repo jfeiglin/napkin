@@ -174,6 +174,17 @@ class Report:
     placements: tuple[tuple[str, float, float], ...] = ()
 
 
+def reading_scale(reader, program, path, at):
+    """The comparison scale of a reading at a time in its displayed unit, or None."""
+    try:
+        key = key_of(program, path)
+        _, unit = reader.checked(key)
+        floor = reader.comparison_floor(key, at)
+    except (KeyError, LookupError, ValueError, TypeError):
+        return None
+    return None if floor is None else in_unit(floor, unit)
+
+
 def report(record, program, configuration, paths, times, lags=None, model=None, options=(), *, table=None):
     """The report of a run (see the module): `paths` and `times` are the caller's, `lags` maps a path
     to its `Lag`. Pass the compiler or artifact side table in `table` for labels and evidence.

@@ -34,11 +34,11 @@ from functools import partial
 
 from ..program.config import MEDIAN, Request
 from . import expectations
-from .report import report
+from .report import reading_scale, report
 from .sampling import SamplingSettings, sampled
 from .study import run_all
 from .timeline import paused, read
-from .timeline.record import key_of, named
+from .timeline.record import Reader, key_of, named
 
 
 @dataclass(frozen=True)
@@ -52,6 +52,7 @@ class Sample:
     draws: tuple[tuple[str, str, object], ...]
     near_ties: int
     stopped: str | None
+    scales: tuple[tuple[float | None, ...], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -98,13 +99,18 @@ def stopped(record):
     return None
 
 
-def _sampled(paths, times, program, configuration, record):
+def _sampled(paths, times, with_scales, program, configuration, record):
     """What a study keeps of one sample's run (`Sample`): it runs in the process that ran the sample."""
     values = tuple(reading.values for reading in read(record, program, paths, times))
     draws = tuple(
         (entry.part, entry.owner, entry.detail('value')) for entry in record.trace if entry.kind == 'draw'
     )
-    return Sample(configuration.seed, values, draws, len(record.near_ties()), stopped(record))
+    scales = ()
+    stop = stopped(record)
+    if with_scales and stop is None:
+        reader = Reader(record, program)
+        scales = tuple(tuple(reading_scale(reader, program, path, at) for at in times) for path in paths)
+    return Sample(configuration.seed, values, draws, len(record.near_ties()), stop, scales)
 
 
 def monte_carlo(
@@ -116,6 +122,7 @@ def monte_carlo(
     *,
     model=None,
     confidence=0.95,
+    with_scales=False,
     jobs=1,
     progress=None,
     cancel=None,
@@ -144,7 +151,7 @@ def monte_carlo(
     if central.stopped is not None:
         return replace(study, refused=f'the central run stops: {central.stopped}')
     request = Request(configuration.request.horizon, everything=False, keys=keys)
-    work = partial(_sampled, paths, times)
+    work = partial(_sampled, paths, times, with_scales)
     samples = tuple(
         run_all(
             program,

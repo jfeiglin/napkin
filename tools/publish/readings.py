@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from napkin import report
-from napkin.engine.report import Shown
-from napkin.engine.timeline.record import Reader, in_unit, key_of
+from napkin.engine.report import Shown, reading_scale
+from napkin.engine.timeline.record import Reader
 from napkin.model import load_scenario
 from napkin.model.runs import options_of
 from napkin.model.support import CODE, DATUM
@@ -34,6 +34,11 @@ FIGURES = 6
 NEGLIGIBLE = 1e-6
 
 
+def visible_value(value, scale):
+    """Treat residuals within the reading's display floor as zero, keeping all other digits."""
+    return 0.0 if scale is not None and abs(value) <= NEGLIGIBLE * scale else value
+
+
 def display(value, scale=None):
     """A reading as the page shows it; `scale` is its comparison scale in its displayed unit."""
     if isinstance(value, Unavailable):
@@ -43,21 +48,8 @@ def display(value, scale=None):
     if isinstance(value, bool):
         return 'true' if value else 'false'
     if isinstance(value, (int, float)):
-        if scale is not None and abs(value) <= NEGLIGIBLE * scale:
-            return '0'
-        return format(value, f'.{FIGURES}g')
+        return format(visible_value(value, scale), f'.{FIGURES}g')
     return str(value)
-
-
-def scale_of(reader, program, path, at):
-    """The comparison scale of a reading at a time in its displayed unit, or None."""
-    try:
-        key = key_of(program, path)
-        _, unit = reader.checked(key)
-        floor = reader.comparison_floor(key, at)
-    except (KeyError, LookupError, ValueError, TypeError):
-        return None
-    return None if floor is None else in_unit(floor, unit)
 
 
 def check_support(model):
@@ -98,7 +90,9 @@ def reported_rows(brief, model, name, record, times):
             references = {
                 rid: definitions.get(rid) for item in value.trail if item.exercised for rid in item.records
             }
-            reading = Reading(value.values[0], value.unit or '1', scale_of(reader, model.program, path, at))
+            reading = Reading(
+                value.values[0], value.unit or '1', reading_scale(reader, model.program, path, at)
+            )
             yield path, at, reading, references
 
 

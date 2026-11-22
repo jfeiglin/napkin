@@ -3,7 +3,7 @@
 from .. import catalogue
 from . import cell
 from .brief import Comparison, brief_of, comparisons_of, featured
-from .paired import numeric, percent_change
+from .paired import contrast, numeric
 from .readings import check_support, display, reported_rows
 
 
@@ -71,9 +71,8 @@ def render(model, *, jobs=1, completed=None):
                     base, compared = cells
                     if base.unit != compared.unit:
                         raise ValueError(f'{path}: units differ across runs')
-                    delta = compared.value - base.value
-                    change = display(delta, max(base.scale or 0, compared.scale or 0))
-                    relative = percent_change(delta, base.value, unit) if base.text != '0' else None
+                    delta, relative = contrast(base.value, compared.value, base.scale, compared.scale, unit)
+                    change = display(delta)
                     if relative is not None:
                         percent = display(relative)
                 row.extend((change, percent))
