@@ -11,6 +11,9 @@ from pathlib import Path
 
 from tests.engine import (
     authored_number_cases,
+    authoring_parity_cases,
+    collection_kind_cases,
+    collection_scope_cases,
     comparison_band_cases,
     cross_rate_cases,
     reversible_bound_cases,
@@ -42,6 +45,10 @@ FAMILIES = {
     's9/reversible': reversible_bound_cases.check_reversible_bounds,
     's9/simultaneous': simultaneous_bound_cases.check_simultaneous_bounds,
     'p1/rate': cross_rate_cases.check_cross_rate,
+    's5/scope': collection_scope_cases.check_collection_scope,
+    's5/authoring': authoring_parity_cases.check_authoring_parity,
+    's5/kinds': collection_kind_cases.check_collection_kind,
+    's5/filter': collection_kind_cases.check_filter_history,
 }
 
 
@@ -81,6 +88,10 @@ def run_cases(ids, destination):
         's9/reversible': reversible_bound_cases,
         's9/simultaneous': simultaneous_bound_cases,
         'p1/rate': cross_rate_cases,
+        's5/scope': collection_scope_cases,
+        's5/authoring': authoring_parity_cases,
+        's5/kinds': collection_kind_cases,
+        's5/filter': collection_kind_cases,
     }
     sources_by_module = {
         module: {module.__name__: hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()}
