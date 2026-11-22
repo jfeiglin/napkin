@@ -251,8 +251,8 @@ def test_a_curved_piece_reads_the_increase_of_its_series():
 
 
 def test_a_run_that_fails_keeps_its_failure_in_the_record():
-    program = tank(water=-1).finish()
-    record = run(program, configured(3))
+    program = tank(input_('initial', 'L', 8), water=this.initial).finish()
+    record = run(program, configured(3, inputs=(InputValue('tank', 'initial', Quantity(-1, 'L')),)))
     assert 'State bounds violated' in record.failure.detail('message')
     assert record.failure.kind == 'failure' and record.trace[-1] == record.failure
 

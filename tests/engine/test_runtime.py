@@ -31,7 +31,7 @@ from napkin.program.build import (
     this,
     value,
 )
-from napkin.program.config import Configuration, Request
+from napkin.program.config import Configuration, InputValue, Quantity, Request
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
 
@@ -319,11 +319,17 @@ def test_a_state_outside_its_bounds_at_the_start_fails_the_run_and_names_it():
     b = Builder(UNITS)
     b.entity(
         'tank',
-        value('water', 'L', -1, lower=0),
-        value('spare', 'L', 30, lower=0, upper=20),
+        input_('initial_water', 'L', 8),
+        input_('initial_spare', 'L', 10),
+        value('water', 'L', this.initial_water, lower=0),
+        value('spare', 'L', this.initial_spare, lower=0, upper=20),
         flow('out', this.water, SINK, request=rate(1)),
     )
-    record = run(b.finish(), Configuration(Request(1)))
+    inputs = (
+        InputValue('tank', 'initial_water', Quantity(-1, 'L')),
+        InputValue('tank', 'initial_spare', Quantity(30, 'L')),
+    )
+    record = run(b.finish(), Configuration(Request(1), inputs=inputs))
     message = record.failure.detail('message')
     assert record.failure.t == 0 and 'State bounds violated' in message
     assert message.index('tank.water') < message.index('tank.spare')
