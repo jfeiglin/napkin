@@ -15,13 +15,13 @@ from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
 from napkin.program.config import Configuration, Request
 from napkin.program.record import Key, Unavailable
 from tests.engine.authored_number_cases import check_authored_number
-from tests.engine.authoring_parity_cases import check_authoring_parity
 from tests.engine.collection_kind_cases import check_collection_kind, check_filter_history
 from tests.engine.collection_scope_cases import check_collection_scope
 from tests.engine.comparison_band_cases import check_comparison_band
 from tests.engine.cross_rate_cases import check_cross_rate
 from tests.engine.lag_bend_cases import check_lag_bends
 from tests.engine.lag_monotonicity_cases import check_lag_monotonicity
+from tests.engine.parity_corpus import check_authoring_parity
 from tests.engine.path_selection_cases import check_path_selection
 from tests.engine.port_cases import HORIZON, Case, Spelling, builder_program, text_program
 from tests.engine.proof_event_cases import check_proof_arguments, check_proof_reach
