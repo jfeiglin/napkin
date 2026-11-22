@@ -186,8 +186,9 @@ class Alloc:
 
 
 class Coll:
-    """A collection: (key, member, value) for each member, in creation order.
-    `value` is the member, or what a projection of a field gave for it."""
+    """A collection of (key, key owner, current value) triples.
+    Projection changes the value and retains the owner of the key. Rekeying makes the current
+    member the owner, whose field supplies the comparison scale and whose creation breaks ties."""
 
     __slots__ = ('items', 'key_field')
 
@@ -510,7 +511,7 @@ class Ev:
             raise RunFailed(f'{show(source)}.where(...) needs a collection')
         kept = []
         for item in c.items:
-            scope = Scope(self.scope.this, self.scope.occ, {**self.scope.extra, ITEM: item[1]})
+            scope = Scope(self.scope.this, self.scope.occ, {**self.scope.extra, ITEM: item[2]})
             if self.fork(scope).truth(test):
                 kept.append(item)
         return Coll(kept, c.key_field)
@@ -1015,17 +1016,18 @@ class Ev:
         if method == 'where':
             name = args[0]._a[0]
             if len(args) == 1:
-                keep = [self.deref(self.attr(m, name)) is True for _, m, _ in c.items]
+                keep = [self.deref(self.attr(value, name)) is True for _, _, value in c.items]
             else:
                 rhs = self.val(args[2])
-                fields = (self.attr(m, name) for _, m, _ in c.items)
+                fields = (self.attr(value, name) for _, _, value in c.items)
                 keep = [
                     self.compare(args[1]._a[0], self.deref(field), rhs, (field, args[2])) for field in fields
                 ]
             return Coll((i for i, k in zip(c.items, keep) if k), c.key_field)
         if method == 'by':
             field = args[0]._a[0]
-            return Coll(((self.num(self.attr(m, field)), m, v) for _, m, v in c.items), field)
+            keyed = ((self.num(self.attr(member, field)), member, member) for _, _, member in c.items)
+            return Coll(keyed, field)
         if method == 'at':
             x = self.num(args[0])
             found = None
