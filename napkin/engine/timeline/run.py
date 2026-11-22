@@ -429,7 +429,11 @@ class Run:
                 self.bounds[name] = low, high
                 if initial != found:
                     self.env[name] = initial
-                if value.given and not value.boolean and not self.admitted(name, low, high, initial):
+                if (
+                    value.given
+                    and (lower is not None or upper is not None)
+                    and not self.admitted(name, low, high, initial)
+                ):
                     raise ConfigurationError(
                         f'{name} = {quantity(plan, name, initial)} is outside its admitted range '
                         f'{span(plan, name, low, high)}'

@@ -134,6 +134,18 @@ def litres(number):
 # ---- the options of a run -------------------------------------------------------------------------
 
 
+def test_a_named_run_records_its_enum_and_text_options_as_written():
+    from napkin import read, run
+
+    config = MODEL.configure('fast_broken_human')
+    record = run(MODEL.program, config)
+    assert record.failure is None and record.end == 10
+    mode, actor, delay = read(record, MODEL.program, ['plant.mode', 'plant.actor', 'plant.delay'], [0, 10])
+    assert mode.values == ('BUSY', 'BUSY')
+    assert actor.values == ('The human team', 'The human team')
+    assert delay.values == (2, 2)
+
+
 def test_the_default_run_takes_the_model_as_written_and_a_run_its_options():
     assert inputs() == {}
     assert inputs('slow') == {}
