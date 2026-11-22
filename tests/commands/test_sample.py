@@ -11,6 +11,7 @@ the beta distribution of scipy.
 from __future__ import annotations
 
 import json
+from decimal import Decimal
 
 import numpy as np
 import pytest
@@ -101,6 +102,29 @@ def test_an_exceedance_is_the_share_of_the_samples_above_the_value(tmp_path, cap
     }
     text = napkin(capsys, 'sample', model, '--jobs', '1', '--samples', '200', '--exceed', 'tank.filled=25')
     assert f'P(tank.filled > 25) = {k}/{n} = {k / n:.6g} (95% from ' in text.out
+
+
+def test_exceedance_uses_the_exact_threshold_it_prints_as_a_json_number(tmp_path, capsys):
+    model = package(tmp_path / 'fixed', 'scenario "Fixed"\n    horizon 1 h\nbox:\n    n = 1\n', UNITS)
+    below = '0.99999999999999999999'
+    found = napkin(
+        capsys,
+        'sample',
+        model,
+        '--json',
+        '--jobs',
+        '1',
+        '--samples',
+        '3',
+        '--exceed',
+        f'box.n={below}',
+        '--exceed',
+        'box.n=1',
+    )
+    assert found.code == 0, found.err
+    first, second = json.loads(found.out, parse_float=Decimal)['exceed']
+    assert (first['threshold'], first['above'], first['samples']) == (Decimal(below), 3, 3)
+    assert (second['threshold'], second['above']) == (1, 0)
 
 
 def test_the_same_seed_gives_the_same_samples_and_another_seed_others(tmp_path, capsys):

@@ -10,10 +10,9 @@ from __future__ import annotations
 
 import copy
 import hashlib
-import math
 from collections.abc import Mapping
 
-from ..core.units import rational
+from ..core.units import finite_number, rational
 from ..expressions import ExpressionError, UnitSystem
 from .ir import basis_records, diagnostic, thaw
 from .load import dump_json, schema_errors, schema_identity
@@ -198,7 +197,7 @@ def basis_errors(document, library, root=''):
     return errors
 
 
-def datum_errors(document, library, root=''):
+def datum_errors(document, library, root='', *, units=None):
     """A value with a unit whose record cites an exact datum of a claim (`datum`) equals it after
     unit conversion; any other value needs a derivation, a transfer or an assumption. A diagnostic
     names the part's own `path` when it has one. A link that is not a record is the shape check's to
@@ -206,7 +205,8 @@ def datum_errors(document, library, root=''):
     """
     errors = []
     claims = {item['id']: item for item in library['claims']}
-    units = UnitSystem(library['units'])
+    if units is None:
+        units = UnitSystem(library['units'])
 
     def walk(value, path):
         if isinstance(value, Mapping):
@@ -248,7 +248,7 @@ def datum_errors(document, library, root=''):
 def finite_errors(value, path):
     errors = []
     if isinstance(value, (int, float)) and not isinstance(value, bool):
-        if not math.isfinite(value):
+        if not finite_number(value):
             errors.append(diagnostic('nonfinite', path, 'Finite numbers are required'))
     elif isinstance(value, Mapping):
         for key, child in value.items():
@@ -281,12 +281,13 @@ def validate_library(library):
             errors.append(
                 diagnostic('provenance', f'claims/{claim["id"]}', f'Unknown source {claim["source"]}')
             )
-    errors.extend(basis_errors(library, library, 'library') + datum_errors(library, library, 'library'))
+    errors.extend(basis_errors(library, library, 'library'))
     try:
         units = UnitSystem(library['units'])
     except ExpressionError as exc:
         errors.append(diagnostic('units', 'library/units', exc))
         return errors
+    errors.extend(datum_errors(library, library, 'library', units=units))
     for claim in library['claims']:
         for name, datum in claim.get('data', {}).items():
             try:

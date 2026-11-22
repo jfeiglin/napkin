@@ -6,9 +6,8 @@ model declares and composes the others from them.
 
 A quantity converts to execution units once and exactly (`normalize`): its number is the decimal that
 writes it (`rational`: `0.1` is 1/10, not the binary float nearest to it) and its scale the exact
-rational of its unit (`scale_of`: a units file's 0.041666666666666664 is the 1/24 that a program wrote
-out), and only the product is rounded to a float. So equal quantities are one number however they
-are spelled: `0.1 day`, `144 min` and `2.4 h` are each the float nearest to 12/5 hours.
+rational of its unit (`scale_of`), and only the product is rounded to a float. Equal quantities are one
+number however they are spelled.
 
 `unit_of` gives the unit of an expression of typed nodes, by the rule for units that the contract of
 each operation names (`ops.UNIT_RULES`): the function of each rule is in `RULES`, and the handler of an
@@ -24,7 +23,7 @@ import math
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from fractions import Fraction
 from types import MappingProxyType
 
@@ -70,6 +69,29 @@ class Unit:
         )
 
 
+def authored_decimal(token, *, execution=True):
+    """Read a written decimal with its sign and all its digits. Execution inputs must round to a
+    finite float. JSON evidence and edits may defer this check to the consumer of the document."""
+    try:
+        value = Decimal(token)
+        finite = value.is_finite() and (not execution or math.isfinite(float(token)))
+    except (InvalidOperation, OverflowError, TypeError, ValueError):
+        raise ValueError(f'{token!r} is not a decimal number') from None
+    if not finite:
+        raise ValueError(f'{token} is not a finite number')
+    return value
+
+
+def finite_number(value):
+    """Whether an execution number, including an exact scale, rounds to a finite float."""
+    if isinstance(value, bool) or not isinstance(value, (int, float, Decimal, Fraction)):
+        return False
+    try:
+        return math.isfinite(value)
+    except (OverflowError, ValueError):
+        return False
+
+
 def rational(number):
     """The exact rational of a number as a text writes it: an int or a Fraction is itself, and a float
     is the shortest decimal that writes it (its `repr`, which a model's text, a JSON file and a
@@ -91,9 +113,10 @@ def dimension_power(number):
 
 
 def scale_of(number):
-    """The exact scale of a unit as a units file writes it. An int or a Fraction is itself. A float
-    stands for every number that rounds to it, and its scale is the one of them written with the
-    fewest digits: the shortest decimal that writes it (0.001, 3785411.784, as a person writes a
+    """The exact scale of a unit. An authored decimal, int or Fraction has its stated value. A
+    caller supplying a bare float has lost the spelling: that float stands for every number that
+    rounds to it, and its scale is the one of them written with the fewest digits: the shortest
+    decimal that writes it (0.001, 3785411.784, as a person writes a
     scale), or the simplest fraction, when the digits of its numerator and its denominator are fewer
     (1/24 for the 0.041666666666666664 that a program wrote out for a unit per day; 1/60, 1/8760,
     25000/219). On a tie, the decimal. So a unit's scale is the ratio or the decimal that defines it,
@@ -103,7 +126,7 @@ def scale_of(number):
     once in 1,300, which no comparison but an exact one with that decimal can tell apart."""
     if isinstance(number, Fraction):
         return number
-    if isinstance(number, int):
+    if isinstance(number, int | Decimal):
         return Fraction(number)
     value = float(number)
     written = float.__repr__(value)
@@ -173,22 +196,12 @@ class UnitRegistry:
             dimensions = spec.get('dimensions', spec.get('dimension'))
             if not isinstance(dimensions, Mapping):
                 raise ExpressionError(f'Unit {name!r} requires a dimensions mapping')
-            # A scale is a number of a units file, or the exact Fraction of a program's unit.
+            # The execution scale must also be positive after rounding, since it is a divisor.
             scale = spec.get('scale', 1)
-            if (
-                isinstance(scale, bool)
-                or not isinstance(scale, (int, float, Fraction))
-                or not math.isfinite(scale)
-                or scale <= 0
-            ):
+            if not finite_number(scale) or float(scale) <= 0:
                 raise ExpressionError(f'Unit {name!r} requires a positive finite scale')
             for key, value in dimensions.items():
-                if (
-                    not isinstance(key, str)
-                    or isinstance(value, bool)
-                    or not isinstance(value, (int, float, Decimal, Fraction))
-                    or not math.isfinite(value)
-                ):
+                if not isinstance(key, str) or not finite_number(value):
                     raise ExpressionError(f'Invalid dimension in unit {name!r}')
             powers = tuple(sorted((k, dimension_power(v)) for k, v in dimensions.items() if v))
             self._units[name] = Unit(powers, float(scale))

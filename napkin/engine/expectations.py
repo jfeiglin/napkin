@@ -95,7 +95,12 @@ def exceedance(values, threshold, confidence=0.95):
     from scipy.stats import beta
 
     x = _numbers(values)
-    n, k = len(x), int(np.count_nonzero(x > threshold))
+    # A strict comparison against the submitted decimal includes the nearest float when
+    # that float lies above the threshold. Use the greatest float at or below it.
+    cutoff = float(threshold)
+    if cutoff > threshold:
+        cutoff = math.nextafter(cutoff, -math.inf)
+    n, k = len(x), int(np.count_nonzero(x > cutoff))
     alpha = 1 - confidence
     low = 0.0 if k == 0 else float(beta.ppf(alpha / 2, k, n - k + 1))
     high = 1.0 if k == n else float(beta.ppf(1 - alpha / 2, k + 1, n - k))

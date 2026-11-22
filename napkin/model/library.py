@@ -19,12 +19,12 @@ from pathlib import Path
 from .evidence import basis_errors, dependencies, library_checks
 from .identity import COLLECTIONS
 from .ir import ModelError, diagnostic
-from .load import load_json, schema_document, schema_errors
+from .load import load_json, load_unit_document, schema_document, schema_errors
 
 # The prelude: the units that every model has. Its names cannot be redefined, and it grows only in a
 # major version of the language.
 PRELUDE = Path(__file__).resolve().parents[1] / 'std' / 'units.json'
-_PRELUDE_UNITS = load_json(PRELUDE)
+_PRELUDE_UNITS = load_unit_document(PRELUDE)
 # The version of the library's own format, as its schema states it.
 LIBRARY_VERSION = schema_document('library')['properties']['schema_version']['const']
 
@@ -97,7 +97,7 @@ def folder_records(folder):
     """The units and the evidence records that one folder owns: {'units': {...}, collection: [...]}. A
     file that is not there holds none."""
     units_path, *record_paths = folder_files(Path(folder))
-    out = {'units': load_json(units_path) if units_path.is_file() else {}}
+    out = {'units': load_unit_document(units_path) if units_path.is_file() else {}}
     for collection, path in zip(COLLECTIONS, record_paths):
         out[collection] = load_json(path, evidence=collection == 'claims') if path.is_file() else []
     return out
@@ -144,7 +144,7 @@ def read_vocabulary(path):
     """The library of the file `path` (a `vocabulary.json`), with the prelude's units first, checked
     together with them: a record of the library can read a unit of the prelude, and no unit of the
     library redefines a name of the prelude."""
-    library, errors = with_prelude(load_json(Path(path), evidence=True))
+    library, errors = with_prelude(load_unit_document(Path(path), vocabulary=True))
     if not errors:
         errors, _ = library_checks(library)
     if errors:

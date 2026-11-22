@@ -175,13 +175,14 @@ import difflib
 import math
 import re
 from dataclasses import dataclass, field, replace
+from decimal import Decimal
 from fractions import Fraction
 from functools import cached_property
 
 from ..core.comparisons import DEFAULT_FACTOR, against, collapsed_interval, numeric_gap_band
 from ..core.expr import DEEPEST
 from ..core.literals import Literals
-from ..core.units import dimension_power, rational, scale_of
+from ..core.units import authored_decimal, dimension_power, rational, scale_of
 from .language import nodes as n
 from .language import tables
 from .language.format import expression as written_as
@@ -2876,7 +2877,7 @@ class Resolver:
             end = None if bound is None else self.exact(bound)
             if end is not None and against(op, *numeric_gap_band(0, 0, at, end)):
                 if isinstance(found, Const):
-                    shown = f'{found.value} {found.type.unit}'.strip()
+                    shown = _written(found)
                 else:
                     shown = f'{_fraction_text(at / self.scale(value.type))} {value.type.unit}'.strip()
                 self.fail('range', f'{shown} is {side} the range of {value.name}', node)
@@ -2896,11 +2897,16 @@ class Resolver:
             found = literal(arg)
             if found is None or isinstance(found[1], n.Quantity):
                 self.fail('distribution', f'the weight of {name} is a plain number written in place', arg)
-            if found[0] < 0:
+            weight = _parameter(found[0], decimal(arg))
+            if weight < 0:
                 self.fail('distribution', f'the weight of {name} is not negative', arg)
-            weights.append(found[0])
-        if sum(weights) <= 0:
+            weights.append(weight)
+        if not any(weights):
             self.fail('distribution', 'the weights of a categorical are not all zero', node)
+        if not any(map(float, weights)):
+            self.fail(
+                'distribution', 'the weights of a categorical are all zero at execution precision', node
+            )
         outcomes = tuple(name for name, _ in node.named)
         enum = expected if isinstance(expected, EnumOf) else EnumOf(outcomes)
         for name in outcomes:
@@ -2945,26 +2951,25 @@ class Resolver:
         target = target or PLAIN
         params = []
         for k, (value, written_node) in enumerate(found):
+            exact = decimal(node.args[k])
             if k in shapes:
                 if isinstance(written_node, n.Quantity):
                     self.fail('unit', f'the argument {k + 1} of {node.function} is a plain number', node)
-                params.append(value)
-                continue
-            if isinstance(written_node, n.Quantity):
+            elif isinstance(written_node, n.Quantity):
                 own = self.quantity(1, written_node, TOP).type
                 if own.dimension != target.dimension:
                     self.fail('unit', f'{node.function} takes its arguments in {target}, not {own}', node)
-                params.append(
-                    _converted(
-                        value, self.units.of(own.unit)[1], self.units.of(target.unit)[1] if target.unit else 1
-                    )
-                )
+                exact *= self.scale(own) / self.scale(target)
             elif target.dimension and unit is None:
                 self.fail(
                     'unit', f'{node.function} has an argument with no unit beside one in {target}', node
                 )
-            else:
-                params.append(value)
+            try:
+                params.append(_parameter(value, exact))
+            except OverflowError:
+                self.fail(
+                    'number', f'argument {k + 1} of {node.function} overflows in {target}', node.args[k]
+                )
         broken = _broken(node.function, params)
         if broken is not None:
             names = ', '.join(PARAMETERS[node.function][: len(params)])
@@ -2994,10 +2999,11 @@ class Resolver:
                 continue
             # A bound that cuts an unbounded support, or cuts into a bounded one, holds less than it.
             if not math.isfinite(end) or sign * (limit - rational(end) * scale) > 0:
+                shown = [_fraction_text(part) if isinstance(part, Fraction) else str(part) for part in ends]
                 self.fail(
                     'range',
                     f'the range of {node.name} must hold the support of its distribution, '
-                    f'[{ends[0]}, {ends[1]}] {unit.unit}'.rstrip(),
+                    f'[{shown[0]}, {shown[1]}] {unit.unit}'.rstrip(),
                     node,
                 )
         return lower, upper
@@ -4278,7 +4284,15 @@ class Resolver:
             if text not in value.type.members:
                 self.fail('enum_member', f'{column.name} is {value.type}, and {text!r} is no member of it')
             return False, Given(column.name, Const(text, value.type), cites, line)
-        found = _cell_number(text) or literal(_cell_expression(text))
+        try:
+            node = _cell_number(text) or parse_expression(text)
+        except SyntaxProblem as error:
+            if error.code == 'number':
+                self.fail('number', f'{column.name}: {text!r} is not a finite number')
+            node = None
+        except ValueError:
+            self.fail('number', f'{column.name}: {text!r} is not a finite number')
+        found = literal(node)
         if found is None or not isinstance(value.type, Num):
             self.fail(
                 'table', f'{text!r} is not a number, true or false: a cell holds a value, not a calculation'
@@ -4301,10 +4315,7 @@ class Resolver:
             unit = self.num(column.unit) if column.unit is not None else value.type
         if unit.dimension != value.type.dimension:
             self.fail('unit', f'{column.name} is in {value.type}, not {unit}')
-        exact = decimal(written)  # the decimal of the cell's text; its sign is the number's
-        if number < 0 < exact:
-            exact = -exact
-        result = Const(number, unit, exact)
+        result = Const(number, unit, decimal(node))
         self.within(result, value, None)
         return False, Given(column.name, result, cites, line)
 
@@ -5286,18 +5297,17 @@ def _own(read, bound=False):
 
 # A cell that is a plain number, or a name with at most one dot: most cells of a large table, which
 # are read without the parser (each as the parser reads it).
-_CELL_NUMBER = re.compile(r'-?([0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)\Z')
+_CELL_NUMBER = re.compile(r'[-+]?[0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?\Z')
 _CELL_PATH = re.compile(r'([A-Za-z_][A-Za-z0-9_]*)(?:\.([A-Za-z_][A-Za-z0-9_]*))?\Z')
 
 
 def _cell_number(text):
-    """(number, its node) of a cell that is a plain number, as `literal` gives them, or None."""
-    found = _CELL_NUMBER.match(text)
-    if found is None:
+    """The signed literal of a bare numeric cell, or None for a cell that needs the parser."""
+    if not _CELL_NUMBER.fullmatch(text):
         return None
-    written = found[1]
-    number = float(written) if any(char in written for char in '.eE') else int(written)
-    return (-number if text.startswith('-') else number), n.Number(number, written=written)
+    exact = authored_decimal(text)
+    number = float(exact) if any(char in text for char in '.eE') else int(exact)
+    return n.Number(number, written=text, exact=Fraction(exact))
 
 
 def _cell_path(text):
@@ -5333,7 +5343,29 @@ def _broken(family, params):
     by which the engine draws (`napkin.distributions`): a bounded normal or lognormal keeps some
     probability between its bounds, or no draw has a meaning. Each parameter is read exactly
     (`rational`), so `triangular(0.1 h, 6 min, 1 h)` has its mode at its minimum."""
-    a = {name: rational(value) for name, value in zip(PARAMETERS[family], params)}
+    a = dict(zip(PARAMETERS[family], map(rational, params)))
+    rule = _parameter_rule(family, a)
+    if rule is not None or family == 'uniform':
+        return rule
+    # These families divide by their spread, or take a logarithm, at execution precision.
+    # Two distinct authored values can round to the same float, or a positive value to zero.
+    rounded = {name: float(value) for name, value in a.items()}
+    rule = _parameter_rule(family, rounded)
+    if rule is not None:
+        return f'{rule} at execution precision'
+    if family not in ('normal', 'lognormal') or 'min' not in a:
+        return None
+    if family == 'normal':
+        low, high = ((rounded[end] - rounded['mean']) / rounded['sd'] for end in ('min', 'max'))
+    else:
+        spread, centre = math.log(rounded['gsd']), math.log(rounded['median'])
+        low = (math.log(rounded['min']) - centre) / spread if rounded['min'] > 0 else -math.inf
+        high = (math.log(rounded['max']) - centre) / spread
+    return None if _mass(low, high) > 0 else 'bounds that hold some probability'
+
+
+def _parameter_rule(family, a):
+    """The order and sign requirements of a distribution in one unit."""
     if family == 'uniform':
         return None if a['min'] < a['max'] else 'min below max'
     if family in ('triangular', 'pert'):
@@ -5342,26 +5374,18 @@ def _broken(family, params):
     if family == 'loguniform':
         return None if 0 < a['min'] < a['max'] else '0 < min < max'
     if family == 'normal':
-        if not a['sd'] > 0:
+        if a['sd'] <= 0:
             return 'sd above 0'
-        if 'min' not in a:
-            return None
-        if not a['min'] < a['max']:
+        if 'min' in a and a['min'] >= a['max']:
             return 'min below max'
-        low, high = ((a[end] - a['mean']) / a['sd'] for end in ('min', 'max'))
     else:
-        if not a['median'] > 0:
+        if a['median'] <= 0:
             return 'median above 0'
-        if not a['gsd'] > 1:
+        if a['gsd'] <= 1:
             return 'gsd above 1'
-        if 'min' not in a:
-            return None
-        if not 0 <= a['min'] < a['max']:
+        if 'min' in a and not 0 <= a['min'] < a['max']:
             return '0 <= min < max'
-        spread, centre = math.log(a['gsd']), math.log(a['median'])
-        low = (math.log(a['min']) - centre) / spread if a['min'] > 0 else -math.inf
-        high = (math.log(a['max']) - centre) / spread
-    return None if _mass(low, high) > 0 else 'bounds that hold some probability'
+    return None
 
 
 def _mass(low, high):
@@ -5375,7 +5399,11 @@ def _mass(low, high):
 
 def _written(value):
     """A number written out with its unit, for a message: `1 day`, `6`."""
-    return f'{value.value} {value.type.unit}'.strip()
+    number = value.value
+    if value.exact is not None and rational(number) != value.exact:
+        number = value.exact
+    shown = _fraction_text(number) if isinstance(number, Fraction) else str(number)
+    return f'{shown} {value.type.unit}'.strip()
 
 
 def _zero(value):
@@ -5451,16 +5479,15 @@ def constant(value, node, units):
     )
 
 
-def _converted(value, scale_from, scale_to):
-    """A number in one unit written in another, converted exactly (`rational`): a whole number or a
-    Fraction stays exact (an int when the result is whole), and a float is the float nearest to the
-    exact result, so `0.1 day` in hours is 2.4 and `0.1 day` in days stays 0.1."""
-    if scale_from == scale_to:
+def _parameter(value, exact):
+    """Keep the ordinary int or float representation when it writes the exact parameter in its
+    target unit. A more precise decimal or unit conversion stays rational in the artifact."""
+    if rational(value) == exact:
         return value
-    found = rational(value) * Fraction(scale_from) / Fraction(scale_to)
-    if isinstance(value, float):
-        return float(found)
-    return int(found) if found.denominator == 1 else found
+    rounded = float(exact)
+    if isinstance(value, float) and rational(rounded) == exact:
+        return rounded
+    return exact.numerator if exact.denominator == 1 else exact
 
 
 def exact_value(expression, units):
@@ -5516,16 +5543,22 @@ def _literals(units):
 
 
 def _fraction_text(number):
-    """A rational for a message: `2`, `1/2`, or a decimal when its denominator is a power of 10."""
+    """An exact terminating decimal for a message, otherwise its fraction."""
     number = Fraction(number)
-    if number.denominator == 1:
+    denominator = number.denominator
+    if denominator == 1:
         return str(number.numerator)
-    decimal = number
-    for places in range(1, 13):
-        decimal *= 10
-        if decimal.denominator == 1:
-            return f'{number.numerator / number.denominator:.{places}f}'
-    return f'{number.numerator}/{number.denominator}'
+    twos = (denominator & -denominator).bit_length() - 1
+    remaining = denominator >> twos
+    fives = 0
+    while remaining % 5 == 0:
+        remaining //= 5
+        fives += 1
+    if remaining != 1:
+        return str(number)
+    places = max(twos, fives)
+    coefficient = number.numerator * (10**places // denominator)
+    return str(Decimal(f'{coefficient}e-{places}'))
 
 
 def _dimension_text(dimension):

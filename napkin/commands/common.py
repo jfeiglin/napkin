@@ -330,5 +330,7 @@ def table(rows):
 def write_json(doc, stream):
     """Write `doc` to `stream` as one line of JSON, and flush it. A number that is not finite is a
     ValueError: JSON has none."""
-    stream.write(json.dumps(doc, allow_nan=False, separators=(',', ':')) + '\n')
+    from ..model.load import dump_json
+
+    stream.write(dump_json(doc, allow_nan=False, separators=(',', ':')) + '\n')
     stream.flush()

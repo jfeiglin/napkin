@@ -15,6 +15,7 @@ from napkin import SCHEMA_VERSION
 from napkin.model.compile import compile_text
 from napkin.model.language.problems import LanguageError
 from napkin.program import parts as p
+from napkin.program.artifact import loads
 from napkin.program.canonical import program_bytes
 from napkin.program.refs import Distribution, EnumValue, Named, Path
 from tests.program.examples import UNITS, pump_dispatch
@@ -48,6 +49,44 @@ def test_a_distribution_takes_the_unit_of_its_input_or_converts_its_own():
     assert days.init.reads[0][1].source == Distribution('uniform', (24, 48), 'h')
     # The default range is the support of the distribution, in the input's unit.
     assert (days.lower.node.args[0].value, days.upper.node.args[0].value) == (24, 48)
+
+
+def test_distribution_keeps_the_exact_converted_parameter_in_its_artifact_and_support():
+    token = '1.00000000000000001'
+    text = f'service:\n    input end: h = uniform(0 h, {token} day).draw()\n'
+    model = compiled(text)
+    artifact = loads(model.artifact().data())
+    assert program_bytes(artifact.program) == program_bytes(model.program)
+    endpoint = artifact.program.template('service').part('end').init.reads[0][1].source.params[1]
+    assert endpoint == Fraction(token) * 24
+    with pytest.raises(LanguageError) as caught:
+        compiled(text.rstrip() + ' in [0 h, 24 h]\n')
+    (problem,) = caught.value.problems
+    assert problem.code == 'range' and '24.00000000000000024' in problem.message
+
+
+def test_distribution_parameter_rules_compare_the_written_numbers():
+    assert codes('bad = triangular(0, 1.00000000000000001, 1)\n') == ['distribution']
+    assert codes('bad = categorical(A: -1e-325, B: 1)\n') == ['distribution']
+
+
+@pytest.mark.parametrize(
+    'written',
+    [
+        'normal(1, 1e-325)',
+        'lognormal(1, 1.00000000000000001, 0, 2)',
+        'lognormal(1e-325, 2)',
+        'pert(1, 1, 1.00000000000000001)',
+        'triangular(1, 1, 1.00000000000000001)',
+        'loguniform(1e-325, 2)',
+        'categorical(A: 1e-325, B: 0)',
+    ],
+)
+def test_a_distribution_refuses_parameters_that_lose_their_required_spread_or_positive_value(written):
+    with pytest.raises(LanguageError) as caught:
+        compiled(f'input result = {written}.draw()\n')
+    (problem,) = caught.value.problems
+    assert problem.code == 'distribution' and 'at execution precision' in problem.message
 
 
 def test_the_bounded_forms_take_their_bounds_in_order_and_their_shape_plain():

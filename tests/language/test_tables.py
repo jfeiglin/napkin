@@ -280,6 +280,15 @@ def test_a_wrong_table_is_refused_at_its_file_and_its_line(table, text, code, fi
     assert (found[0].file, found[0].line) == (file, line) and words in found[0].message, found[0]
 
 
+@pytest.mark.parametrize(('column', 'unit'), [('amount: L', ''), ('amount', ' L')])
+@pytest.mark.parametrize(('token', 'code'), [('-1e-325', 'range'), ('-1e400', 'number'), ('1e400', 'number')])
+def test_numeric_cell_diagnostics_name_the_file_row_column_and_exact_number(column, unit, token, code):
+    text = 'Tank:\n    input amount: L = 0 in [0, 1]\ntanks: Tank from "tanks.csv"\n'
+    (problem,) = refused(text, f'id,{column}\none,{token}{unit}\n')
+    assert (problem.code, problem.file, problem.line) == (code, 'tanks.csv', 2)
+    assert 'amount' in problem.message and token in problem.message.lower()
+
+
 def test_the_rows_of_a_table_without_ids_have_no_names():
     problems = refused(table='rate,pool\n2,east\n', text=MODEL + 'first = formula(tanks.north.held)\n')
     assert [problem.code for problem in problems] == ['unknown_name']

@@ -27,6 +27,8 @@ the run took. Presentation is this command's: the engine knows no player (`napki
 """
 
 import sys
+from decimal import Decimal
+from fractions import Fraction
 
 from . import common
 from . import run as running
@@ -248,7 +250,7 @@ def shown(value, unit=''):
         return 'true' if value else 'false'
     if isinstance(value, Unavailable):
         return f'unavailable ({value.reason})'
-    if isinstance(value, int | float):
+    if isinstance(value, int | float | Fraction | Decimal):
         return f'{common.number(value)} {unit}'.rstrip()
     return str(value)
 
@@ -331,8 +333,10 @@ def edited(session, path, written):
             raise ValueError(f'{path} is true or false, not {written!r}')
         new = written == 'true'
     elif isinstance(value, int | float):
+        from ..core.units import authored_decimal
+
         try:
-            new = float(written)
+            new = authored_decimal(written)
         except ValueError:
             raise ValueError(f'{path} takes a number in its unit, not {written!r}') from None
     else:

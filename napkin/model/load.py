@@ -10,6 +10,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from .. import schema as schemas
+from ..core.units import authored_decimal
 
 
 class SourceError(ValueError):
@@ -20,10 +21,9 @@ class SourceError(ValueError):
         super().__init__(f'{path}:{line}: {message}' if line else f'{path}: {message}')
 
 
-def _exact_number(token):
+def _json_number(exact):
     """Keep a decimal exactly, using a float only when its JSON spelling preserves the datum."""
-    exact = Decimal(token)
-    value = float(token)
+    value = float(exact)
     return value if Decimal(str(value)) == exact else exact
 
 
@@ -73,9 +73,37 @@ def load_json(path, *, evidence=False, exact_numbers=False):
     return parse_json(Path(path).read_text(encoding='utf-8'), path, exact_numbers=evidence or exact_numbers)
 
 
+def load_unit_document(path, *, vocabulary=False):
+    """Read the authored scales of a units file or a vocabulary's units. Other numbers (including
+    claim data) retain the exact JSON reader's representation and canonical digest."""
+
+    def evidence(item):
+        if isinstance(item, Decimal):
+            return _json_number(item)
+        if isinstance(item, dict):
+            return {key: evidence(value) for key, value in item.items()}
+        if isinstance(item, list):
+            return [evidence(value) for value in item]
+        return item
+
+    document = _parse_json(
+        Path(path).read_text(encoding='utf-8'), path, lambda token: authored_decimal(token, execution=False)
+    )
+    if vocabulary and isinstance(document, dict):
+        return {key: value if key == 'units' else evidence(value) for key, value in document.items()}
+    return document
+
+
 def parse_json(text, path, *, exact_numbers=False):
     """Read captured UTF-8 text under the same rules as a file, with its path in diagnostics."""
 
+    def exact(token):
+        return _json_number(authored_decimal(token, execution=False))
+
+    return _parse_json(text, path, exact if exact_numbers else float)
+
+
+def _parse_json(text, path, read_number):
     def pairs(items):
         result = {}
         for key, value in items:
@@ -91,7 +119,7 @@ def parse_json(text, path, *, exact_numbers=False):
         text,
         object_pairs_hook=pairs,
         parse_constant=bad_constant,
-        parse_float=_exact_number if exact_numbers else float,
+        parse_float=read_number,
     )
 
 

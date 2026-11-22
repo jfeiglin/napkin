@@ -141,8 +141,7 @@ def default_run(declared):
 
 def library_units(library):
     """The units of a library (`library.load_library`) as `Builder` takes them: each with its
-    dimension and its exact scale (`core.units.scale_of`: `0.01` is 1/100, and the
-    0.041666666666666664 of a unit per day is 1/24)."""
+    dimension and the exact rational scale stated in the units file (`0.01` is 1/100)."""
     return {
         name: (dict(unit.get('dimensions', {})), scale_of(unit.get('scale', 1)))
         for name, unit in library['units'].items()

@@ -15,6 +15,7 @@ import os
 import re
 import subprocess
 import sys
+from fractions import Fraction
 from pathlib import Path
 
 from tests.commands.call import napkin, package
@@ -294,3 +295,40 @@ def test_play_shows_and_edits_a_value_in_its_declared_unit(tmp_path, capsys, mon
         ['tank.water.external', 'kL', '0', '4'],
         ['edit at 1 h, before tank.top_up.step[0]: tank.water 1 kL -> 5 kL'],
     ]
+
+
+def test_play_checks_the_unrounded_edit_and_keeps_it_in_the_saved_log(tmp_path, capsys, monkeypatch):
+    from napkin.engine.timeline import read
+    from napkin.model import load_scenario
+    from napkin.session import Session, play
+
+    source = """scenario "Exact edit"
+    horizon 1 h
+box:
+    level: kL = 0 kL in [0 kL, 0.10000000000000001 kL]
+    wait = event():
+        after 1 h:
+            this.level = this.level
+box.wait.start()
+"""
+    model = package(tmp_path / 'bounded', source, KILOLITRES)
+    saved = tmp_path / 'edited.checkpoint'
+    edge = '0.10000000000000001'
+    # The last two spellings round to the same model value. Only one lies in the authored range.
+    typed = f'box.level = -1e-325\nbox.level = {edge}1\nbox.level = {edge}\nsave {saved}\nquit\n'
+    found = played(capsys, monkeypatch, model, '--break', 'box.wait.step[0]', typed=typed)
+    assert found.code == 3, found.err
+    assert found.out.count('is outside its range') == 2
+    assert f'box.level = {edge}1 kL is outside its range' in found.out
+    compiled = load_scenario(model / 'model.scn')
+    session = Session.load(saved, compiled.program)
+    (edit,) = session.log.edits
+    assert edit.value == Fraction(edge)
+    log = session.log
+    session.advance()
+    replayed = play(compiled.program, compiled.configuration, log)
+    # Runtime stores litres as floats and the public reading converts them back to kL.
+    reported = float(Fraction(edge) * 1000) / 1000
+    for record in (session.record, replayed):
+        assert record.failure is None
+        assert read(record, compiled.program, ['box.level'], [1])[0].values == (reported,)

@@ -15,10 +15,12 @@ changes the hash of the model. That the hash covers no record and no label is in
 from __future__ import annotations
 
 import json
+from fractions import Fraction
 
 import pytest
 
 from napkin.model import ModelError, load_library, load_scenario
+from napkin.model.compile import library_units
 from napkin.model.evidence import claim_digest
 from napkin.model.library import prelude_units
 from tests.evidence.support import SERVICE, evidence_library, fixture_claim, write_package
@@ -49,6 +51,25 @@ def test_a_package_loads_with_its_own_units_and_records_and_the_shared_vocabular
     assert set(prelude_units()) <= set(library['units']) and 'people/h' in library['units']
     assert [claim['id'] for claim in library['claims']] == ['C-ACCESS', 'C-ACTION']
     assert load_scenario(path).configuration.request.horizon == 10
+
+
+@pytest.mark.parametrize('shared', [False, True], ids=['units', 'vocabulary'])
+@pytest.mark.parametrize('token', ['0.041666666666666664', '1e1000000000', '1e-325'])
+def test_a_file_scale_is_exact_and_must_remain_a_positive_execution_scale(tmp_path, shared, token):
+    path = package(tmp_path)
+    record = {'scaled_hour': {'dimensions': {'time': 1}, 'scale': 'TOKEN'}}
+    if shared:
+        target = tmp_path / catalogue.LIBRARY / 'vocabulary.json'
+        body = json.loads(target.read_text())
+        body['units'].update(record)
+    else:
+        target = path.parent / 'units.json'
+        body = record
+    target.write_text(json.dumps(body).replace('"TOKEN"', token))
+    if token == '0.041666666666666664':
+        assert library_units(load_library(path))['scaled_hour'][1] == Fraction(token)
+    else:
+        assert [item['code'] for item in refused(path, load_library)] == ['units']
 
 
 def test_a_local_unit_cannot_reuse_a_shared_name_even_with_the_same_definition(tmp_path):

@@ -17,10 +17,10 @@ The lexer reads no unit: units are the parser's (D12).
 
 from __future__ import annotations
 
-import math
 import re
 from dataclasses import dataclass, field
 
+from ...core.units import authored_decimal
 from .problems import SyntaxProblem
 
 INDENT = 4
@@ -225,8 +225,10 @@ class Lexer:
             if found:
                 written = found.group()
                 if written[0].isdigit():
-                    if not math.isfinite(float(written)):
-                        raise SyntaxProblem(f'{written} is not a finite number', number, column, 'number')
+                    try:
+                        authored_decimal(written)
+                    except ValueError as error:
+                        raise SyntaxProblem(str(error), number, column, 'number') from None
                     tokens.append(Token('number', written, number, column, space, written))
                 else:
                     tokens.append(Token('name', written, number, column, space, written))

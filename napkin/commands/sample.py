@@ -193,6 +193,8 @@ def exceedances(items, known):
     """[(path, value)] of the `--exceed PATH=VALUE` items, in the order given: VALUE is a number in
     the path's declared unit. A path that `known` (`run.Offered`) refuses, and a VALUE that is no
     number, are a UsageError."""
+    from ..core.units import authored_decimal
+
     found = []
     for item in items:
         path, separator, text = (piece.strip() for piece in item.partition('='))
@@ -202,7 +204,7 @@ def exceedances(items, known):
         if reason is not None:
             raise common.UsageError(f'--exceed {path}: {reason}')
         try:
-            value = float(text)
+            value = authored_decimal(text)
         except ValueError:
             raise common.UsageError(f'--exceed {item}: give a number in the unit of {path}') from None
         found.append((path, value))
@@ -325,7 +327,7 @@ def lines(model, args, when, doc, drawn):
     shown += common.table(rows) if len(rows) > 1 else []
     shown += reasons + drivers
     for item in doc['exceed']:
-        chance = f'P({item["path"]} > {common.number(item["threshold"])})'
+        chance = f'P({item["path"]} > {item["threshold"]})'
         if 'reason' in item:
             shown.append(f'{chance}: {item["reason"]}')
             continue

@@ -190,9 +190,9 @@ def data_warnings(path):
     ('rate', 'datum', 'end', 'delay'),
     [
         ('2 people/h', (2, 'people/h'), '34 h', (34, 'h')),
-        ('2 people/h', (48, 'people/day'), '1 days + 10 h', (34.0, 'h')),
+        ('2 people/h', (48, 'people/days'), '1 days + 10 h', (34.0, 'h')),
         ('2.0 people/h', (2.0, 'people/h'), '36 h', (1.5, 'days')),
-        ('0.5 people/h * 4', (48, 'people/day'), '0.25 days * 4 + 10 h', (34, 'h')),
+        ('0.5 people/h * 4', (48, 'people/days'), '0.25 days * 4 + 10 h', (34, 'h')),
     ],
 )
 def test_a_value_equal_to_its_cited_datum_however_spelled_is_no_warning(tmp_path, rate, datum, end, delay):
@@ -201,6 +201,14 @@ def test_a_value_equal_to_its_cited_datum_however_spelled_is_no_warning(tmp_path
     numbers). A float of the library is the decimal that writes it (`core.units.rational`)."""
     path = datum_package(tmp_path, rate=rate, datum=datum, end=end, delay=delay)
     assert data_warnings(path) == []
+
+
+def test_a_rounded_declared_unit_scale_is_distinct_from_the_composed_unit(tmp_path):
+    # The fixture explicitly declares people/day as 0.041666666666666664 people/h. The
+    # undeclared people/days in the cases above composes people with the 24-hour day.
+    path = datum_package(tmp_path, rate='2 people/h', datum=(48, 'people/day'))
+    (warning,) = data_warnings(path)
+    assert '48 people/day' in warning[0] and '2 people/h differs from it' in warning[0]
 
 
 def test_a_value_that_differs_from_its_cited_datum_is_a_warning_with_both_numbers(tmp_path):

@@ -65,6 +65,7 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import dataclass, fields, is_dataclass, replace
+from decimal import Decimal
 from fractions import Fraction
 from typing import Any
 
@@ -226,7 +227,7 @@ def _kind(value):
     """The kind of a value that an edit may give: a yes/no, a number or a text."""
     if isinstance(value, bool):
         return 'a yes/no'
-    if isinstance(value, int | float):
+    if isinstance(value, int | float | Fraction | Decimal):
         return 'a number'
     if isinstance(value, str):
         return 'a text'
@@ -274,6 +275,8 @@ def _data(value):
         return value
     if isinstance(value, float):
         return value if math.isfinite(value) else {'float': repr(value)}
+    if isinstance(value, Decimal):
+        value = Fraction(value)
     if isinstance(value, Fraction):
         return {'fraction': [value.numerator, value.denominator]}
     if isinstance(value, tuple | list):

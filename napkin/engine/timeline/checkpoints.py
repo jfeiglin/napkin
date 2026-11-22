@@ -31,8 +31,11 @@ from __future__ import annotations
 
 import hashlib
 import math
+from decimal import Decimal
+from fractions import Fraction
 from pathlib import Path
 
+from ...core import expr as nodes
 from ...program import parts as p
 from ...program.artifact import Artifact
 from ...program.checkpoint import (
@@ -48,7 +51,7 @@ from ...program.checkpoint import (
 from ...program.record import Entry, Key
 from .moment import quantity, span
 from .plan import BUILTINS, STARTS, STATE, _statements, name_of
-from .record import HistoryFull, unit_of
+from .record import HistoryFull, declared
 from .saved import at_stop, save
 
 _SOURCES = ('engine', 'program', 'core')  # the folders of the package whose code a run runs
@@ -240,11 +243,20 @@ class Breaks:
         within its bounds."""
         run, plan = self.run, self.run.plan
         name, value = edit.target, edit.value
+        if isinstance(value, Decimal):
+            if not value.is_finite():
+                raise CheckpointError(f'{name} takes a finite number, not {value}')
+            value = Fraction(value)
         if isinstance(name, Key):
             # A value as the model names it, in its declared unit: the engine's name, in canonical units.
             key, name = name, name_of(name)
-            if name in plan.values and isinstance(value, int | float) and not isinstance(value, bool):
-                value = value * unit_of(plan.program, key)[1]
+            if (
+                name in plan.values
+                and isinstance(value, int | float | Fraction)
+                and not isinstance(value, bool)
+            ):
+                _, scale = declared(plan.program, key)
+                value *= scale if isinstance(value, Fraction) else float(scale)
         found = plan.values.get(name)
         if found is None or found.kind != STATE:
             what = 'no value of the run' if found is None else f'a value of kind {found.kind}'
@@ -270,15 +282,40 @@ class Breaks:
                 allowed = f'a member of {", ".join(members)}' if members is not None else 'a text'
                 raise CheckpointError(f'{name} takes {allowed}, not {value!r}')
             return name, value
-        if not isinstance(value, int | float) or not math.isfinite(value):
+        if not isinstance(value, int | float | Fraction) or (
+            isinstance(value, float) and not math.isfinite(value)
+        ):
             raise CheckpointError(f'{name} takes a finite number, not {value!r}')
         lower, upper = run.bounds.get(name, (-math.inf, math.inf))
+        if isinstance(value, Fraction):
+            # Authored literal endpoints retain their exact values. A bound that read the
+            # initial state, or a reversed interval collapsed at setup, keeps the run's snapshot.
+            def endpoint(node, snapshot):
+                if node is None or nodes.names(node):
+                    return snapshot
+                exact = plan.units.comparisons.literal_value(node)
+                return snapshot if exact is None else exact
+
+            lo = endpoint(found.lower, lower)
+            hi = endpoint(found.upper, upper)
+            if lo <= hi:
+                lower, upper = lo, hi
         if not lower <= value <= upper:
             # In the value's declared unit, in which the edit is given (`moment.quantity`).
+            if isinstance(edit.value, Decimal) and isinstance(edit.target, Key):
+                shown = f'{edit.value} {found.unit}'.rstrip()
+            elif isinstance(value, Fraction):
+                amount = value / plan.units.exact_scale(found.unit) if found.unit else value
+                shown = f'{amount} {found.unit}'.rstrip()
+            else:
+                shown = quantity(plan, name, value)
             raise CheckpointError(
-                f'{name} = {quantity(plan, name, value)} is outside its range {span(plan, name, lower, upper)}'
+                f'{name} = {shown} is outside its range {span(plan, name, float(lower), float(upper))}'
             )
-        return name, float(value)
+        try:
+            return name, float(value)
+        except OverflowError:
+            raise CheckpointError(f'{name} takes a finite number') from None
 
     # ---- checkpoints ----------------------------------------------------------------------------
 
