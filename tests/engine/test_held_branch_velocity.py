@@ -1,5 +1,6 @@
 """A physical net on a held face cannot select the outgoing branch of a moving field."""
 
+import math
 from dataclasses import replace
 from fractions import Fraction
 
@@ -197,9 +198,16 @@ yard.inspect.start()
         record, model.program, ['yard.stock', 'yard.count', 'yard.meter.actual_rate'], times
     )
     assert (rates.values[0], *rates.values[2:]) == pytest.approx((1, 2, 2))
-    # The clock float can be on either side of the numerically located edge;
-    # a fit across both sides must not invent a third allocated rate.
-    assert rates.values[1] in (1, 2)
+    history = record.history(Key('yard', ('meter', 'actual_rate')))
+    (switch,) = (piece.t for piece in history.pieces if 999 < piece.t < 1001 and piece.value == 2)
+    assert abs(switch - 1000) <= plan.numerics.crossing
+    assert history.at(math.nextafter(switch, -math.inf)) == 1
+    assert history.at(switch) == 2
+    # The interval beginning at the located switch owns the rate at that time.
+    # A stock reading strictly on either side of the band confirms it independently.
+    assert rates.values[1] == (2 if switch <= 1000 else 1)
+    if level.values[1] != 1e-9:
+        assert rates.values[1] == (2 if level.values[1] > 1e-9 else 1)
     assert counted.values == pytest.approx(expected, rel=2e-9)
     giver = machine.ways.instance_of('yard.feed')
     incoming, outgoing = (giver.transferred('yard.' + name, 2000) for name in ('feed', 'drain'))
