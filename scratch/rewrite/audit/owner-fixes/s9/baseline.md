@@ -11,4 +11,4 @@ The [original two-tank example](authored-reversible.scn) passed the headline Spa
 
 The 12 direct Radau regressions produced ten failures and two passing controls. Both the lower and upper excursions cross at 1/8 and return at 3/16 of a step whose endpoints are inside. Earlier guards and earlier comparison cutoffs correctly won. [Pytest output](radau-baseline.log.gz).
 
-The [source and diagnostics for all 146 stopped or budget-limited variants](stopped-models.jsonl.gz) identify their generated seed, spelling and source digest. All occurred in the reversible family. The simultaneous family completed all of its runs. The auditor's original 216 model inputs were unavailable, so none of these counts identifies the three stops in that separate matrix.
+The [source and diagnostics for all 146 stopped or budget-limited variants](stopped-models.jsonl.gz) identify their generated seed, spelling and source digest. All occurred in the reversible family. The simultaneous family completed all of its runs. [Minimized models and their individual outcomes](stops.md).
