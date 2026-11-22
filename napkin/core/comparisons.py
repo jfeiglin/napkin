@@ -137,6 +137,23 @@ def collapsed_interval(factor, floor, low, high):
     return high + difference / 2, band
 
 
+def outside_authored_range(amount, low, high, floor):
+    """Which exact endpoint excludes a fixed datum, allowing the shared narrow reversed interval."""
+    if low is not None and high is not None and low > high:
+        if floor is None:
+            return None
+        collapsed = collapsed_interval(DEFAULT_FACTOR, abs(floor), low, high)
+        if collapsed is not None:
+            midpoint, band = collapsed
+            if against('eq', amount - midpoint, band):
+                return None
+    if low is not None and amount < low:
+        return 'below'
+    if high is not None and amount > high:
+        return 'above'
+    return None
+
+
 def recorded_number(value):
     """A numeric trace value outside float range is recorded in canonical decimal units."""
     if isinstance(value, Fraction):

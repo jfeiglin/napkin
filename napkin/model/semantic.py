@@ -179,10 +179,10 @@ from decimal import Decimal
 from fractions import Fraction
 from functools import cached_property
 
-from ..core.comparisons import DEFAULT_FACTOR, against, collapsed_interval, numeric_gap_band
+from ..core.comparisons import DEFAULT_FACTOR, outside_authored_range
 from ..core.expr import DEEPEST
 from ..core.literals import Literals
-from ..core.units import authored_decimal, dimension_power, rational, scale_of
+from ..core.units import authored_decimal, dimension_power, rational, scale_of, support_fits
 from ..program.refs import numeric_support
 from .language import nodes as n
 from .language import tables
@@ -2877,26 +2877,19 @@ class Resolver:
         at = self.exact(found) if isinstance(found, (Const, Apply)) else None
         if at is None:
             return
-        if value.lower is not None and value.upper is not None:
-            lo, hi = self.exact(value.lower), self.exact(value.upper)
-            if lo is not None and hi is not None and lo > hi:
-                floor = self.scale(value.type) if value.scale is None else self.exact(value.scale)
-                if floor is None:
-                    return
-                collapsed = collapsed_interval(DEFAULT_FACTOR, abs(floor), lo, hi)
-                if collapsed is not None:
-                    midpoint, band = collapsed
-                    if against('eq', at - midpoint, band):
-                        return
-        # A fixed authored datum must lie in the exact support of its declared range.
-        for bound, op, side in ((value.lower, 'lt', 'below'), (value.upper, 'gt', 'above')):
-            end = None if bound is None else self.exact(bound)
-            if end is not None and against(op, *numeric_gap_band(0, 0, at, end)):
-                if isinstance(found, Const):
-                    shown = _written(found)
-                else:
-                    shown = f'{_fraction_text(at / self.scale(value.type))} {value.type.unit}'.strip()
-                self.fail('range', f'{shown} is {side} the range of {value.name}', node)
+        low = self.exact(value.lower) if value.lower is not None else None
+        high = self.exact(value.upper) if value.upper is not None else None
+        if low is None and high is None:
+            return
+        floor = self.scale(value.type) if value.scale is None else self.exact(value.scale)
+        side = outside_authored_range(at, low, high, floor)
+        if side is not None:
+            shown = (
+                _written(found)
+                if isinstance(found, Const)
+                else (f'{_fraction_text(at / self.scale(value.type))} {value.type.unit}'.strip())
+            )
+            self.fail('range', f'{shown} is {side} the range of {value.name}', node)
 
     def categorical(self, node, expected):
         """`categorical(FIXED: 0.7, FAILED: 0.3)`: a weight, a plain number written in place, for each
@@ -3001,20 +2994,16 @@ class Resolver:
             if math.inf in ends:
                 return None, None
             return Const(ends[0], unit), Const(ends[1], unit)
-        scale = self.scale(unit)
-        for end, bound, sign in ((ends[0], lower, 1), (ends[1], upper, -1)):
-            limit = None if bound is None else self.exact(bound)
-            if limit is None:
-                continue
-            # A bound that cuts an unbounded support, or cuts into a bounded one, holds less than it.
-            if not math.isfinite(end) or sign * (limit - rational(end) * scale) > 0:
-                shown = [_fraction_text(part) if isinstance(part, Fraction) else str(part) for part in ends]
-                self.fail(
-                    'range',
-                    f'the range of {node.name} must hold the support of its distribution, '
-                    f'[{shown[0]}, {shown[1]}] {unit.unit}'.rstrip(),
-                    node,
-                )
+        lo = self.exact(lower) if lower is not None else None
+        hi = self.exact(upper) if upper is not None else None
+        if not support_fits(ends, self.scale(unit), lo, hi):
+            shown = [_fraction_text(part) if isinstance(part, Fraction) else str(part) for part in ends]
+            self.fail(
+                'range',
+                f'the range of {node.name} must hold the support of its distribution, '
+                f'[{shown[0]}, {shown[1]}] {unit.unit}'.rstrip(),
+                node,
+            )
         return lower, upper
 
     def drawn(self, node, scope, expected):

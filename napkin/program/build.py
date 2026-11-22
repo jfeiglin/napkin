@@ -45,7 +45,7 @@ from dataclasses import fields, is_dataclass, replace
 from fractions import Fraction
 
 from ..core import expr as nodes
-from ..core.units import dimension_power
+from ..core.units import dimension_power, finite_number
 from . import check as checking
 from . import parts as p
 from .parts import BOOL, PROPORTIONAL, TEXT
@@ -298,6 +298,10 @@ def literal(*members):
 
 
 def _number_node(number):
+    if not finite_number(number):
+        raise checking.ProgramError(
+            (checking.Diagnostic('number', 'literal', f'{number} is not a finite number'),)
+        )
     if isinstance(number, Fraction):
         if number.denominator == 1:
             return nodes.written(number.numerator)

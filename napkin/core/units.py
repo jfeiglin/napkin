@@ -92,6 +92,14 @@ def finite_number(value):
         return False
 
 
+def support_fits(ends, scale, low, high):
+    """Whether the distribution's support lies inside its authored bounds in canonical units."""
+    for end, bound, sign in ((ends[0], low, 1), (ends[1], high, -1)):
+        if bound is not None and (not math.isfinite(end) or sign * (bound - rational(end) * scale) > 0):
+            return False
+    return True
+
+
 def rational(number):
     """The exact rational of a number as a text writes it: an int or a Fraction is itself, and a float
     is the shortest decimal that writes it (its `repr`, which a model's text, a JSON file and a

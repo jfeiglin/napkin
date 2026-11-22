@@ -65,7 +65,7 @@ from typing import Any
 
 from ..core import expr as nodes
 from ..core import units
-from ..core.comparisons import DEFAULT_FACTOR
+from ..core.comparisons import DEFAULT_FACTOR, outside_authored_range
 from ..core.literals import Literals, node_parts
 from . import parts as p
 from .refs import (
@@ -93,6 +93,8 @@ from .refs import (
     This,
     Time,
     Where,
+    drawn_distribution,
+    numeric_support,
     spelled,
 )
 
@@ -698,6 +700,40 @@ class _Checker(Resolver):
                 self.resolve(init, scope, where)
         else:
             self.check_expr(init, scope, where)
+            if isinstance(value.type, p.Number) and (value.lower is not None or value.upper is not None):
+                self.initial_range(value, init, where)
+
+    def initial_range(self, value, init, where):
+        """Check a fixed declaration or row in canonical units; live operands are checked by the run."""
+        try:
+            declared_unit = self.program.unit(value.type.unit)
+        except KeyError:
+            return  # The type checker reports the unknown unit.
+
+        def exact(expr):
+            if expr is None:
+                return None
+            try:
+                result = self.literals.value(expr.node)
+            except (KeyError, ArithmeticError, ValueError):
+                return None
+            return result if isinstance(result, Fraction) else None
+
+        low, high = exact(value.lower), exact(value.upper)
+        source = drawn_distribution(init)
+        if value.kind == p.INPUT and source is not None:
+            ends = numeric_support(source.family, source.params)
+            if ends is not None:
+                unit = self.unit(source.unit, where)
+                if unit is not None and not units.support_fits(ends, unit.scale, low, high):
+                    self.fail('range', where, f'the range of {value.name} must hold its distribution support')
+            return
+        at = exact(init)
+        if at is not None:
+            floor = declared_unit.scale if value.scale is None else exact(value.scale)
+            side = outside_authored_range(at, low, high, floor)
+            if side:
+                self.fail('range', where, f'the initial value is {side} the range of {value.name}')
 
     def type(self, value_type, where):
         if isinstance(value_type, p.Number):
