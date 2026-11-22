@@ -17,6 +17,7 @@ import pytest
 from scipy import integrate, stats
 
 from napkin.engine import read, run
+from napkin.engine.errors import SimulationError
 from napkin.engine.timeline.chance import described, numeric, outcome, uniform
 from napkin.expressions import UnitSystem
 from napkin.program import parts as p
@@ -119,6 +120,46 @@ def test_the_outcome_of_a_uniform_number_is_the_one_whose_share_holds_it():
     assert list(shares.values()) == ['SHUT', 'SHUT', 'MANUAL', 'MANUAL', 'WAIT', 'WAIT']
     assert [outcome(d, ('MANUAL', 'WAIT'), u) for u in (0.66, 0.67)] == ['MANUAL', 'WAIT']
     assert outcome(d, ('MANUAL', 'WAIT'), None) == 'MANUAL'
+
+
+@pytest.mark.parametrize('seed', range(8))
+@pytest.mark.parametrize(
+    ('weights', 'large'),
+    [
+        ((1, 1), (1e308, 1e308)),
+        ((1, 2, 1), (5e307, 1e308, 5e307)),
+    ],
+    ids=['equal', 'unequal'],
+)
+def test_rescaling_categorical_weights_preserves_each_seeded_draw(seed, weights, large):
+    names = ('FIRST', 'SECOND', 'THIRD')[: len(weights)]
+    configuration = Configuration(Request(3), mode=SAMPLED, seed=seed)
+    answers = []
+    for scale in (weights, large):
+        program = decision(dict(zip(names, scale, strict=True)))
+        oracle, failed = run_of(program, configuration)
+        assert failed is None
+        expected = value_at(oracle, program, Key('machine', ('state',)), 3)
+        answers.append((state_of(program, configuration), expected))
+    ordinary, huge = answers
+    assert ordinary[0] == ordinary[1] == huge[1]
+    assert huge[0] == huge[1]
+
+
+def test_categorical_overflow_preserves_eligible_boundaries_and_median_ties():
+    dist = Distribution('categorical', (1e308, 0, 1e308, 1e308), enum='E', outcomes=('A', 'Z', 'B', 'C'))
+    eligible = ('C', 'Z', 'A')
+    assert outcome(dist, eligible, None) == 'A'
+    for u, expected in ((math.nextafter(0.5, 0), 'A'), (0.5, 'C'), (math.nextafter(0.5, 1), 'C')):
+        assert outcome(dist, eligible, u) == expected
+
+
+@pytest.mark.parametrize('u', [None, 0.5])
+@pytest.mark.parametrize('eligible', [(), ('Z',)])
+def test_categorical_without_an_eligible_positive_weight_still_fails(eligible, u):
+    dist = Distribution('categorical', (1e308, 0, 1e308), enum='E', outcomes=('A', 'Z', 'B'))
+    with pytest.raises(SimulationError, match='no eligible outcome has a weight to draw'):
+        outcome(dist, eligible, u)
 
 
 def test_the_uniform_number_of_a_draw_is_open_and_keyed():
