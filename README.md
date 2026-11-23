@@ -76,11 +76,11 @@ see which results change.
 
 ## A case that shows itself
 
-![The Lumberton recovery dashboard shows water service, storage and advisories at the selected hour](scenarios/water_controls_wipe/ui/media/recovery-dashboard.png)
+![Washington, DC under the delayed response: the reader opens the water systems and moves the time slider. The stored water goes down, the boil-water advisories start, and then the controls come back.](scenarios/water_controls_wipe/ui/media/live-view.gif)
 
 The water case follows service and recovery in 16 places after a controls outage. Select a place and
-a response. Then follow the stored water, the repair work that stays and the service, hour by hour.
-The dashboard needs Node.js 20 or later:
+a response. Then move the time and follow each water system: what its plants make, what it buys, its
+stored water, its homes and its hospitals. The live view needs Node.js 20 or later:
 
 ```sh
 python -B -m scenarios.water_controls_wipe.ui setup
