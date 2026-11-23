@@ -125,6 +125,8 @@ deliver = event(amount: L, setup: h):
 - A `formula(...)` local can read a local below it, because the engine evaluates it when it is read.
 - A local of a stored number can be a stock: the batch above fills by a `move` and drains by the
   flow.
+- A local stock can hold the settings of its endpoints under it: `outflow.capacity = limit`. A plain
+  setting reads only the locals above the stock. A `formula(...)` setting can read a local below it.
 - A stage declares no names of its own. A value that several statements of a stage need is a
   local, declared at the start of the event and assigned in the stage.
 - A local can hold a reference to an occurrence of another event:
@@ -165,7 +167,7 @@ is read once, at 5 h. A loss of safety before 5 h has no effect on that check.
   zero.
 - A delay after a gate is captured when the gate releases.
 - `after 0 h:` is a separate stage at the same time. Other work that is due can run before it.
-- The first line of a stage can be its text, and then its evidence.
+- The first rows under a stage can hold its text and its evidence.
 - Timing steps stand at the level of the event, never inside a branch.
 - There is no absolute `at T:` step. A trigger on `t >= T` says the same.
 - An occurrence runs to its end. There is no interruption, cancellation or join. Stop its later
@@ -177,7 +179,7 @@ a stage. To record a success, start another event on the path of success:
 
 ## Statements
 
-A stage runs its statements in order. Each statement sees the writes of the statements before it.
+A stage runs its statements in order. Each statement reads the writes of the statements before it.
 The stage commits at its end: its writes, its moves and its starts then take effect together. If a
 statement fails, the run stops, and the stage commits nothing.
 
@@ -284,10 +286,10 @@ after 2 h:
 - `else:` is the last case.
 
 **A random outcome.** When the selector is a draw of a `categorical`, the engine reads the guards
-first, then draws among the eligible outcomes, with their weights scaled to sum to one. A median run
+first, then draws among the eligible outcomes, with their weights divided by their sum. A median run
 takes the most likely eligible outcome, the first declared of them on a tie. With no eligible case,
-the `else:` body runs, if there is one, and the engine draws nothing. A sampled run draws `FIXED` in
-7 runs of 10.
+the `else:` body runs, if there is one, and the engine draws nothing. A sampled run draws `FIXED`
+with a probability of 0.7.
 
 **A decision.** Store a value in a field and branch on it. A caller who wants another value stops
 the run before the branch and edits the field ([Breakpoints](#breakpoints-checkpoints-and-edits)).
@@ -341,12 +343,13 @@ refill = event(amount: g):
   captures. It cannot read `amount` or `status`.
 - The body of a trigger has, in this order: its captures (`name = value`), one start of its own
   event or more (`this.refill.start(...)`), and an optional reset as its last line.
+- A trigger can have its text and its evidence on rows of its body.
 - A start by hand (`grinder.refill.start(20 g)`) does not use or reset the trigger. A trigger and a
   start by hand on a grinder at 8 g give two refills: 108 g.
 
 | Reset | When the trigger can fire again |
 | --- | --- |
-| None | After its condition is false |
+| No reset | After its condition is false |
 | `reset when C` | After `C` holds |
 | `reset when false` | Never: the trigger fires once in the run |
 | `reset after D` | `D` after it fired, while its condition holds. The engine captures `D` at the firing. |
@@ -410,7 +413,7 @@ At one time, the engine runs the stages that are due in rounds.
 
 1. The stages due in the round commit one after another. The stage of the occurrence that started
    first goes first. Occurrences that started together go in the order of their `.start` statements.
-2. A later stage sees the direct writes of an earlier stage. From 20 g, a stage that sets 8 g and a
+2. A later stage reads the direct writes of an earlier stage. From 20 g, a stage that sets 8 g and a
    later stage that adds 4 g leave 12 g.
 3. After the stages, the engine shares the flows again and settles each solver once, in dependency
    order.
@@ -535,7 +538,9 @@ assert plant.rate <= 5 L/h  @fixture
   that it leaves.
 - A tolerance is a closed interval: `assert hours + used in [total - 0.001 work_h, total + 0.001 work_h]`.
 - An assertion reads values inside their comparison band as equal ([numerics.md](numerics.md)).
-- An assertion that the engine cannot check is an error of the compiler.
+- An assertion makes no draw.
+- Between moments, the engine watches an assertion as it watches a trigger. A strict comparison is
+  valid in an assertion, because the first instant at which it fails exists.
 - An assertion needs a `record` ([evidence.md](evidence.md#the-evidence-rule)).
 
 ## Breakpoints, checkpoints and edits

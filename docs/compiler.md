@@ -51,14 +51,14 @@ files -> logical lines -> tree -> declared model -> program -> Compiled
 ([The two entry points](#the-two-entry-points)). The engine reads only the program and a
 configuration ([docs/engine/README.md](engine/README.md)).
 
-The parser resolves no name. The declared model reads no engine. The program holds no text and no place
-in a file. Each step owns its own decisions, and no later step makes them again.
+The parser resolves no name. The declared model knows nothing of the engine. The program holds no
+text and no place in a file. Each step owns its own decisions, and no later step makes them again.
 
 ## The two entry points
 
 | Function | Input | Use |
 | --- | --- | --- |
-| `model.compile.load_scenario(path, *, run=None, edits=None)` | A package folder, its `model.scn`, or the `model.scn` of a variant | The commands, the public API (`napkin.load_scenario`) and every package |
+| `model.compile.load_scenario(path, *, run=None, edits=None)` | A package folder, its `model.scn`, or the `model.scn` of a variant | The commands and the public API (`napkin.load_scenario`) |
 | `model.compile.compile_text(text, units, file='', tables=None, *, run=None, edits=None)` | One text, with its table of units | Tests and short scripts |
 
 `compile_text` reads no prelude and no library: the model has the units of `units` only. A unit is
@@ -115,9 +115,9 @@ clinic/
     model.scn                 the main file: it starts with `scenario "Title"`
     parts/staff.scn           a module: `use parts.staff` reads it
     units.json                units of the package (optional)
-    evidence/                 records of the package's library (optional)
+    evidence/                 sources, claims and assumptions of the library (optional)
     style.toml                the picture (docs/draw.md); the compiler never reads it
-    roles.toml                who plays each part, for the publisher and the UI
+    roles.toml                who plays each part, for the wrapper (docs/draw.md)
     variants/
         winter/model.scn      a variant: it starts with `variant "Title"`
 ```
@@ -176,7 +176,7 @@ These rules apply to the files of one model:
 1. `use a.b` names the module `<package>/a/b.scn`. The compiler reads no file of another package.
 2. A variant reads the main file of its package first.
 3. Each file comes after the modules that it uses, in the order of its `use` lines. The entry file
-   comes last. A module that two files use is read once.
+   comes last. The compiler reads each module once, also when two files use it.
 4. The compiler parses each file alone. It numbers the lines of a file after the lines of the file
    before it, so each problem names its own file and line (`semantic.Files`).
 5. The files make one model under one scenario line (`compile.merged`). Each line that a variant
@@ -202,8 +202,8 @@ The units of a model come from four places, in this order (`model/library.py`,
 3. the `units.json` and the `evidence/` folder of the package;
 4. for a variant, the `units.json` and the `evidence/` folder of the variant.
 
-A unit or a record is in one place only, and no file can define a name of the prelude again. A table
-(`sites: Place from "places.csv"`) is a CSV file of the package folder
+A unit or an entry of the evidence (a source, a claim, an assumption) is in one place only, and no
+file can define a name of the prelude again. A table (`sites: Place from "places.csv"`) is a CSV file of the package folder
 (`model/language/tables.py`).
 
 `package.py`, `load_package(path)`, compiles every model of a package. A package with no variants
@@ -215,7 +215,7 @@ in name order. A problem of the main file shows once, not once for each variant.
 **The lexer** (`model/language/lex.py`) gives the logical lines of a text.
 
 - A logical line is one row of the file, or more rows while a bracket `(` or `[` or a text is open.
-- Each level of nesting is four spaces. A tab is the problem `tab`, and another indent is the problem
+- Each level of indent is four spaces. A tab is the problem `tab`, and another indent is the problem
   `indent`.
 - A `#` outside a text starts a comment to the end of its row. The lexer keeps the comments, so the
   formatter can write them again.
@@ -236,17 +236,17 @@ form of each line and resolves no name. It stops at the first line that it canno
   while the next factor is a bare name. So `48 h/2` stops before the `2`.
 - A name with a capital first letter is a template or a member of an enum. The name of a value
   starts with a small letter.
-- A word that the language no longer has is refused by name, with the code `retired` and the form
-  to write now ([docs/language/changes.md](language/changes.md)).
+- The parser refuses by name a word that the language no longer has, with the code `retired` and
+  the form to write now ([docs/language/changes.md](language/changes.md)).
 
-**The tree** (`model/language/nodes.py`) has one frozen record for each kind of expression, type and
-line. The place in the file and the layout (comments, empty rows) take no part in equality. So
+**The tree** (`model/language/nodes.py`) has one frozen dataclass for each kind of expression, type
+and line. The place in the file and the layout (comments, empty rows) take no part in equality. So
 `parse(write(tree)) == tree`.
 
 **The formatter** (`model/language/format.py`, `format_text(text)`) writes a tree again in the
-language's own layout: four spaces for each level, one logical line on one row, and only the
-brackets that the binding needs. A formatted text does not change when the formatter reads it again.
-`napkin fmt` is this function ([cli.md](cli.md#napkin-fmt)).
+language's own layout. It writes four spaces for each level and one logical line on one row. It
+writes only the brackets that the order of the operations needs. A formatted text does not change
+when the formatter reads it again. `napkin fmt` is this function ([cli.md](cli.md#napkin-fmt)).
 
 ## Declare
 
@@ -257,7 +257,7 @@ list of its rules. The main rules are these:
 
 | Subject | Rule |
 | --- | --- |
-| Types and units | A type is declared (`water: L`) or comes from the initializer. `+`, `-`, a comparison, `min`, `max`, `clip` and both sides of `if ... else` need one dimension. `*` and `/` make the dimension of their result |
+| Types and units | The model declares a type (`water: L`), or the type comes from the initializer. `+`, `-`, a comparison, `min`, `max`, `clip` and both sides of `if ... else` need one dimension. `*` and `/` make the dimension of their result |
 | Quantities | A quantity is its dimension and its exact scale, never its spelling. A written number is the exact decimal of its token. So `[6 h, 1 day]` runs from 6 h to 24 h |
 | Unit runs | After a number, a name is a unit while the library has a unit of that name. The first name that is no unit ends the run |
 | Members and links | A template is the schema of its members. An entity is the template of its one member. A link names one member, fixed for the run |
@@ -301,7 +301,7 @@ of napkin but `napkin.core`.
 
 | Module | What it holds |
 | --- | --- |
-| `program/parts.py` | Frozen records for the whole language: units, enums, templates, values, flows, events, solvers, status displays, assertions, members and the `Program` |
+| `program/parts.py` | Frozen dataclasses for the whole language: units, enums, templates, values, flows, events, solvers, status displays, assertions, members and the `Program` |
 | `program/refs.py` | What an expression reads: a `Path` from a start (`THIS`, `ROOT`, `ITEM`, `Named`, `Local`, a collection) through named steps, and the reads that the language writes as calls |
 | `program/config.py` | The configuration: inputs, mode, seed, limits, budgets, numerical settings and the request |
 | `program/record.py` | The record of a run: histories of pieces, the trace and the manifest |
@@ -313,20 +313,20 @@ of napkin but `napkin.core`.
 | `program/reach.py` | Which events can start, and which values each named state can take |
 | `program/proofs.py` | That a value never falls, and what a value reads |
 
-A program holds no text. Each record carries its `origin`, never a line number. A number type names
+A program holds no text. Each part carries its `origin`, never a line number. A number type names
 its unit by its spelling (`L/h`), and the program's table of units gives each spelling its dimension
 and its exact scale. Time is in hours.
 
 **Canonical bytes** (`program/canonical.py`). Two builds of one model give equal bytes. A change of a
-number, a unit, a name or the structure gives other bytes. The encoding is tagged and
-length-prefixed. Nothing depends on the identity of an object, the order of a dictionary or the
+number, a unit, a name or the structure gives other bytes. Each value has a tag and a length
+before it. Nothing depends on the identity of an object, the order of a dictionary or the
 process. The run store keys a run by these bytes ([cli.md](cli.md#the-run-store)).
 
 ## The builder: the second authoring path
 
-`program/build.py` is a short Python API that makes programs. Tests use it, and the lowering uses
-it. A program that the builder makes and a model text that means the same give the same canonical
-bytes. This script prints `True`:
+`program/build.py` is a short Python API that makes programs. Tests use it, and
+`model/lowering.py` uses it. A program that the builder makes and a model text that means the same
+give the same canonical bytes. This script prints `True`:
 
 ```python
 from napkin.model.compile import compile_text
@@ -358,7 +358,7 @@ print(program_bytes(built) == program_bytes(compile_text(TEXT, UNITS).program))
 The builder gives handles for expressions: `this`, `local`, `item`, `root`, `t`, a member from
 `entity`, `member`, `named` or a table, `q(number, unit)` and `call(name, ...)`. The part
 constructors (`value`, `input_`, `link`, `flow`, `route`, `legs`, `event`, `after`, `until`, `when`,
-`solver`, `status`, `assertion` and others) make the records of `program/parts.py`.
+`solver`, `status`, `assertion` and others) make the dataclasses of `program/parts.py`.
 
 `Builder.finish()` gives each part its origin from its place (`grinder.refill.step[0].do[1]`), each
 draw its site (`<origin>.draw[0]`) and each flow with no unit the unit of its ends per hour. Then it
@@ -396,8 +396,8 @@ A diagnostic of the front end is a `Problem` (`model/language/problems.py`): its
 the code and not the message.
 
 - The lexer and the parser raise `SyntaxProblem` at the first line that they cannot read.
-- The declaration and the lowering collect every problem and raise one `LanguageError`. Its
-  `problems` hold each `Problem`, and `codes` gives their codes in order.
+- `declare` and `lower` collect every problem and raise one `LanguageError`. Its `problems` hold
+  each `Problem`, and `codes` gives their codes in order.
 - A warning is a `Problem` in `Compiled.reports`. It refuses nothing.
 
 The commands write one diagnostic on one line: `file:line:column: error: message [code]`, or
@@ -437,9 +437,10 @@ The warnings refuse nothing:
 
 ## The evidence gate
 
-`model/support.py` holds the owner's evidence rule. Each choice of a model shows its support: a
-citation `@name` of a `record` line, or a line `@kind "explanation"` under it. `support.unsupported`
-gives the warning `no_record` for each of these parts when it has no evidence:
+`model/support.py` holds the owner's evidence rule. Each part of a model shows its support: a
+citation `@name` of a `record` declaration, or a line `@kind "explanation"` under it
+([docs/language/evidence.md](language/evidence.md)). `support.unsupported` gives the warning
+`no_record` for each of these parts when it has no evidence:
 
 - an input, but a text input;
 - a stored number or yes/no of an entity, a template or the top level. A yes/no with no evidence of
@@ -452,7 +453,7 @@ gives the warning `no_record` for each of these parts when it has no evidence:
   (`base_need: W @survey`).
 
 A text, a member of an enum, a link, a collection and a formula need no evidence. A value that an
-option or a `change` sets is different: a missing record there is an error, not a warning.
+option or a `change` sets is different: with no evidence, it is an error, not a warning.
 
 `support.cited_data` checks a value whose evidence cites a datum of a claim (`datum: key`). The
 value must be that number, in dimension and scale, read exactly. So `0.1 day` is the datum 2.4 h. A
@@ -487,9 +488,9 @@ computes. It covers:
 - the horizon and the numerical settings of its default run;
 - the version of the language, `LANGUAGE_VERSION`.
 
-It covers no label: no text, title, menu line, note or `record` line, and not the places of the lines,
-the comments or the names of the files. So a corrected label or a moved line keeps the hash, and a
-saved edit document stays valid. An edit document names the hash that it was made for
+It covers no label: no text, title, menu line, note or `record` declaration, and not the places of
+the lines, the comments or the names of the files. So a corrected label or a moved line keeps the
+hash, and a saved edit document stays valid. An edit document names the model hash of its revision
 (`model_hash`).
 
 ## Proofs over a program
@@ -501,7 +502,7 @@ run uses them to change its work.
   each named state can take. It is conservative: "cannot start" is proved, "can start" says only that
   nothing rules it out. `napkin draw --run` uses it to leave out the events that cannot start.
 - `program/proofs.py`, `never_falls(program, configuration, key)`, proves that a value never falls
-  over a run. A reporting lag needs this proof. `reads(program, configuration, key)` gives the parts
+  over a run. A lag of a report needs this proof. `reads(program, configuration, key)` gives the parts
   that a value can read, for the evidence trail of a report.
 
 For the named run `standard` of `examples/incident_response_tempo`, `reach` gives these conclusions
@@ -526,8 +527,8 @@ table <size>                   the side table's canonical bytes
 <the table's bytes>
 ```
 
-- `FORMAT_VERSION` (4) names the layout and the records of the file. It goes up with each change of
-  a record, a field added, removed, renamed or moved included.
+- `FORMAT_VERSION` (4) names the layout and the dataclasses of the file. It goes up with each change
+  of a dataclass, a field added, removed, renamed or moved included.
 - `LANGUAGE_VERSION` (`0.2.3`) names what a program means. It goes up with each change of what a
   program computes. The model hash covers it.
 - A loader reads only its own format and language. It refuses any other by name, and the remedy is
@@ -535,8 +536,9 @@ table <size>                   the side table's canonical bytes
 
 `ArtifactError` has these codes: `not_a_program`, `format_version`, `language_version` and `damaged`.
 
-**The side table** (`SideTable`) maps each part that has an origin to its `Location`: its kind, its
-name, its file, line and column, its label (the first text under it), its evidence and its title.
+**The side table** (`SideTable`) maps each part that has an origin to its `Location`. A location
+holds the kind and the name of the part, and its file, line and column. It also holds the label (the
+first text under the part), the evidence and the title.
 The kinds at which a run can stop are `event`, `stage`, `gate`, `trigger`, `assign`, `move`, `start`,
 `if`, `switch` and `case` (`EXECUTABLE`). No hash covers the side table: a new label changes the
 table and keeps the program's bytes.

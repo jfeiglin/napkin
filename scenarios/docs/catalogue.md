@@ -193,8 +193,8 @@ and `tools.check --release` also run the spreads. [Publication scope](../../tool
 ## The settings of the pages: `brief.toml`
 
 `brief.toml` is an optional TOML file of the package or of a variant. The model and its runs do not
-read it. The publisher reads it, and it refuses a key that it does not know, a value of another shape
-and a name that the model does not declare.
+read it. The publisher reads it. It refuses a key that it does not know, a value of another shape and
+a name that the model does not declare.
 
 | Key | What it holds | Who reads it | Without it |
 | --- | --- | --- | --- |
@@ -238,7 +238,7 @@ against = "standard"
 - When the file has no `[[comparison]]`, the publisher reads the note `comparisons` of the model: a
   note `comparisons: run: against` under `notes:` gives one pair.
 
-[conventions.md](conventions.md#state-a-comparison-in-brieftoml) says how to choose the two runs.
+[conventions.md](conventions.md#state-a-comparison-in-brieftoml) says how to select the two runs.
 
 ### Spreads and their edit documents
 
@@ -277,9 +277,15 @@ object with these keys:
 | `runs` | Edits of one named run, by its name |
 | `reason` | Why the document makes these edits, in words |
 
-Each edit gives an input by its full path. The value is a number in the unit of the input, `true` or
-`false`, or a text. A text is a number with its unit (`"3 days"`), a member of an enum, a text for a
-text input, or a distribution (`"pert(2 h, 4 h, 6 h)"`). The edit document of the spread above:
+Each edit gives an input by its full path. The value is one of these:
+
+- a number in the unit of the input;
+- `true` or `false`;
+- a number with its unit, as a text (`"3 days"`);
+- a member of an enum, or a text for a text input;
+- a distribution, as a text (`"pert(2 h, 4 h, 6 h)"`).
+
+This is the edit document of the spread above:
 
 ```json
 {
@@ -304,8 +310,8 @@ text input, or a distribution (`"pert(2 h, 4 h, 6 h)"`). The edit document of th
   `results/paired-spreads.json`. The receipt gives the mean and the 5th and 95th percentiles of each
   value, and of the difference in each pair of samples. The publisher pairs the samples of the two
   runs by their sample seed.
-- The time of a spread is the number of its samples, times the number of its runs, times the time of
-  one run, shared among the `--jobs` processes.
+- A spread takes time: the number of its samples, times the number of its runs, times the time of one
+  run. The `--jobs` processes share this work.
 
 ### Sweeps
 
@@ -347,10 +353,14 @@ The language reads `notes:` as free notes. It gives them no meaning, and no run 
 A path under `reporting` or `not_estimated` can name a template. Then the note applies to each
 instance of the template.
 
-The models of the catalogue also keep these notes for their reviewers: `premises`, `limitations`,
-`verification` (with `research`, the path of the research note from the folder of the package),
-`counterfactual` and `decisive`. No current tool reads their text. The evidence tools follow the
-`record` declarations that a note cites, as they follow every other citation.
+The models of the catalogue also keep these notes for their reviewers:
+
+- `premises` and `limitations`;
+- `verification`, with `research`, the path of the research note from the folder of the package;
+- `counterfactual` and `decisive`.
+
+No current tool reads their text. The evidence tools follow the `record` declarations that a note
+cites, as they follow every other citation.
 
 ## The scope of each value on the pages
 
@@ -358,8 +368,8 @@ The language lets a value have no scope. The catalogue does not. `tools.check` r
 two for each model:
 
 - a `scope "…"` on the scenario line, or on the `variant` line of the variant;
-- a note `reporting: <path>: scope: "…"` for each path that the pages give: each path of `show` and
-  each path that a `reporting` or `not_estimated` note names.
+- a note `reporting: <path>: scope: "…"` for each path on the pages. These are the paths of `show`,
+  and the paths that the notes `reporting` and `not_estimated` name.
 
 ## Categories
 

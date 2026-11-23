@@ -85,8 +85,9 @@ reservoir:
   number.
 - The `flows` of an endpoint hold the current connections, also a flow that is closed or that gets
   no quantity.
-- A flow of the endpoint can read its far end: `main.sink`, when `main` is a member of the outgoing
-  flows.
+- A `where` over the `flows` can test the ends of each flow by identity:
+  `count(tank.water.outflow.flows.where(sink == clinic.water))`. A member of `flows` has no stock to
+  read at its ends.
 
 ## `SOURCE` and `SINK`
 
@@ -368,7 +369,8 @@ The two rates are 4 L/h and 2 L/h. A request of 6 L/h on each pipe would make tw
 
 ### Sharing is local
 
-Each endpoint decides with what it sees: its own inflow, and the claims on its own outflow. Nothing
+Each endpoint decides with the values that it reads: its own inflow, and the claims on its own
+outflow. Nothing
 makes service equal across endpoints unless a solver does it.
 
 ```scn
@@ -435,7 +437,7 @@ time.
 - A solver belongs to an entity or a template. Each member of a template has its own solver.
 - Inside the solver, a bare name is a binding of `inputs:` or an unknown of `solve_for:`.
 - A binding brings the present value of its source, with its units, bounds and restrictions. An
-  input of 8 W with a range `[0 W, 10 W]` gives 8 W. Its range does not let the solver choose
+  input of 8 W with a range `[0 W, 10 W]` gives 8 W. Its range does not let the solver select
   10 W.
 - `solve_for:` names stored numbers, actual rates of flows and routes, and served fractions. A
   projection names a field on each member: `routes.carried.actual_rate`.
@@ -460,7 +462,7 @@ The compiler refuses each other form by name:
 
 | Code | What it refuses |
 | --- | --- |
-| `solver_form` | A strict inequality, `!=`, `or`, `any(...)` or `not` of a relation, a relation under a condition, a choice or a lookup that an unknown keys, and a domain, preferred value or scale that reads an unknown |
+| `solver_form` | A strict inequality, `!=`, `or`, `any(...)` or `not` of a relation, a relation under a condition, a conditional or a lookup that an unknown keys, and a domain, preferred value or scale that reads an unknown |
 | `nonlinear` | A product of two unknowns, a division by an unknown, a power or another function of one, `min` of one, and a positive part that is negated, maximized or on the large side of a relation |
 | `participant` | A rate that a relation reads and that the solver does not determine, and a relation that reads nothing that the solver determines |
 | `two_solvers` | Two solvers whose rates lie in one connected set of flows and stocks |
@@ -469,7 +471,7 @@ A Boolean formula of ordinary model logic can still use `or`, `not` and `!=`.
 
 ### One owner for a joint decision
 
-When two solvers would choose rates that compete in one connected set, the model is refused with
+When two solvers would select rates that compete in one connected set, the model is refused with
 both solvers named. One coordinating solver must own the joint decision. Ordinary flows that share
 an endpoint use its local rule and need no solver.
 
@@ -512,14 +514,14 @@ room in both batteries, East gets 6 W and West 2 W. When East is full and takes 
 
 A solver decides only the rates and the values that its `solve_for` names.
 
-- A flow that the solver does not name keeps the local sharing of its endpoints. The solver sees
+- A flow that the solver does not name keeps the local sharing of its endpoints. The solver reads
   it only through the limits that it puts on the named rates, so the books still balance.
 - A relation or an objective that reads the rate of such a flow is an error (`participant`). To
   decide who gets the quantity, the solver names those rates.
 - The engine settles each solver once in each round, after the stages of the round. It publishes
   the results of one solve together ([events.md](events.md#rounds-at-one-time)).
 - An infeasible problem, an unbounded objective or a numerical failure stops the run with a
-  diagnostic. No dependent trigger or report sees a partial answer.
+  diagnostic. No dependent trigger or report reads a partial answer.
 
 ## The selection order
 
@@ -561,7 +563,7 @@ Three consumers each request 6 W and have a capacity of 6 W. The provider enforc
 
 | Objective | a | b | c | Total unmet |
 | --- | ---: | ---: | ---: | ---: |
-| None: fair sharing | 2 W | 2 W | 3 W | 11 W |
+| No objective: fair sharing | 2 W | 2 W | 3 W | 11 W |
 | `minimize(sum(consumers.unmet))` first | 4 W | 0 W | 5 W | 9 W |
 
 Fair sharing raises the three rates to 2 W. Then the first limit binds, and only `c` can rise, to

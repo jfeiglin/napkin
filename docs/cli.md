@@ -51,9 +51,9 @@ file:line: warning: message [code]
 The code names the rule ([compiler.md](compiler.md#diagnostics)). The file is relative to the
 current folder when it is inside it. A warning refuses nothing.
 
-The warnings `no_record` say that a part rests on no evidence
-([compiler.md](compiler.md#the-evidence-gate)). `napkin compile` writes one line for each of them.
-Each other command writes one line that counts them:
+Each warning `no_record` says that a part rests on no evidence
+([compiler.md](compiler.md#the-evidence-gate)). `napkin compile` writes one line for each of these
+warnings. Each other command writes one line that counts them:
 
 ```text
 warning: 3 values have no record (napkin compile lists them) [no_record]
@@ -62,7 +62,7 @@ warning: 3 values have no record (napkin compile lists them) [no_record]
 | Exit code | Meaning |
 | --- | --- |
 | 0 | The command did its work |
-| 1 | Diagnostics: the model does not compile, the run stops before its horizon, the edit document does not hold, or a file cannot be read or written |
+| 1 | Diagnostics: the model does not compile, the run stops before its horizon, the edit document does not hold, or the command cannot read or write a file |
 | 2 | Usage: the command line is wrong, for example a MODEL, a path, a run or a time that the model does not have |
 | 3 | `napkin play` only: the input ended, or `quit` came, before the end of the run |
 
@@ -120,7 +120,7 @@ examples/reservoir/model.scn: A reservoir in a storm
 `model_hash`, `entities`, `inputs`, `stores`, `formulas`, `distributions`, `links`, `collections`,
 `flows`, `units`, `diagnostics` and `warnings`. Each value has its `path` and its `unit`. Each flow
 has its `path`, its `kind` (`directed`, `reversible` or `legs`), its `source`, its `sink` and its
-`unit`; a flow with legs has its `legs` instead of its ends. Each diagnostic and each warning has
+`unit`. A flow with legs has its `legs` instead of its ends. Each diagnostic and each warning has
 its `code`, `message`, `file`, `line` and `column`.
 
 ## napkin run
@@ -154,8 +154,9 @@ A value of an occurrence, such as `tank.deliver#0.pipe.request`, is not in the d
    plain read, and a warning gives the reason;
 2. the text of each case of a status display that the table shows;
 3. the reason of each value that is `unavailable`;
-4. the near-ties: the decisions of the run within the tolerance of their boundary. The table gives
-   the five most frequent sources. `--json` gives every entry.
+4. the near-ties: the decisions of the run within the tolerance of their boundary
+   ([docs/language/numerics.md](language/numerics.md#near-ties)). The table gives the five most
+   frequent sources. `--json` gives every entry.
 
 ```text
 $ napkin run examples/piano_tuners
@@ -231,7 +232,8 @@ P(tunings_done > 3000) = 41/100 = 0.41 (95% from 0.31262 to 0.512856)
 ```
 
 A run whose samples draw nothing has no spread. The command says so and exits 0. A sample that stops
-before the horizon refuses the whole study: the command exits 1, and no sample is left out.
+before the horizon refuses the whole study: the command exits 1, and the study leaves out no
+sample.
 
 **`--json`** prints one document with the keys `model`, `title`, `run`, `edits`, `samples`, `seed`,
 `at`, `drawn`, `values`, `exceed`, `draws` and `warnings`. Each entry of `values` has the `unit`,
@@ -257,7 +259,8 @@ The command plays one run with a `napkin.session.Session` ([python-api.md](pytho
 Give `--break` or `--from`. The two together are a usage error, because a checkpoint keeps its own
 breakpoints.
 
-**A location** is the origin of a part of the compiled program:
+**A location** is the origin of a part of the compiled program
+([docs/language/events.md](language/events.md#breakpoints-checkpoints-and-edits)):
 
 | Location | Example | The run stops |
 | --- | --- | --- |
@@ -270,13 +273,13 @@ breakpoints.
 location that the model does not have is a usage error, with the closest names. A breakpoint in the
 body of a trigger is a usage error too.
 
-**At a stop**, the command prints the number of the stop, its time, the location with its kind and
-its place in the file, the occurrence, and what runs next. Then it shows each value, with what an
-edit can give it and its label. Then it reads lines after the prompt `> `:
+**At a stop**, the command prints the number of the stop, its time, and the location with its kind
+and its place in the file. It also prints the occurrence and what runs next. Then it shows each
+value, with what an edit can give it and its label. Then it reads lines after the prompt `> `:
 
 | Line | What it does |
 | --- | --- |
-| `PATH = VALUE` | Edit a live stored value: a number in the value's declared unit, an enum member, `true` or `false`, or a text. The engine checks the edit. A refused edit prints its reason |
+| `PATH = VALUE` | Edit a live stored value: a number in the value's declared unit, an enum member, `true` or `false`, or a text. The engine checks the edit. When the engine refuses it, the command prints the reason |
 | `save FILE` | Write the stop, with its edits, to the checkpoint FILE |
 | `go` | Go on to the next stop, or to the end |
 | `quit` | Stop here. The command exits 3 |
@@ -312,8 +315,8 @@ edit at 40 h, before operator.decide.step[0].do[1]: operator.decide#0.order OPEN
 ```
 
 The edit to `WAIT` keeps the spillway closed, so the water rises to 0.9. `--from` goes on from the
-saved checkpoint, in this process or a fresh one. A checkpoint of another program, engine or run is
-refused by name. Here the input ends with `quit`, so the command exits 3:
+saved checkpoint, in this process or a fresh one. The command refuses by name a checkpoint of
+another program, engine or run. Here the input ends with `quit`, so the command exits 3:
 
 ```text
 $ printf 'reservoir.water = 0.65\nquit\n' | napkin play examples/reservoir --from stop.checkpoint --value reservoir.water
@@ -365,8 +368,8 @@ napkin draw [-h] [--run NAME] [--style FILE] [-o FILE] [--latex FILE] MODEL
 | `-o FILE` | Write the SVG to FILE. Without it, `<package>[.<variant>][.<run>].svg` in the current folder |
 | `--latex FILE` | Also write the equations, symbols and references of `[equations]` as a LaTeX fragment (amsmath, longtable, hyperref) |
 
-Without `--run`, a model with one named run is drawn as that run. A model with several named runs is
-drawn with its runs joined. [draw.md](draw.md) describes the picture and `style.toml`.
+Without `--run`, the command draws a model with one named run as that run. It draws a model with
+several named runs with its runs joined. [draw.md](draw.md) describes the picture and `style.toml`.
 
 ```text
 $ napkin draw examples/piano_tuners -o tuners.svg
@@ -388,11 +391,10 @@ napkin new [-h] [--title TEXT] [--variants NAME,…] DIR
 | `--variants NAME,…` | Also write `variants/NAME/model.scn` for each NAME. A name is a small letter, then small letters, digits and `_` |
 
 The command writes `DIR/model.scn` and `DIR/style.toml`. The model has one entity with an input, two
-stocks and a flow between them, one formula at the top level, and one `record` line that each value
-cites. It uses
-the prelude's units only. The stylesheet gives the entity its role in the picture (`[role]`), because
-the model has no role. Each variant changes the input to its own value. The command writes no file
-when one of its files is there already (exit 2).
+stocks and a flow between them, one formula at the top level, and one `record` declaration that each
+value cites. It uses the prelude's units only. The stylesheet gives the entity its role in the picture
+(`[role]`), because the model has no role. Each variant changes the input to its own value. The
+command writes no file when one of its files is there already (exit 2).
 
 ```text
 $ napkin new demo --title "A clinic queue" --variants east,west
@@ -416,7 +418,7 @@ schema is `napkin/schema/edits.schema.json`. `napkin/model/runs.py` applies it, 
 | --- | --- |
 | `schema_version` | `"0.0.1"`, the version of the edit document (`napkin.SCHEMA_VERSION`). Required by the schema; `--edits` adds it when the file has none |
 | `model_hash` | The model hash that `napkin compile` prints. Required by the schema; `--edits` adds the hash of the model when the file has none |
-| `reason` | A text: why the edits are made |
+| `reason` | A text: the reason for the edits |
 | `set` | The edits of every run: `{input path: value}` |
 | `options` | The edits of the runs that take an option: `{option name: {input path: value}}` |
 | `runs` | The edits of one named run: `{run name: {input path: value}}` |
@@ -495,7 +497,16 @@ response.first_incident.when[0]   fire   1       0 h     0 h
 See near_ties in napkin run --json for every entry.
 ```
 
-A document with problems prints each one and exits 1:
+The command prints each problem of a document and exits 1. This document `bad.json` has five
+problems:
+
+```json
+{
+  "model_hash": "0000",
+  "set": {"response.detection": "5 h", "attack.admitted": 3},
+  "options": {"Rapid": {"response.containment_delay": true}}
+}
+```
 
 ```text
 $ napkin run examples/incident_response_tempo --edits bad.json
@@ -512,9 +523,15 @@ document, and `Compiled.configure(run, edits)` applies it ([python-api.md](pytho
 ## The run store
 
 `napkin run` and `napkin sample` keep the record of each run in the run store (`napkin/store.py`).
-A run that the store holds is read, not run again. The key of a run is a digest of the program's
-canonical bytes, the configuration and its request, the engine code, and the Python, numpy and
-scipy versions and the machine. A label is in no key, so a new label reads the stored run.
+The command reads a run that the store holds, and does not run it again. The key of a run is a
+digest of these parts:
+
+- the canonical bytes of the program;
+- the configuration and its request;
+- the code of the engine;
+- the versions of Python, numpy and scipy, and the machine.
+
+A label is in no key, so a new label reads the stored run.
 
 | Variable | What it does |
 | --- | --- |

@@ -1,231 +1,273 @@
 # AI operations
 
-Every case models an AI agent on the attacking side. This page explains what that means in the
-model, and how the model runs the AI's own behaviour, not only a label for it. It also explains how
-each case compares the AI with a skilled human team that runs the same operation. The
-[scenario briefs](../README.md) tell each case as a story; this page is the contract behind
-them. The [scenario language](../../docs/language.md) defines each line that it names.
+This page tells how a model shows an AI agent or another attacker, and how the pages compare an AI
+with a human team. The [language reference](../../docs/language/README.md) gives the rules of each
+line that this page names. This page uses the terms of the language reference
+([Terms](../../docs/language/README.md#terms)).
 
-## What the AI is, and what the scenario fixes
+## An attacker is a set of fixed rules
 
-The AI is an agent that carries out cyber moves through the access and tools that the scenario
-gives it. The scenario, not the AI, fixes its objective, the systems it can reach, what it can
-observe and when it can act again (assumption `A-AI-CYBER-OPERATIONS`). In a scenario file the
-attacker is the one thing with `role adversary`; the pages reject a second one. This attacker is a
-synthetic example in the style of the language page ([§1](../../docs/language.md#1-a-scenario-file-in-one-page)),
-whose values and sources are invented:
+- The language has no special part for an attacker or for an AI. An attacker is an entity, as a crew
+  or a plant is an entity. The compiler checks its values, events and flows as it checks all the
+  other parts.
+- The model fixes the rules of the attacker before the run. Events, stages and triggers say what the
+  attacker does and when. Inputs say how fast it acts, what it reaches and how it behaves. The options
+  of a named run set these inputs.
+- No part of a model observes the run and decides during it. A decision is a value that a stage
+  stores and that a branch reads. [changes.md](../../docs/language/changes.md) lists the forms of the
+  old language and what replaced them.
+- A breakpoint lets you ask what happens when the attacker or a defender acts differently at one
+  point. Stop the run there, and edit a value
+  ([Ask a question at a breakpoint](#ask-a-question-at-a-breakpoint)).
 
-```text
-# Its text says who it works for, what it aims at, what it reaches and what it can keep.
-attacker:
-    "An AI agent that works for a hostile group. It reaches the dosing controls through the
-        plant's remote-support account."
-    @assumption A-DEMO-ATTACK "Reported attacks on water utilities reached dosing controls through
-        remote access. The scenario chooses how far this attack reaches, and when."
-    role adversary
-    sees access, operators.find, operators.remote, plant.dosing
+## A worked example
 
-    input actor = "The AI"
-    var access: "none" | "kept" = "none"  @sees_reset
-        "Hidden access after the first move"
-    input reaction_time = 0.25 h in 0.05 h to 96 h  @ai_tempo
-        "Attacker's time to act after the operators reset the dosing"
+In this example, an attacker changes the chlorine dosing of a treatment plant. The operators find
+each change and reset the dosing. While the attacker keeps its access, it changes the dosing again
+after each reset. The responders remove the access some time after the first find. The option of
+the group "Attacker" sets the pace of the attacker. An AI agent comes back within minutes, and a
+human team comes back about two days later.
 
-    # The first move. The attack's name is the `attack` line of the scenario block.
-    event start when t >= 0 h:  @dosing_change
-        "{actor} changes the chlorine dosing through the plant's remote-support account."
-        plant.dosing = "tampered"
+The values and the evidence of the example are invented. The package is a folder `dosing_attack/`
+with this `model.scn` and the `brief.toml` below.
 
-    # With hidden access, the attacker sees the reset and changes the dosing again.
-    event tamper_again once after reaction_time when access is "kept" and count(operators.find) > 0:  @sees_reset @ai_tempo
-        done operators.remote is "open" and plant.dosing is "normal":  @dosing_change
-            "{actor} changes the dosing again after the reset."
-            plant.dosing = "tampered"
-        skipped operators.remote is "open" and plant.dosing is not "normal":
-            "The dosing is under manual control, so the attacker cannot change it."
-        stopped else:
-            "The operators close the remote-support account before the attacker acts again."
-            role operator
+```scn
+scenario "Dosing attack and operator recovery"
+    summary "An attacker changes the chlorine dosing of a plant. The operators find each change and reset the
+        dosing. While the attacker keeps its access, it changes the dosing again after each reset."
+    horizon 72 h
+    scope "One hypothetical treatment plant and its operators. All values are illustrative."
 
-options "Access":
-    "No hidden access":
-        "The attacker keeps no access after its first move."
-    "Keeps hidden access":
-        "The attacker keeps hidden access, and changes the dosing again after the reset."
-        attacker.access = "kept"  @sees_reset
+plant: @exercise
+    "A treatment plant whose chlorine dosing the attacker can change."
+    title "Treatment plant"
+    dosing: enum[NORMAL, TAMPERED] = NORMAL
+        "Chlorine dosing"
+    resets = 0 @exercise
+        "Resets by the operators"
+    tampered_hours: h = 0 h in [0 h,] scale 72 h @exercise
+        "Hours with tampered dosing"
+    flow count_hours: SOURCE -> this.tampered_hours @exercise
+        request = formula(1 if this.dosing == TAMPERED else 0)
+
+operators: @exercise
+    "The plant operators and the responders who remove the attacker's access."
+    input find_time = 2 h in [0.25 h, 48 h] @exercise
+        "Time from a dosing change until the operators find it and reset it"
+    input removal_time = 22 h in [1 h, 240 h] @exercise
+        "Time from the first find until the responders remove the attacker's access"
+    found: bool = false
+        "The operators found a tampered dosing"
+    reset_dosing = event(): @exercise
+        "The operators find the tampered dosing and reset it."
+        when plant.dosing == TAMPERED:
+            this.reset_dosing.start()
+        after this.find_time:
+            this.found = true
+            plant.dosing = NORMAL
+            plant.resets += 1
+    remove_access = event(): @exercise
+        "The responders remove the attacker's access."
+        when this.found:
+            this.remove_access.start()
+        after this.removal_time:
+            attacker.access = false
+
+attacker: @exercise
+    "An attacker that keeps its access until the responders remove it."
+    input return_time = 0.25 h in [0.05 h, 96 h] @exercise
+        "Time from a reset until the attacker changes the dosing again"
+    access: bool = false
+        "The attacker holds access to the dosing controls"
+    changes = 0 @exercise
+        "Dosing changes by the attacker"
+    first_move = event(): @exercise
+        "The attacker changes the dosing through the plant's remote-support account."
+        when t >= 0 h:
+            this.first_move.start()
+        after 0 h:
+            this.access = true
+            plant.dosing = TAMPERED
+            this.changes += 1
+    come_back = event(): @exercise
+        "After a reset, the attacker changes the dosing again while it keeps its access."
+        when plant.dosing == NORMAL and this.access:
+            this.come_back.start()
+        after this.return_time when this.access and plant.dosing == NORMAL:
+            plant.dosing = TAMPERED
+            this.changes += 1
 
 options "Attacker":
     "AI agent":
-        "An AI agent acts within minutes of the reset."
+        "An AI agent acts within minutes of each reset."
+        attacker.return_time = 0.25 h @ai_pace
     "Human team":
-        "A human team comes back about two days later."
-        attacker.reaction_time = 48 h  @ai_tempo
-        attacker.actor = "The human team"
+        "A human team comes back about two days after a reset."
+        attacker.return_time = 48 h @human_pace
+
+options "Response":
+    "Standard removal":
+        "The responders remove the access 22 hours after the first find."
+    "Early removal":
+        "The responders remove the access 4 hours after the first find."
+        operators.removal_time = 4 h @exercise
+
+runs:
+    ai_agent = "AI agent" + "Standard removal"
+        "An AI agent against the standard removal"
+    human_team = "Human team" + "Standard removal"
+        "A human team against the standard removal"
+    ai_agent_early = "AI agent" + "Early removal"
+        "An AI agent against the early removal"
+
+record exercise: assumption "Illustrative times and counts for a tabletop exercise."
+record ai_pace: assumption "An AI agent watches the plant without a break and acts within minutes."
+record human_pace: assumption "A human team plans each move and comes back about two days later."
 ```
 
-- The thing's text is the reader-facing text of the operation; the brief shows it under "The AI
-  operation".
-- The AI's access is a named state: of the attacker, such as `access` above, or of another thing
-  that holds it. An example is the operators' remote-support account (`operators.remote`). The
-  language does not check this.
-- Its first move (the event `start`) and its events with `after` are the moves of the operation.
-- Options set what the attacker holds at the start: a start state, such as `"Keeps hidden access"`.
-  They also set who it is: `"Human team"` sets the human pace and the `actor` text that the event
-  cards read.
-- Every run has every event. A move that only some runs make sits in an event that cannot happen in
-  the others. For example, its `when` needs hidden access, which the attacker does not hold in those
-  runs.
-- With `sees`, the attacker is an actor ([language.md §2.7](../../docs/language.md#27-actors)): its
-  decisions, the events with several outcomes, read only what it sees, and a reader or an agent can
-  pick their outcomes in place of the model ([engine.md](../../docs/engine.md#play)).
+| Part | Lines | What it does |
+| --- | --- | --- |
+| The first move | `first_move`, `when t >= 0 h:` | At 0 h, the attacker gets its access and changes the dosing. |
+| The access | `access: bool` | A stored value of the attacker. Only the responders set it to `false`. |
+| What the attacker knows | `when plant.dosing == NORMAL and this.access:` | The trigger reads the dosing, which the attacker controls, and its own access. It does not read a value of the operators. |
+| The pace | `after this.return_time when …:` | The stage waits for the pace of the attacker. Its guard reads the access once, when the stage comes due. If the responders removed the access during the wait, the stage does nothing. |
+| The defenders | `reset_dosing`, `remove_access` | The operators react to the tampered dosing. The clock of the responders starts at the first find, not at the attack. |
+| Who attacks | `options "Attacker":` | "AI agent" sets the pace to 0.25 h. "Human team" sets it to 48 h. |
 
-The language and the build check nothing that is specific to an AI operation. The attacker is a
-thing like any other. Its inputs, states and events are ordinary parts, and the build checks them
-as it checks every part. The build reads no `role`. Only the pages read the thing as the AI
-operation (`tools/publish/pages.py`). Its moves are its first move and its events
-with `after`. Its pace is the input that one of its events waits (`after reaction_time`) and that a
-run's other options set, such as `"Human team"`. The attacker's texts name the attacker in braces
-(`{actor}`). Its value, "The AI", starts with a capital letter, so the braces start a sentence. In a
-run whose options give that text another value, the cards show the human team as the actor. The
-pace does not decide who acts: an option can change the AI's pace and keep the AI.
+The three named runs give these values at 72 h:
 
-## The executable AI layer
+| Named run | `plant.tampered_hours` | `plant.resets` | `attacker.changes` |
+| --- | ---: | ---: | ---: |
+| `ai_agent` | 22 h | 11 | 11 |
+| `human_team` | 2 h | 1 | 1 |
+| `ai_agent_early` | 6 h | 3 | 3 |
 
-The start is the event `start` of the attacker, at hour zero. In an incident its lines make the
-first change, which opens the incident. In an operation it has no lines and only starts the clock:
-the attacker's events time their moves from it (`since(attacker.start)`)
-([events](../../docs/language.md#26-events)). After that, the AI reacts to what the defenders do:
+The AI agent comes back 15 minutes after each reset. Thus it changes the dosing 11 times before the
+responders remove its access at 24 h. The human team would come back at 50 h, but its access goes at
+24 h. Thus it changes the dosing once.
 
-- **Trigger.** An event of the attacker with `after` triggers at a defender step that the attacker
-  can observe. Its `when` reads a defender event or condition that the attacker sees, such as
-  `count(operators.find) > 0`.
-- **Reaction delay.** The event waits for the attacker's reaction time (`after reaction_time`). This
-  is the time from the moment that the attacker sees the defenders' step until it acts.
-- **Cancellation.** The event's outcomes read the state of the AI's access in their chances, as
-  conditions. When the defenders contain that access while the event waits, the delay still ends,
-  and the event takes `stopped` (the access is gone) or `skipped` (the step is moot) instead of
-  `done`. So a defender who removes the attacker first stops it. Exact ties go to the defender: the
-  defenders' things come before the attacker in the file, so at one moment their events fire first.
-- **Change.** The lines of the `done` outcome are the case's own mechanism: more recovery work, a
-  halted service, a re-opened outage. An AI reaction never adds people, stock or capacity.
-
-The build checks the attacker's parts as it checks every part of a model: the lines of the file, and
-each structure with every part of it, its bounds, domains and proofs
-([python-api.md](../../docs/python-api.md#build-a-model)). It has no check of its own for the AI operation, or
-for what the runs that compare with it change. Two questions stay with the author and the
-reviewers. Does the attacker's reaction time slow only its reactions to the defenders' steps? Does
-the removal of the attacker's access stop every reaction that still waits? They are questions 8 and
-9 of the audit checklist in the [catalogue's conventions](conventions.md#the-audit-checklist), which
-every new or rewritten scenario answers.
-
-AI reactions are ordinary events with `after` and outcomes. So their moments, the event and its
-outcomes `done`, `stopped` and `skipped`, are checked like those of every other event.
-
-## Why AI rather than a human team
-
-The scenarios are meant to be defensible, not bulletproof: every step should be plausible to a
-reasonable domain expert, and every value rests on evidence or a stated assumption, but a skeptic can
-always imagine a perfectly prepared human team that closes the gap. The comparison is with a realistic
-human team instead, modelled on how human teams have actually operated.
-
-- **What the AI adds.** Each case builds on AI capabilities that compound, backed by the AI evidence in
-  the library (`AI-ORCHESTRATION-2026`, `AI-AGENT-TRUST-2026`):
-  - a round-the-clock watch on the defenders' recovery, answering each step within minutes, cycle
-    after cycle, until the defenders remove it;
-  - many targets at once, each handled individually;
-  - adaptation on the spot to the equipment, records or defences it meets;
-  - specialist expertise on demand;
-  - camouflage tailored to what the defenders expect, so recovery keeps failing without an alarm.
-    Camouflage is bounded: defenders eventually suspect it or find it when they remove the attacker.
-- **The realistic human team.** Documented teams struck at planned times and left or wiped systems
-  (Ukraine 2015 and 2016), and their follow-ons came days later: two days passed between a state team's
-  2022 grid outage and its follow-on (`E-MANDIANT22`). They did not sustain a round-the-clock reactive
-  operation inside a defender's network for days. Moves that answer the defenders' recovery therefore
-  run at a 48-hour human pace. Moves planned in advance, or timed to a predictable public event, run
-  the same in both pathways. A human move that documented teams actually made in that situation stays
-  in the human pathway: for example, in 2015 attackers switched breakers by hand through operators'
-  screens (`E-CYOTE15-TIMING`).
-- **Competent defenders.** Defenders who recognize tampering cut the attacker's channel and recheck at
-  once, and fast containment still beats the AI. In most cases removing the attacker before it can act
-  on the defenders' first recovery step is the decisive defender choice.
-
-The shared assumption `A-AI-TEMPO` records the AI's machine pace and the human pace. No AI-run attack of
-these kinds has been reported; the scenario, not the AI evidence, fixes the access and reach.
-
-## The matched human pathway
-
-`featured` in `brief.toml` names two runs: the AI run, then its comparison. The comparison names
-the AI run with `versus`, and the pages check this
-([catalogue.md](catalogue.md#the-brief-settings-brieftoml)). The rest is how the scenarios are written,
-and the language does not check it. The comparison keeps the AI run's defender response and start
-states. In most cases it adds only the `"Human team"` option, which sets the attacker's reaction
-time to the human pace. In the example of the language page, `brief.toml` says
-`featured = ["delayed_kept", "delayed_kept_human"]`, and the model says:
+```sh
+napkin run dosing_attack --run ai_agent --value plant.tampered_hours,plant.resets,attacker.changes,attacker.access --at 0h,24h,72h
+```
 
 ```text
-runs:
-    delayed_kept = "Delayed response" + "Keeps hidden access"
-    delayed_kept_human = "Delayed response" + "Keeps hidden access" + "Human team" versus delayed_kept
-        "Delayed response · Human team keeps hidden access"
+Dosing attack and operator recovery: the run ai_agent, a median run to 72 h
+                                         unit   0 h    24 h    72 h
+plant.tampered_hours (Treatment plant)   h      0      21.5    22
+plant.resets (Treatment plant)                  0      10      11
+attacker.changes                                1      11      11
+attacker.access                                 true   false   false
 ```
 
-Where the AI's edge is not its pace, the comparison takes another option, which changes the
-attacker's conduct: an AI that obeys a stop order. The brief states what actually differs between the two runs. It reads the options of
-the two runs. It names each option that the comparison takes in place of the AI run's, in its
-heading and beside each key input whose value differs. The difference between the two runs is what
-the AI adds under the same response. A case with one featured run has no comparison and no brief.
+## Compare an AI with a human team
 
-## What the AI's edge is measured on
+A comparison of an AI with a human team is two named runs and one named comparison in `brief.toml`
+([catalogue.md](catalogue.md#named-comparisons)). The model holds no comparison. The engine runs each
+named run separately, and the brief page compares the two records.
 
-Each case reports how much of the defenders' recovery the AI undoes: extra hours of outage, shortage or
-degraded service, extra recovery work to redo, or how much faster containment must be to hold harm at
-the human pathway's level. The outputs that `show` in `brief.toml` lists, other than deaths,
-serious casualties and economic loss, are these measures. The brief compares them
-first. Deaths, serious casualties and economic loss are reported alongside and move where the
-mechanism moves them; they are an outcome of the model, never a design target. Where a case's deaths
-barely move, its brief says so and the recovery measure carries the comparison. No mechanism is chosen
-or tuned for the harm it produces.
+1. Write the human team and the AI as two options of one group, for example `"Attacker"`.
+2. Write two named runs that take the same options of the other groups. One run takes `"Human team"`
+   and the other takes `"AI agent"`.
+3. In `brief.toml`, add a `[[comparison]]` with the AI run in `run` and the human run in `against`.
+   The change "run − baseline" is then what the AI adds.
+4. To show this pair first, write `featured = ["human_team", "ai_agent"]`. The baseline comes first.
+5. List in `show` the measures of what the AI adds, for example the hours of tampered dosing.
+6. Run `python -B -m tools.publish --write --scenario PACKAGE`, and read `results/brief.md`.
 
-## Outcome orders
+```toml
+show = ["plant.tampered_hours", "plant.resets", "attacker.changes"]
+featured = ["human_team", "ai_agent"]
 
-A scenario file states no order of the outcomes across runs, because options are choices that users
-combine. The orders that the standard runs must keep are acceptance tests, frozen in each scenario's
-own tests: for example, that a better defender response never produces more deaths, or that the
-human team never produces more harm than the AI. Along each tuple of runs, best to worst, no listed
-outcome falls. The tests check the final values of each default study, and of the study under each
-saved edit set in `scenarios/<ID>/edits/`, among the runs that the edit set edits alike: an edit to
-one compared run, to its defender response or to its start states changes what is compared. A value
-that is not estimated breaks an order; it is never treated as zero.
+[[comparison]]
+run = "ai_agent"
+against = "human_team"
 
-## Story and briefs
+[[comparison]]
+run = "ai_agent_early"
+against = "ai_agent"
+```
 
-Only the `summary:` and the notes in `notes:` are written as prose. The summary opens the brief,
-and its first sentence is the hook. In `notes:`, `counterfactual` says what a human team could
-equally do, `decisive` names the decisive defender choice, and `limitations` keep the uncertainty and
-evidence caveats (catalogue.md).
-`python -m tools.publish` generates the rest of each brief in `scenarios/<ID>/results/brief.md` from
-the scenario, its `brief.toml`, the library records behind the AI layer and the completed default
-study. Each part of the brief comes from one place:
+The brief page then starts with this table:
 
-- the steps and timelines, from the texts of the events, of their outcomes and of the start;
-- the compared runs, from `featured:`;
-- who is harmed, from the outputs;
-- the key inputs, from `drivers:`, or else from `controls:`, or else from the inputs that the
-  options set;
-- the measures, from `show:`;
-- the AI operation, from the attacker's text.
+```text
+## ai_agent against human_team
 
-Harm figures always come from the completed study, never from a text.
+| Reading | Unit | human_team | ai_agent | Change (run − baseline) | Change (%) |
+|---|---|---:|---:|---:|---:|
+| plant.tampered_hours | h | 2 | 22 | 20 | 1000 |
+| plant.resets | 1 | 1 | 11 | 10 | 1000 |
+| attacker.changes | 1 | 1 | 11 | 10 | 1000 |
+```
 
-The brief and the methods page each list the limits of the results that the scenario's reviewers
-state (`limitations` in `notes:`), after who is harmed and after the premises. Each limit shows
-once on a page: a limit that the page already states word for word, for example in the summary or
-the decisive choice, is not listed again.
+The second comparison shows the effect of an earlier removal against the same AI agent. To compare
+the pace of an attacker under uncertain inputs, put both runs in one `[[spread]]`. The publisher then
+pairs the samples of the two runs ([catalogue.md](catalogue.md#spreads-and-their-edit-documents)).
 
-A fresh reader, who sees only the brief and uses no tools, reviews each brief.
+## Ask a question at a breakpoint
 
-## Case-specific operations
+`napkin play` stops a run before an event, a stage or a statement. At the stop, you can read values
+and edit a stored value. The edit is the action: the run goes on from the edited value. A run that
+stops and goes on without an edit gives the same record as a run without a stop.
 
-Each scenario's README records its AI mechanism, matched human pathway, decisive defender control
-and comparison measures. Its local tests own the expected orders and oracle inputs. The generated
-[scenario catalogue](../README.md) gives the computed comparison across available cases.
+This session stops the AI run before the first return of the attacker, at 2.25 h. It removes the
+access there, and the run goes on to 72 h:
+
+```text
+$ napkin play dosing_attack --run ai_agent --break 'attacker.come_back.step[0]' --value attacker.access,plant.tampered_hours,attacker.changes
+Dosing attack and operator recovery: the run ai_agent, a median run to 72 h
+
+Stop 1 at 2.25 h: before attacker.come_back.step[0] (stage at dosing_attack/model.scn:62), in attacker.come_back#0 of attacker.
+Next: attacker.come_back.step[0] of attacker.come_back#0, from its start.
+  attacker.access                          true   edit: true or false   The attacker holds access to the dosing controls
+  plant.tampered_hours (Treatment plant)   2 h    edit: a number        Hours with tampered dosing
+  attacker.changes                         1      edit: a number        Dosing changes by the attacker
+Edit with PATH = VALUE, or: save FILE, go, quit.
+> attacker.access = false
+  attacker.access: true -> false
+> go
+
+The run ends at 72 h.
+                                         unit   0 h    72 h
+attacker.access                                 true   false
+plant.tampered_hours (Treatment plant)   h      0      2
+attacker.changes                                1      1
+edit at 2.25 h, before attacker.come_back.step[0]: attacker.access true -> false
+```
+
+`save FILE` at a stop writes a checkpoint, and `napkin play MODEL --from FILE` goes on from it in a
+new process. [cli.md](../../docs/cli.md) gives the commands.
+
+## Rules for a model of an attack
+
+Answer each question with yes, or change the model.
+
+1. Does each event of a defender react to a value that its entity can see, and not to the attack
+   itself?
+2. Does the clock of each defender start when someone finds the problem, and not at the attack?
+3. Does each event and flow of a defender read only what the defenders can see? It must not read a
+   hidden value of the attacker, such as `attacker.access`.
+4. Does each event of the attacker read only what the attacker can know?
+5. Does the pace of the attacker delay only its reactions to the steps of the defenders?
+6. When the defenders remove the access, does each stage of the attacker that still waits do
+   nothing? Write the access in the guard of the stage (`after D when C:`).
+7. Do the AI run and the human run differ only in the options of the attacker?
+8. Does each reaction of the AI change only what the access of the attacker reaches? An AI reaction
+   adds no people, no stock and no capacity.
+
+## Disruptions in the catalogue today
+
+No model of the catalogue has an entity for an attacker today. The packages receive their
+disruptions as inputs and options, with fixed rules:
+
+| Package | Entity | Rules | Groups of options |
+| --- | --- | --- | --- |
+| `heat_wave_blackout` | `incident` | A supplied safety hold. Inspection reports on a calendar (`FIXED`) or after the crews clear their work (`AFTER_CLEARANCE`). With `acknowledge_stop`, the reports stop at detection. Without it, they arrive until containment. | "Inspection schedule", "Inspection response", "Stop order" |
+| `water_controls_wipe` | `support` | Batches of regional support requests at a fixed interval, or after the backlog of the office clears (`linked`). Containment filters the later batches. | "Regional support workload" |
+| `iv_fluid_shortage` | `quality_review` | Quality notices at a fixed interval, or after the review of the last notice | "Quality documentation", "Documentation staffing" |
+| `cyber_learning_loop` | No entity | No disruption. The options set the path of AI progress. | "AI progress" |
+
+The option "Acknowledge the stop order" of `heat_wave_blackout` sets a rule of conduct with one input.
+It changes when the reports stop, and it keeps the response of the defenders the same. The example
+[incident_response_tempo](../../examples/incident_response_tempo/README.md) has an entity `attack`
+whose attempts come at a fixed interval or after recovery. [deviations.md](deviations.md) tells how
+each package differs from the earlier catalogue.

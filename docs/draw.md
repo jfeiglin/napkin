@@ -2,8 +2,8 @@
 
 `napkin draw` draws a static picture of a model as one SVG file. The picture shows each thing of the
 model with its stocks, its flows and its state machines. Arrows show what each thing reads, changes,
-starts and moves of the others. The picture is a check of the model: when an arrow surprises a
-reader, the model is wrong. The optional file `style.toml` places, groups, hides and labels the
+starts and moves of the others. The picture is a check of the model: an arrow that surprises a
+reader often shows an error in the model. The optional file `style.toml` places, groups, hides and labels the
 things, and gives their icons and their roles. No run reads it. The words **model**, **package**,
 **variant**, **entity**, **template**, **instance**, **stock**, **flow**, **event** and **named run**
 have the meanings of [the terms](language/README.md#terms).
@@ -71,8 +71,8 @@ The file also gives the symbols of the equations in `[symbol.reservoir]` (`water
   above the risk level. The flows into the tallies are in the tooltips of their rows. Each row
   carries its symbol, `W`, `S` and `T`.
 - **The spillway** is a stored enum value of the reservoir (`gate: enum[CLOSED, OPEN]`), so its
-  state machine is in the card. The green dot marks the state at the start, `CLOSED`. Transition 1 goes
-  from any state to `OPEN`. The key under the machine says "1 decide, by Operator".
+  state machine is in the card. The green dot marks the state at the start, `CLOSED`. Transition 1
+  goes from any state to `OPEN`. The key under the machine says "1 decide, by Operator".
 - **The arrows.** The grey dotted arrow goes from the reservoir to the operator: the operator reads
   the water. The red dashed arrow goes from the operator to the reservoir: the operator sets the
   gate.
@@ -116,8 +116,8 @@ tally, or into a stock that the card does not show, is in the tooltip of its row
 another card is an arrow of the kind "moves".
 
 **State machines.** Each stored enum value of a thing is a small state machine: a pill for each
-state, and a green dot on the state at the start. Each event that sets the value is a
-purple transition. It starts from the states in which the event can start, or from "any state". A
+state, and a green dot on the state at the start. Each event that sets the value is a purple
+transition. It starts from the states in which the event can start, or from "any state". A
 number on each transition names it in the key under the machine. When an option sets the start of
 the value, the key says "Options set the start: …". A machine with at most 4 states and 6 transitions
 is inside its card. A larger machine is beside the card, below it in the same column.
@@ -153,9 +153,10 @@ too. The tooltip of an arrow names the values that it stands for.
 
 **Panels.** `[equations]` puts panels under the legend, for the things that it names.
 
-- **Equations.** For each thing: the balance of each stock (dS/dt = what flows in − what flows out),
-  the rate of each flow, its bounds, and the formulas that the rates read, as many hops deep as
-  `depth` says. Other lines give the changes that events make at once (`G ← OPEN at decide, open`).
+- **Equations.** For each thing, the lines give the balance of each stock (dS/dt = what flows in −
+  what flows out), and the rate and the bounds of each flow. They give the formulas that the rates
+  read, as many hops deep as `depth` says. Other lines give the changes that events make at once
+  (`G ← OPEN at decide, open`).
   A line that does not fit ends with "… (continues in the LaTeX)". Each line keeps its LaTeX in an
   attribute `data-latex`.
 - **Symbols.** Each symbol of the lines, with its meaning, its unit, its value and, for an input,
@@ -209,10 +210,10 @@ napkin draw [-h] [--run NAME] [--style FILE] [-o FILE] [--latex FILE] MODEL
 | `--latex FILE` | Also write the equations, the symbols and the references of `[equations]` as a LaTeX fragment. It needs the packages `amsmath`, `longtable` and `hyperref`, in this order |
 
 MODEL is a package folder or its `model.scn`. A variant is the folder of the variant or its
-`model.scn`. The runs of a model are its named runs, else its default run. Without `--run`, a model
-with one named run is drawn as that run. A model with several named runs is drawn with its runs
-joined: the picture draws each event that can start in one of them. `program/reach.py` proves which
-events cannot start in a run ([compiler.md](compiler.md#proofs-over-a-program)).
+`model.scn`. The runs of a model are its named runs, else its default run. Without `--run`, the
+command draws a model with one named run as that run. It draws a model with several named runs with
+its runs joined: the picture draws each event that can start in one of them. `program/reach.py`
+proves which events cannot start in a run ([compiler.md](compiler.md#proofs-over-a-program)).
 
 ```text
 $ napkin draw examples/incident_response_tempo --run recovery_linked
@@ -241,7 +242,7 @@ tables are `[layout]`, `[place]`, `[group]`, `[icon]`, `[role]`, `[state.<thing>
 table is optional, and so is each key of a table.
 
 A name in the file is a thing or a template. A thing is an entity, an instance that the model writes
-by hand, or a table. A template stands for each of its instances. A thing's own setting wins over
+by hand, or a table. A template stands for each of its instances. A thing's own line wins over
 its template's.
 
 ### Where the file is
@@ -278,9 +279,10 @@ required. `row` counts from 1, in the column, and is optional.
 ### `[group]`
 
 `"Label" = [name, …]` draws a frame with its label around these things and no other thing. A thing is
-in one group at most. `napkin compile` refuses two cases: a thing with a row between the rows of two
-things of a group that it is not in, and a thing of a group with a row above a thing of an earlier
-group, in one column.
+in one group at most. In one column, `napkin compile` refuses these two cases:
+
+- a thing with a row between the rows of two things of a group that it is not in;
+- a thing of a group with a row above a thing of an earlier group.
 
 ### `[icon]`: the icons
 
@@ -374,8 +376,8 @@ thing's own level wins over its template's level, and a name is in one level at 
 | `options` | Whether the rows name the options that switch an event on or off: true or false | true |
 
 At every level, the tooltip of the card holds the full line of each event. The words come from the
-model: the names of the event and of the values that it reads, the units as the model writes them,
-and a few words such as "when", "has passed since" and "is at most".
+model: the names of the event and of the values that it reads, and the units as the model writes
+them. A few other words join them, such as "when", "has passed since" and "is at most".
 
 ### `[equations]`: the equations of a card
 
@@ -413,9 +415,9 @@ reservoir = "r"      # the subscript of the card of reservoir in the symbols tha
 ```
 
 A symbol is a letter or a Greek name (such as `delta`), an optional `'`, and an optional `_` with a
-subscript of letters, digits and commas. A thing's symbol is used exactly as written. A template's
-symbol has no subscript: each instance adds its own. Two values never have one symbol, and two cards
-never have one subscript.
+subscript of letters, digits and commas. The picture uses a thing's symbol exactly as the file
+writes it. A template's symbol has no subscript: each instance adds its own. Two values never have
+one symbol, and two cards never have one subscript.
 
 ### What `napkin compile` checks
 
@@ -449,15 +451,15 @@ badrole.toml: error: role.operator: operater is not a template or a thing [style
 
 ## Roles: `[role]` and `roles.toml`
 
-A model has no role. No entity, template, instance, event or case of a model says who plays it, and
-the compiler refuses a role in a model by name, with where the role goes
+A model has no role. No entity, template, instance, event or case of a model says who plays it. The
+compiler refuses a role in a model by name, and says where the role goes
 ([design/decisions.md](design/decisions.md), change 23). Who plays a part belongs to two files of the
 package, outside the model:
 
 | File | Who reads it | What it holds |
 | --- | --- | --- |
 | `style.toml`, table `[role]` | `napkin draw` and `napkin compile` | The role of each thing and template of the picture: `operator = ["operator"]` |
-| `roles.toml` | The publisher and the user interface of a scenario (the wrapper). No command of `napkin` reads it | `[entities]`: the role of each entity and template, by name. `[events]`: the role of each event, by its path |
+| `roles.toml` | The wrapper of a scenario: its publisher and its user interface. No command of `napkin` and no tool of this repository reads it today | `[entities]`: the role of each entity and template, by name. `[events]`: the role of each event, by its path |
 
 The `roles.toml` of `examples/reservoir`:
 
@@ -466,7 +468,7 @@ The `roles.toml` of `examples/reservoir`:
 operator = "operator"
 ```
 
-A `roles.toml` of the catalogue can also give the role of an event:
+The `roles.toml` of `scenarios/heat_wave_blackout` also gives the role of an event:
 
 ```toml
 [events]

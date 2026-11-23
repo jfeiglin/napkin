@@ -70,8 +70,8 @@ The compiler gives each declaration a kind. The kind decides what can change the
 | Kind | How the model writes it | What can change it during the run |
 | --- | --- | --- |
 | Input | `input rate: L/h = 2 L/h` | Nothing. An edit or an option sets it before the run. |
-| Stored value | `water: L = 8 L`, `gate: enum[OPEN, CLOSED] = OPEN` | A stage, and for a number a flow or a `move` |
-| Formula | `low = formula(this.water < 5 L)` | It follows its inputs. A stage can give it another formula. |
+| Stored value | `water: L = 8 L`, `gate: enum[OPEN, CLOSED] = OPEN` | A stage, and for a number a flow, a `move` or a solver |
+| Formula | `low = formula(this.water < 5 L)` | It follows the values that it reads. A stage can give it another formula. |
 | Distribution | `speeds = uniform(1 L/h, 3 L/h)` | A stage can give it another distribution. |
 | Link | `origin: Place` | Nothing. A link is fixed for the run. |
 | Collection | `pumps: <Pump> = <this.primary, this.backup>` | Nothing, when its members are fixed |
@@ -113,8 +113,8 @@ clinic:
 clinic.delivery.request = 3 L/h
 ```
 
-- The path can name a value of an entity, a setting of a flow, a leg or an endpoint, or the own
-  value of a member.
+- The path can name a value of an entity, a setting of a flow, a leg or an endpoint of an entity,
+  or the own value of a member.
 - A path has one initializer. A second initializer is an error that names both lines.
 - A `readonly` value can take an initializer here. `readonly` bars an assignment, not an
   initializer.
@@ -191,14 +191,14 @@ actual rate, a served fraction, and the `started`, `done` and `active` fields of
   `gate = OPEN` alone is an error. Write `gate: enum[OPEN, CLOSED] = OPEN`.
 - A text has `==` and `!=` and no other operation.
 - A link compares by identity with `==` and `!=`.
-- There is no empty value. A model declares what it can state and leaves out what it cannot. A
-  documentation note or a `record` explains a value that the model does not estimate.
+- There is no empty value. A model declares what it can state and leaves out what it cannot. The
+  documentation or a `record` declaration explains a value that the model does not estimate.
 
 ## Units and quantities
 
 A number with a unit is a quantity: `8 g`, `2 h`, `4 L/h`. The unit follows the number after one
-space. A quantity is its dimension and its exact scale, not its spelling: `1 day` and `24 h` are
-the same quantity.
+space. A quantity is its dimension and its exact value in the canonical unit, not its spelling:
+`1 day` and `24 h` are the same quantity.
 
 ### Where units come from
 
@@ -206,7 +206,8 @@ The units of a model come from the prelude (`napkin/std/units.json`), from the l
 scenario line names, and from `units.json` in the package and in a variant. The prelude has the
 units of time (`h`, `hour`, `day`, `week`, `month`, `year` and their plurals) and `fraction`,
 `ratio`, `percentage_points`, `person` and `people`. A name of the prelude cannot be defined again.
-Each unit has a dimension and an exact scale.
+Each unit has a dimension and an exact factor: the size of one unit in the canonical unit of its
+dimension.
 
 ### Units multiply and divide
 
@@ -313,7 +314,7 @@ The distributions (`uniform`, `triangular`, `pert`, `loguniform`, `normal`, `log
 
 ## Members, templates and instances
 
-A **member** is a thing with values of its own. The top level declares members in three forms.
+A **member** is a thing with values of its own. The top level declares members in these forms.
 
 | Line | What it declares |
 | --- | --- |
@@ -339,8 +340,10 @@ d: Place
 ```
 
 - A value of a template with no initializer needs a value from each member. A member that gives
-  none is an error.
+  no value is an error.
 - A member replaces a formula of its template only with another formula: `big = formula(...)`.
+- A member gives values and links only. The template gives the settings of its flows and endpoints:
+  `out.capacity = 2 L/h` under a member is an error.
 
 ### Links
 
@@ -434,8 +437,8 @@ pair_need = sum(<places.a, places.c>.need)
 expression on the right resolves in the enclosing scope. In `Route.instances.where(destination ==
 this)`, `destination` is a link of each route and `this` is the member that owns the line.
 
-- `where` tests only what is fixed for each member: inputs, links, columns of a table, and the
-  parameters of an occurrence. A test of a live value is an error (`where_live`). For a live test,
+- `where` tests only what is fixed for each member: its inputs and its links, and the parameters
+  of an occurrence. A test of a live value is an error (`where_live`). For a live test,
   put a Boolean formula on the member and reduce it: `count(c.big)`.
 - A `where` over flows can test their ends: `count(tank.water.outflow.flows.where(sink ==
   clinic.water))`. In that test, `source` and `sink` are the ends of each flow. They compare by
@@ -445,7 +448,7 @@ this)`, `destination` is a link of each route and `this` is the member that owns
 
 - `c.at(x)` reads the member with the greatest key at or below `x`. Of members with equal keys, it
   reads the member that the model creates later.
-- `x` must have the unit of the key. The engine converts it before the comparison.
+- `x` must be of the dimension of the key. The engine converts it before the comparison.
 - Above the last key, the last member applies. A lookup in an empty collection, or below the first
   key, fails when the run evaluates it.
 - `.at(x)` is a step. It does not interpolate.
@@ -531,7 +534,7 @@ A distribution describes a random number or a random member of an enum.
 - The bounded forms of `normal` and `lognormal` cut the distribution at `min` and `max`. Their moments
   are those of the cut distribution.
 - A `categorical` takes the enum of its place, or the enum of its outcomes. A weight can be zero.
-  The engine scales the weights to sum to one.
+  The engine divides the weights by their sum.
 
 ### Read and draw
 
@@ -588,13 +591,13 @@ or its seed.
 
 | Scope | `this` | Bare names | Other names |
 | --- | --- | --- | --- |
-| Top level | None | Values at the top level, entities, tables, templates | Paths through them |
+| Top level | No member | Values at the top level, entities, tables, templates | Paths through them |
 | Entity or template | The member | Values at the top level, entities, tables, templates | `this.x` for the own values of the member |
 | Event (locals and stages) | The receiver of the occurrence | The parameters and the locals of the occurrence, and the names of the top level | `this.x`, links, entity parameters |
 | Trigger | The receiver | The captures of the trigger, and the names of the top level | `this.x`. A trigger has no occurrence, so it reads no parameter and no local. |
-| Solver | The member that owns the solver | The bindings of `inputs:` and the unknowns of `solve_for:` | `this.x` in `inputs:` |
+| Solver | The member that owns the solver | The bindings of `inputs:` and the unknowns of `solve_for:` | `this.x` |
 | `where` test | The member that owns the line | A bare name on the left is a field of each member | The right side resolves in the enclosing scope |
-| Flow property | The member that owns the flow | As for its owner | `source` and `sink` are the ends of a directed flow |
+| Flow property | The member that owns the flow | As for its owner | The flow by its path: `this.delivery.source` |
 
 - A bare name inside an entity does not name a value of the entity. Write `this.water`.
 - A path can read a value and assign a writable value across members.
@@ -638,7 +641,7 @@ A cell gives its row what the line `column = cell` gives a member written by han
 
 | Cell | What it gives |
 | --- | --- |
-| A number | A number in the unit of the column. A cell can write its unit when the header writes none: `2 L/h`. |
+| A number | A number in the unit of the column. A cell can write its unit when the header writes no unit: `2 L/h`. |
 | `true`, `false` | A Boolean |
 | A word | A member of an enum, or a text for a text value |
 | A member name | A link: a member written by hand (`east`) or a row (`sites.junction`) |

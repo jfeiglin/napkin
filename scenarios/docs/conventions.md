@@ -6,13 +6,13 @@ This page gives the conventions that the models of the catalogue obey. The
 uses the terms of the language reference ([Terms](../../docs/language/README.md#terms)).
 
 The compiler reads none of these conventions. Some of them are rules of the tools of the catalogue
-([catalogue.md](catalogue.md)): `tools.check`, the publisher and the tests of the catalogue refuse a
-package that breaks them. The authors and the reviewers check the other conventions.
+([catalogue.md](catalogue.md)). `tools.check`, the publisher and the tests of the catalogue refuse a
+package that breaks such a rule. The authors and the reviewers check the other conventions.
 
 ## Start a package
 
 1. Run `python -B -m tools.new PACKAGE --title "Title"`. It makes the folder `scenarios/PACKAGE/`
-   with 11 files, each in its shape and with no content, and it prints the list of what to write.
+   with 11 files, each in its shape and with no content. It prints the list of what to write.
 2. Write the model part by part.
 3. After each part, run `napkin compile scenarios/PACKAGE`. It gives the file, the line and the
    column of each diagnostic.
@@ -26,7 +26,7 @@ package that breaks them. The authors and the reviewers check the other conventi
 The run store keeps each run. Thus, after a change, only the runs that the change touches run again.
 The commands are in [cli.md](../../docs/cli.md).
 
-Write each text that a reader sees in simple, clear sentences: the text of each entity, template,
+Write each text that a reader reads in simple, clear sentences: the text of each entity, template,
 value, event, option and named run.
 
 ## Names
@@ -89,7 +89,7 @@ Give each stock and each tally a `scale` near the largest value that it can reac
 
 - A scale is not a bound. The range `in [lo, hi]` is the bound.
 - A scale sets the comparison band of the value and the accuracy of the integration
-  ([numerics.md](../../docs/language/numerics.md)). It can also choose among answers of a solver that
+  ([numerics.md](../../docs/language/numerics.md)). It can also select among answers of a solver that
   are equally good ([change 33](../../docs/design/decisions.md#change-33)).
 - A value without a `scale` compares with the size of one of its units.
 - The pages show a value within 10⁻⁶ of its own comparison scale as 0. A scale that is too large can
@@ -112,8 +112,8 @@ lumberton_homes: Households
     population = 24460 people @lumberton_homes_population
 ```
 
-The title of a variant is the title of its package, a colon and the title of the `variant` line:
-"Water service recovery after a controls outage: Lumberton, North Carolina".
+The title of a variant is the title of its package, a colon and the title of the `variant` line. An
+example is "Water service recovery after a controls outage: Lumberton, North Carolina".
 
 ## Who plays each part
 
@@ -144,8 +144,9 @@ community = ["AgeBand", "moves", "Customers", "Residents", "DeviceUsers", "Confi
 utility = ["crews", "utility"]
 ```
 
-- A role is one of `adversary`, `responder`, `operator`, `environment`, `community` and `clinician`,
-  or the name of a card of the picture: an entity, a member written by hand or a table. The test `tests/evidence/test_catalogue.py` checks the
+- A role is one of these words: `adversary`, `responder`, `operator`, `environment`, `community` and
+  `clinician`. A role can also be the name of a card of the picture: an entity, a member written by
+  hand or a table. The test `tests/evidence/test_catalogue.py` checks the
   roles of both files.
 - An entity or a template plays one role at most.
 - Give the same role to a part in both files.
@@ -194,7 +195,7 @@ package of the catalogue has no warning of the evidence rule.
 - An option with a text and no setting keeps the values of the model. Name it for what it keeps:
   `"Usual protection"`.
 - Make the options of one group differ in input values only, not in how the model works. Put a change
-  of how the model works in the model, and let an input select it.
+  of how the model works in the model, and make an input select it.
 - A named run takes one option of a group at most, with `+` between the options. Two options of one
   run must not set the same input.
 - Give each named run a text on the row under it. The text says what the run shows.

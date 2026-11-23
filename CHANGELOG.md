@@ -1,5 +1,130 @@
 # Changes
 
+## Unreleased (language 0.2.3)
+
+This release replaces the language and the engine. A model of version 0.0.1 does not compile: write
+it again in the new language. [docs/language/changes.md](docs/language/changes.md) gives each removed
+word and form, and what replaced it. The catalogue and the examples are in the new language.
+[docs/README.md](docs/README.md) lists the new documentation.
+
+**The language, version 0.2.3** ([docs/language/README.md](docs/language/README.md)).
+
+- A value has a type, an owner and a lifetime. `name: unit = value` declares a stored value, and
+  `formula(...)` declares a calculation that the engine does each time that it reads it.
+- `input` declares a value that a named run or an edit can set. An edit follows the declared type,
+  and an input can hold a distribution. `.draw()` takes one number from a distribution.
+- A range is `in [low, high]`, and either end can be empty: `in [0,]`. A value with no range has no
+  bound. `scale` gives the numerical size of a value.
+- Units use `*` and `/`: `tunings/(tuner * year)`. `48 h/2` and `48 h / 2` are both 24 h.
+- An event is a value: `repair = event(...):`. Each `.start(...)` makes an occurrence with its own
+  arguments, locals, flows and stages (`after D:`), and gates (`until C`).
+- A trigger (`when C:`) belongs to its event, with a `reset` rule. A trigger on a moving value fires
+  at its crossing, which the engine finds between moments.
+- A stage can branch with `if`, `else` and `switch`. A random outcome is a `switch` on a draw of a
+  `categorical(...)` distribution.
+- A flow has a `request`, which is soft, a `capacity`, which is hard, and an `actual_rate`. A route
+  (`<->`) has one signed rate and two legs. A flow can have several legs at one served fraction.
+- Each endpoint shares among its own flows (`priority(...)`, `proportional()`). A declared `solver`
+  owns a joint decision across endpoints, with `inputs`, `solve_for`, `constraints` and `objective`.
+- Collections (`Place.instances`, `where`, `by`, `.at(...)`) hold members, rows of tables, flows and
+  occurrences. A row of a table has a stable ID.
+- The model has no output and no report block. A caller reads any named value at any time.
+- `options` and `runs:` declare the named runs. A `change` in a variant gives a value a new
+  initializer. Each setting of an option or of a `change` cites a `record` declaration.
+- A member can have a `title`. No part of a model has a role: `roles.toml` and the `[role]` table of
+  `style.toml` say who plays each part.
+
+**The engine** ([docs/engine/README.md](docs/engine/README.md)).
+
+- One timeline engine calculates each run. It reads the compiled program, which a new process can
+  load without the parser ([docs/compiler.md](docs/compiler.md)).
+- Each connected set of stocks runs on one of six methods: Family, Lines, Component, Sparse, Declared
+  and MovingDeclared ([docs/engine/methods.md](docs/engine/methods.md)).
+- A rate can read a value that moves between moments, at any size of model. A large model can stop
+  with a named failure of time, memory or accuracy, but its equations stay the same.
+- A run that cannot answer stops with a named failure. It never gives a different answer in silence.
+- The same run on one machine gives the same record. A run in another process, batch or platform
+  agrees within the stated tolerances.
+- Two numbers compare equal inside their comparison band. The engine reports each decision inside a
+  comparison band as a near-tie ([docs/language/numerics.md](docs/language/numerics.md)).
+- `max_occurrences`, `max_active` and `max_rounds` limit a run that does not stop. The configuration
+  of a run can change each limit.
+
+**Breakpoints, checkpoints and edits** replace the player machinery
+([docs/language/events.md](docs/language/events.md)).
+
+- A caller stops a run at an event, a stage or a statement. At the stop, the caller reads values and
+  edits stored values.
+- A checkpoint saves the stop, and a new process can continue the run from it.
+- A run that stops and continues with no edit gives the record of the run with no stop.
+- The trace holds each edit, with its time, its stop, its target and its old and new value.
+- `napkin play` and `napkin.Session` are two clients of this machinery.
+
+**The run store** keeps the record of each run on disk ([docs/engine/README.md](docs/engine/README.md#the-run-store)).
+The key of a run is a digest of its program, its configuration and its request. The key also holds
+the code of the engine, the machine and the log of edits. An identical request reads the stored
+record. Any other
+request calculates a new run. `NAPKIN_STORE=off` stops the store, and `NAPKIN_STORE=DIR` puts it in
+another folder.
+
+**Exact stocks and moves** ([docs/engine/methods.md](docs/engine/methods.md#the-exact-stock-ledger)).
+A stock is each value that a flow or a `move` touches. The engine keeps an exact balance for each
+stock, and it posts each transfer equally at both ends. `move amount from a to b` moves exactly the
+amount that it writes, or it fails and moves nothing. An assignment to a stock is exact too.
+
+**The evidence rule** ([docs/language/evidence.md](docs/language/evidence.md)). The compiler gives
+the warning `no_record` for each part that cites no `record` declaration: an input, a stored value,
+a timed event, a status case, an assertion, an own value of an instance or a table column. It gives
+the warning `datum` for a value that differs from the datum of the claim that it cites. A model with these warnings still runs.
+`tools.check` and the publisher refuse a package of the catalogue with any of them.
+
+**The publisher** ([tools/publish/README.md](tools/publish/README.md)).
+
+- `python -m tools.publish` writes `results/brief.md`, `results/readings.md` and
+  `results/source-dossier.json` for each package or variant, and the source manifest of the catalogue.
+- A `brief.toml` names the comparisons of two runs (`[[comparison]]`) and the pair to show first
+  (`featured`). A brief shows the signed difference of each reading of a pair.
+- `--sample-spreads` samples each declared spread and writes `results/paired-spreads.json`, with the
+  differences of each pair of draws.
+- `--model PATH` writes the readings of any model.
+- The publisher no longer writes `methods.md`, `runs.csv`, `runs.json` or the review files. The files
+  of the earlier studies stay in the catalogue as history.
+
+**Removed flags of the `napkin` command** ([docs/cli.md](docs/cli.md)).
+
+| Removed flag | What to use now |
+| --- | --- |
+| `--option` of `run`, `sample` and `play` | A named run under `runs:` that takes the option, and `--run NAME` |
+| `--set NAME=VALUE` of `run`, `sample` and `play` | An edit document with `--edits FILE`. Its level `set` edits every run. |
+| `napkin run --events` | No flag. The trace of the record holds each event (`napkin.run(...).trace` in Python). |
+| `napkin run --rows` | `--value` with the paths of the rows, for example `sites.clinic.water` |
+| `napkin run --no-store` | `NAPKIN_STORE=off` |
+| `napkin play --control` | `napkin play --break AT[@OWNER]`, and an edit at each stop |
+| `napkin play --picks FILE` | `napkin play --from FILE`, from a checkpoint that `save FILE` wrote at a stop |
+| `napkin play --save FILE` | `save FILE` at a stop |
+| `napkin play --json` | `napkin.Session` in Python |
+| `napkin compile --inputs` and `--outputs` | The summary of `napkin compile`, which lists the inputs, the stores and the formulas |
+
+The new flags are `--value` and `--lag` of `napkin run`, `--value` of `napkin sample`, and
+`--break`, `--value` and `--from` of `napkin play`.
+
+**Removed names of the Python API** ([docs/python-api.md](docs/python-api.md)).
+
+| Removed name | What to use now |
+| --- | --- |
+| `evaluate_study` | `napkin.study` for the named runs of a model, then `napkin.report` for each record |
+| `sample_result` | `napkin.report` or `napkin.read` for the readings of one record |
+| `evaluate_uncertainty` | `napkin.monte_carlo` for the samples of one run, or `napkin.spread` for a model file |
+| `uncertainty_report` | The summaries that `napkin.monte_carlo` gives, or `napkin sample --json` |
+| `actors` | Nothing. A model has no actors. `napkin.instances` stays. |
+
+The new names are `run`, `read`, `report`, `Lag`, `study`, `monte_carlo` and `spread`. `Session` now
+plays one run through breakpoints, checkpoints and edits.
+
+**Edit documents.** The shape of an edit document stays at `schema_version` 0.0.1, but each document
+names the model hash of its model. A document for a model of the old language names an old hash, so
+the compiler refuses it. Write each saved edit document again.
+
 ## 0.0.1
 
 The first release of napkin: a small typed language for simulation models, its engine, and the

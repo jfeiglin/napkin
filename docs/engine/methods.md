@@ -170,7 +170,7 @@ sharing would let a flow carry more than its request, the run stops and names th
 ## Sparse
 
 `napkin/engine/timeline/sparse.py`. A set whose rates move runs here when it is no Component, at any
-size ([change 3](../design/decisions.md)). Sets whose settings read the moving rates of another set
+size ([change 3](../design/decisions.md#change-3)). Sets whose settings read the moving rates of another set
 integrate together, level by level.
 
 - The state is the vector of its stocks. Its rates at a time and a state are the local sharing of the
@@ -312,7 +312,7 @@ balance stays inside its comparison band, 1e-9 L.
 ## Contacts and moments
 
 A contact can fall near a scheduled moment. It joins that moment only when both tests pass (amended
-[change 27](../design/decisions.md)):
+[change 27](../design/decisions.md#change-27)):
 
 1. Its located time is within the crossing tolerance of the moment's time, on either side.
 2. At the moment's time, the stock on its incoming trajectory is inside its own comparison band of
@@ -365,7 +365,7 @@ The trigger's contact is 5e-9 h after the stage, inside the crossing tolerance. 
 
 The books always balance. Only a posted transfer changes a balance. At a contact that the engine
 admits, it can put the stock exactly on its bound or threshold. That placement is a preference
-(the owner's ruling on physical balances, [change 29](../design/decisions.md)):
+(the owner's ruling on physical balances, [change 29](../design/decisions.md#change-29)):
 
 1. The engine calculates the signed difference between the incoming trajectory and the target.
 2. It posts that correction to the legs that move the stock toward the target, in proportion to their
@@ -395,9 +395,13 @@ posted, and the time of the last post.
 - **An accepted prefix only.** A reader sees only the transfers up to the accepted time of the
   method (`MovingTransfers._transferred`). A segment that went past a moment gives no credit for its
   tail.
-- **A stage.** A stage sees its own earlier writes (`Moment.stage_balance`). A `move` checks both
-  resulting balances against their exact bounds before it posts either end. A successful move
-  transfers exactly the amount that the model asks for.
+- **A stage.** A stage sees its own earlier writes (`Moment.stage_balance`). `=`, `+=` and `-=` on a
+  stock calculate on its exact balance ([change 31](../design/decisions.md#change-31)). An
+  assignment that misses a bound by less than the tolerance of the stock puts the stock on the bound.
+- **A move.** A `move` debits and credits exactly the amount that it writes
+  ([change 32](../design/decisions.md#change-32)). It checks both resulting balances against their
+  exact bounds before it posts either end. When a result is outside a range, the move fails and moves
+  nothing. A move whose amount is the source stock itself moves the full balance of that stock.
 - **A new instance.** When a set is built again, the old instance closes its posts, and the new one
   starts from the exact balance (`Stocks.release_stock`).
 
@@ -419,7 +423,7 @@ When an occurrence finishes, each stock that a flow or a move of it met must be 
 conservation allowance (`atol_factor` times its scale). Else the run stops and names the occurrence,
 the stock, the amount, the unit and the time.
 
-A finished occurrence is frozen ([change 24](../design/decisions.md)). An assignment to it, or a
+A finished occurrence is frozen ([change 24](../design/decisions.md#change-24)). An assignment to it, or a
 `move` of a nonzero amount into or out of its stock, stops the run (`Occurrences.writable`). For a
 flow, `Occurrences.carried` adds the amounts that pass through each side of the stock after
 retirement, over all connections and segments. The first amount over the allowance stops the run. The

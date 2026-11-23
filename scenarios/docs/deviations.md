@@ -1,46 +1,87 @@
-# What changed from the four studies at 8488047
+# Differences from the four studies at commit 8488047
 
-The new branch starts at `8eeffba`. Numerical comparisons use the earlier catalogue at `8488047dbb7eafee1f5582cf59839c6bea0cf8cd`. The water, heat and IV studies ask how repeated disruptions interact with recovery. The strategic study asks how hypothetical AI progress affects two missions over 25 years.
+This note tells how the four packages of the catalogue differ from the studies of the earlier
+catalogue. It records the state of the packages at commit `05dad3c`. The rewrite of the catalogue
+starts at commit `8eeffba`. The numerical comparisons use the earlier catalogue at commit
+`8488047dbb7eafee1f5582cf59839c6bea0cf8cd`.
 
-| Study | What an event or output means now | Difference from the earlier study |
+The water, heat and IV studies ask how repeated disruptions and recovery change each other. The
+strategic study asks how a hypothetical AI progress changes two missions over 25 years.
+
+| Study | What an event or a value means now | How it differs from the earlier study |
 | --- | --- | --- |
-| Water | A burst of regional requests takes a configurable share of emergency-water dispatch capacity. The fixed policy can add to the backlog. The recovery-linked policy waits for dispatch to clear the backlog before counting the next interval. Recognition, containment, staff capacity and available water affect what gets through. | Historically the repeat event added repair work at particular utilities through retained access. The current event affects regional relief dispatch. A supply or advisory milestone at an individual plant cannot trigger it. Compare emergency water shortfall and delivered volume to see this mechanism. |
-| Heat | Each accepted incident pauses crews and adds work. Following a stop order can cut off subsequent incidents at detection. Continued incidents can arrive until containment. The recovery-linked policy waits for all holds to lift and rework to clear before starting its next interval. | The original followed the contractor, its order, the AI and a particular grid job. Here conduct determines whether the repeated interruptions stop. Interruption length and rework are scenario inputs. Civilian protection and the health and economic outcomes are still computed by the heat model. |
-| IV fluid | Incoming notices demand serial quality review. Arrivals can follow a fixed calendar or start a new delay when the last review finishes. The release and supply model gates shipments on the backlog already received and preserves the transit time of fluid already shipped. | The original traced access, altered records and the condition of a first lot. The new policy supplies a discrepancy and follows documentation, release and downstream review. A notice carries work. It does not change records or generate a compromised lot. The seven older run names preserve the recovery comparisons with supplied lot conditions. |
-| Strategic cyber | A national workforce allocates staff to surveillance and effects. Productivity, shared review capacity, institutional learning and defensive AI affect completed mission work over 25 years. | The historical study estimated completed operations and objective probabilities through detailed stages, plans, channels and target sets. The current workforce model measures baseline-equivalent staff-years. A separate aggregate calculation estimates an operation count using explicit assumptions about workload and availability. The same run name can yield different values and a different sign of the AI effect. |
+| Water | A batch of regional requests takes a share of the dispatch capacity for emergency water. An input sets the share. With the fixed interval, the batches can add to the backlog. With the interval after recovery, the next interval starts only when dispatch clears the backlog. Recognition, containment, staff capacity and the available water change how much water the office delivers. | In the earlier study, the repeated event added repair work at some utilities through retained access. The current event changes the regional dispatch of relief water. A milestone of supply or of an advisory at one plant cannot start it. To see this mechanism, compare the shortfall of emergency water and the delivered volume. |
+| Heat | Each accepted incident stops the crews for a time and adds work. When the source of the incidents obeys a stop order, the incidents after detection stop. Without it, incidents can arrive until containment. With the interval after clearance, the next interval starts only when all holds end and the crews finish the rework. | The earlier study followed the contractor, its order, the AI and one job on the grid. Here the conduct decides whether the repeated interruptions stop. The length of an interruption and its rework are inputs of the scenario. The heat model still calculates the protection of civilians and the health and economic results. |
+| IV fluid | Each incoming notice needs a quality review, one after the other. The notices follow a fixed calendar, or each new delay starts when the last review is complete. The model of release and supply holds the shipments until the review of the backlog that it received. It keeps the transit time of the fluid that it already shipped. | The earlier study followed access, altered records and the condition of a first lot. The new policy supplies a discrepancy, and the model follows documentation, release and the downstream review. A notice brings work. It does not change records, and it does not make a compromised lot. The seven earlier run names keep the recovery comparisons, with the conditions of the lots as inputs. |
+| Strategic cyber | A national workforce gives its staff to surveillance and to effects. Productivity, shared review capacity, institutional learning and defensive AI change the mission work that is complete over 25 years. | The earlier study estimated the completed operations and the probability of each objective through detailed stages, plans, channels and target sets. The current workforce model measures staff-years of baseline-equivalent work. A separate aggregate calculation estimates a count of operations from stated assumptions about workload and availability. One run name can give different values, and the effect of AI can have the other sign. |
 
-The strategic count changes direction. Over 25 years, the historical study reported 8,880 effects operations with no AI progress and 5,290 with fast AI progress. The aggregate model gives approximately 6,587 and 7,169 respectively, an 8.83% increase. Fast and slow AI both reach the base scenario’s available-demand ceiling of 288 operations per year. The new count depends on an assumed average burden per case and availability. The historical machinery could change the mix of cases and consume resources over time. The staff-year and count measures answer different questions. [Current strategic results](../../../scenarios/cyber_learning_loop/results/brief.md) · [Historical results](https://github.com/jfeiglin/napkin/blob/8488047/scenarios/cyber_learning_loop/results/brief.md)
+The strategic count changes direction. Over 25 years, the earlier study reported 8,880 effects
+operations with no AI progress and 5,290 with fast AI progress. The aggregate model gives about 6,587
+and 7,169: an increase of 8.83%.
+
+Fast AI and slow AI both reach the ceiling of the available demand of the base scenario, 288
+operations per year. The new count depends on an assumed mean burden of each case and on the
+availability. The earlier model could change the mix of cases and use resources over time. The
+measure in staff-years and the count answer different questions.
+[Current strategic results](../cyber_learning_loop/results/brief.md) ·
+[Earlier results](https://github.com/jfeiglin/napkin/blob/8488047/scenarios/cyber_learning_loop/results/brief.md)
 
 ## Which event starts the next clock?
 
-| Study | Fixed interval | Recovery-linked interval | Stop and overlap |
+| Study | Fixed interval | Interval after recovery | Stop and overlap |
 | --- | --- | --- | --- |
-| Water | Time since the last regional support batch | Time since the regional dispatch backlog cleared | Fixed batches can accumulate. Containment filters new requests, including a request at the containment instant. The event window and maximum count bound the exercise. |
-| Heat | Time since the last incident report | Time since all holds lifted **and** crews finished the resulting rework | Fixed holds can overlap. Detection stops an acknowledged policy, while an unconfirmed order allows reports until containment. A held crew resumes after its final hold lifts. |
-| IV | Time since the previous notice | Time since review of the previous notice finished | Notices queue and reviewers process them in order. The intake cutoff excludes a notice arriving at the cutoff. Work already received can finish after the cutoff. |
+| Water | The time since the last batch of regional support | The time since dispatch cleared the regional backlog | Fixed batches can add up. Containment filters the new requests, also a request at the time of containment. The window of the event and its maximum count limit the exercise. |
+| Heat | The time since the last report of an incident | The time since all holds ended **and** the crews finished the rework that they caused | Fixed holds can overlap. Detection stops the reports when the stop order is acknowledged. Without the acknowledgement, the reports arrive until containment. A held crew starts work again after its last hold ends. |
+| IV | The time since the previous notice | The time since the review of the previous notice finished | The notices wait in a queue, and the reviewers do them in order. The cutoff of the intake refuses a notice that arrives at the cutoff. Work that the office already received can finish after the cutoff. |
 
-One sampled draw can set the timing and workload for a whole exercise. The same seed is reused when a defender policy changes. See the authored distributions, sample counts and policy pairs in the package briefs. [Water example](../../../scenarios/water_controls_wipe/variants/lumberton/brief.toml) · [Heat](../../../scenarios/heat_wave_blackout/brief.toml) · [IV](../../../scenarios/iv_fluid_shortage/brief.toml) · [Strategic cyber](../../../scenarios/cyber_learning_loop/brief.toml)
+One sampled draw can set the timing and the workload of a full exercise. A change of the defender
+policy keeps the same seed. The briefs of the packages give the distributions, the numbers of samples
+and the pairs of policies. [Water example](../water_controls_wipe/variants/lumberton/brief.toml) ·
+[Heat](../heat_wave_blackout/brief.toml) · [IV](../iv_fluid_shortage/brief.toml) ·
+[Strategic cyber](../cyber_learning_loop/brief.toml)
 
-## Historical run names and current counterparts
+## Earlier run names and their current counterparts
 
-| Package | Historical runs | Current coverage |
+| Package | Earlier runs | Current runs |
 | --- | --- | --- |
-| Water | `delayed_none` | Same named recovery control in all 16 variants. The numerical comparison covers eight readings at six times. |
-| Water | `early_kept`, `standard_kept`, `delayed_kept`, `delayed_kept_human` | The new `support_single`, `support_daily`, `support_frequent` and `support_recovery` pairs compare regional dispatch burden under standard and rapid response. These pairs exercise a different service mechanism. There is no numerical one-to-one pairing with persistent utility access. |
-| Heat | `standard_obeys`, `early_obeys`, `early_powered_places`, `delayed_human` | Comparable archived endpoints map to `standard`, `early_cooling`, `powered_places`, and `delayed_cooling`, respectively. |
-| Heat | `early_refuses`, `standard_refuses`, `delayed_refuses`, `delayed_obeys` | Compare `fixed_inspections` with `acknowledged_stop` for the effect of conduct at the same defender response. Compare with `rapid_fixed_inspections` for response timing and `clearance_inspections` for recovery-linked arrivals. The intervals, duration and rework are new scenario assumptions. |
-| Heat | `delayed_more_protection`, `delayed_powered_places`, `delayed_open_gates` | Delayed cooling with backup, powered places and open access remain separately selectable. Their response assumptions can be combined with the new interruption policies. |
-| IV | `near_ideal`, `subpar`, `minimal`, `near_ideal_persistent`, `subpar_persistent`, `minimal_persistent`, `subpar_persistent_human` | All seven IDs remain. Records workload and first-lot condition are supplied in the recovery controls. Three additional named runs vary notice timing and staffing. |
-| Strategic cyber | All 12 historical run IDs | AI path, government funding, workforce allocation, defensive adoption and learning are aggregate scenarios. The package guide maps every ID to its current assumption and identifies each material difference in meaning. [Strategic guide](../../../scenarios/cyber_learning_loop/README.md) |
+| Water | `delayed_none` | The same named recovery run in all 16 variants. The numerical comparison covers eight readings at six times. |
+| Water | `early_kept`, `standard_kept`, `delayed_kept`, `delayed_kept_human` | The pairs `support_single`, `support_daily`, `support_frequent` and `support_recovery` compare the burden of regional dispatch under the standard and the rapid response. These pairs use a different mechanism of service. No numerical pair matches the persistent access to the utilities. |
+| Heat | `standard_obeys`, `early_obeys`, `early_powered_places`, `delayed_human` | The archived endpoints that compare go to `standard`, `early_cooling`, `powered_places` and `delayed_cooling`, in this order. |
+| Heat | `early_refuses`, `standard_refuses`, `delayed_refuses`, `delayed_obeys` | Compare `fixed_inspections` with `acknowledged_stop` for the effect of conduct under the same defender response. Compare with `rapid_fixed_inspections` for the timing of the response, and with `clearance_inspections` for arrivals after clearance. The intervals, the durations and the rework are new assumptions of the scenario. |
+| Heat | `delayed_more_protection`, `delayed_powered_places`, `delayed_open_gates` | Delayed cooling with backup, powered places and open access are still separate options. Their response assumptions can combine with the new policies of interruptions. |
+| IV | `near_ideal`, `subpar`, `minimal`, `near_ideal_persistent`, `subpar_persistent`, `minimal_persistent`, `subpar_persistent_human` | All seven names remain. The recovery runs supply the records workload and the condition of the first lot. Three more named runs change the timing of the notices and the staff. |
+| Strategic cyber | All 12 earlier run names | The AI path, the government funds, the allocation of the workforce, the defensive adoption and the learning are aggregate scenarios. The guide of the package gives the current assumption of each name and each important difference in meaning. [Strategic guide](../cyber_learning_loop/README.md) |
 
-## How to inspect a particular difference
+## How to examine one difference
 
-The [interface inventory](catalogue-interface-differences.csv) compares all 19 historical catalogue entries with their current counterparts, including each of the 16 water variants. It lists absent and added names, plus the previous and current metadata when a shared name changed. It covers entities, declared fields and input bounds, root readings, named runs, options and their settings, sweeps, spreads, and comparison pairs. A shared name or identical input default does not establish that two equations are the same. The inventory describes authored declarations and does not run a simulation.
+The interface inventory compares all 19 earlier entries of the catalogue with their current
+counterparts, also each of the 16 water variants. It lists the names that are absent and the names
+that are new. When a shared name changed, it gives the earlier and the current metadata. It covers
+entities, declared fields and the bounds of inputs, root readings, named runs, options and their
+settings, sweeps, spreads and pairs of comparisons.
 
-The [recovery comparison](recovery-parity.md) checks observations with compatible definitions. The archived studies and their original briefs remain available at the [pinned source revision](https://github.com/jfeiglin/napkin/tree/8488047dbb7eafee1f5582cf59839c6bea0cf8cd/scenarios). Each current package publishes named-run values in `results/readings.md` and side-by-side comparisons in `results/brief.md`. A sampled comparison reports differences between runs on the same random draws. Its percentiles describe outcomes under the chosen input distributions.
+A shared name or an equal default of an input does not show that two equations are the same. The
+inventory describes the declarations that the authors wrote. It does not run a simulation. The
+inventory is `scratch/rewrite/audit/catalogue-interface-differences.csv` at commit `ARCHIVE_SHA`.
 
-To rebuild the interface inventory, use a clean checkout of the historical commit and the current repository's Python environment.
+The recovery comparison checks the observations whose definitions agree. It is
+`scratch/rewrite/audit/recovery-parity.md` at commit `ARCHIVE_SHA`, and
+[recovery-ports.md](recovery-ports.md) gives its results. The earlier studies and their briefs are
+at the [pinned revision](https://github.com/jfeiglin/napkin/tree/8488047dbb7eafee1f5582cf59839c6bea0cf8cd/scenarios).
+
+Each current package publishes the values of its named runs in `results/readings.md` and its
+comparisons in `results/brief.md` ([catalogue.md](catalogue.md#the-publisher)). A sampled comparison
+gives the differences between runs on the same random draws. Its percentiles describe the results
+under the chosen distributions of the inputs.
+
+To make the interface inventory again, do these steps:
+
+1. Make a clean checkout of the earlier commit:
+   `git worktree add /path/to/8488047 8488047dbb7eafee1f5582cf59839c6bea0cf8cd`.
+2. Make a checkout of the archive commit: `git worktree add /path/to/archive ARCHIVE_SHA`.
+3. In the checkout of the archive commit, run the script with the Python environment of the current
+   repository:
 
 ```sh
-python scratch/rewrite/audit/catalogue_interface_inventory.py /path/to/8488047 > scratch/rewrite/audit/catalogue-interface-differences.csv
+python scratch/rewrite/audit/catalogue_interface_inventory.py /path/to/8488047 > catalogue-interface-differences.csv
 ```

@@ -10,11 +10,11 @@ meanings of [the terms](language/README.md#terms).
 | Name | Module | What it gives |
 | --- | --- | --- |
 | [`load_scenario`](#load_scenario) | `napkin.model.compile` | The compiled model of a package, of a variant or of a model file |
-| [`load_package`](#load_package) | `napkin.package` | The compiled model of each variant of a package |
+| [`load_package`](#load_package) | `napkin.package` | The compiled model of each variant of a package, or of its main file |
 | [`run`](#run) | `napkin.engine.timeline` | The record of one run, or a checkpoint |
 | [`read`](#read) | `napkin.engine.timeline.record` | The values of paths at times, from a record |
 | [`report`](#report-and-lag) | `napkin.engine.report` | The values of paths at times, with units, labels, lags, evidence trails and near-ties |
-| [`Lag`](#report-and-lag) | `napkin.engine.report` | A reporting lag |
+| [`Lag`](#report-and-lag) | `napkin.engine.report` | A lag of a report |
 | [`Session`](#session) | `napkin.session` | One run, stopped at breakpoints, edited, saved and resumed |
 | [`study`](#study) | `napkin.engine.study` | The records of the named runs of a model |
 | [`monte_carlo`](#monte_carlo) | `napkin.engine.uncertainty` | A Monte Carlo study of one run of a program |
@@ -133,10 +133,14 @@ napkin.read(record, program, paths, times)
 The function gives one `Reading` for each path, in order. A `Reading` has its `path`, its `key`, its
 `unit` (the declared unit) and its `values`, one for each time, in order. Times are in hours.
 
-A value comes only from what the record holds. Any other value is `Unavailable` with its reason: a
-time before the run, after its horizon or after its stop, a value that the record does not hold, or
-a value of an occurrence before its start. A path that names no value of the program raises
-`KeyError`.
+A value comes only from what the record holds. Any other value is `Unavailable` with its reason.
+These values are `Unavailable`:
+
+- a value at a time before the run, after its horizon or after its stop;
+- a value that the record does not hold;
+- a value of an occurrence before its start.
+
+A path that names no value of the program raises `KeyError`.
 
 ```python
 import napkin
@@ -164,7 +168,7 @@ napkin.Lag(shortest, longest)
 titles and the evidence. `lags` maps a path to its `Lag`. `options` names the options of the run,
 whose settings the evidence trails cite. A time outside the run raises `ValueError`.
 
-`Lag(shortest, longest)` is a uniform reporting lag, in hours. The value at a time t is the mean of
+`Lag(shortest, longest)` is a uniform lag of a report, in hours. The value at a time t is the mean of
 its history from t − `longest` to t − `shortest`. Equal ends are a fixed delay. A lag is valid only
 for a number that a proof says never falls over the run. Without that proof, the value keeps its
 plain read, and its `note` gives the reason. A window that starts before 0 h is `Unavailable`.
@@ -177,7 +181,7 @@ The result is a `Report`:
 | `values` | One `Reported` for each path: its `path`, `unit`, `label`, `title`, `values`, `lag`, `note` and evidence `trail` |
 | `near_ties` | Each decision within the tolerance of its boundary (`NearTie`) |
 | `end`, `stopped` | The time to which the record reaches, and why it stopped there (None for a run to its horizon) |
-| `records` | Each evidence record that a trail cites: its name, its kind and its text |
+| `records` | Each `record` declaration that a trail cites: its name, its kind and its text |
 
 ```python
 import napkin
@@ -261,7 +265,7 @@ checks the edit document whole, in every run, before any run starts. Each run go
 store when a store is active ([cli.md](cli.md#the-run-store)).
 
 - `jobs` above 1 runs the runs on that many new processes. The results come in the order of the runs.
-- `progress(done, total)` is called as runs finish.
+- The study calls `progress(done, total)` as runs finish.
 - `cancel`, an event such as a `threading.Event`, stops the study between runs with
   `napkin.engine.study.Cancelled`.
 

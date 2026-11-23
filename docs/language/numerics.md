@@ -1,0 +1,259 @@
+# Numerics
+
+This page tells how two numbers of a model compare, how a **scale** sets the **comparison band**,
+what a declared scale can change, and which runs give the same numbers. The words in bold are the
+[terms](README.md#terms) of the documentation. The methods of integration and of the solvers are in
+[engine/methods.md](../engine/methods.md) and [engine/solver.md](../engine/solver.md).
+
+## Contents
+
+1. [The comparison band](#the-comparison-band)
+2. [How a floor goes through an expression](#how-a-floor-goes-through-an-expression)
+3. [Exact literals](#exact-literals)
+4. [Intervals and bounds](#intervals-and-bounds)
+5. [Scale hints](#scale-hints)
+6. [What a scale can change](#what-a-scale-can-change)
+7. [Contacts and placement](#contacts-and-placement)
+8. [Near-ties](#near-ties)
+9. [Numerical settings](#numerical-settings)
+10. [Reproducibility](#reproducibility)
+
+## The comparison band
+
+Two numeric operands `a` and `b` compare equal when their difference is inside this band:
+
+```text
+max(rtol, atol_factor) × max(scale, |a|, |b|)
+```
+
+- `rtol` and `atol_factor` are numerical settings of the run. Their defaults are 1e-9 and 1e-10,
+  so the factor is 1e-9.
+- `scale` is the floor of the comparison, in the unit of the operands. The engine compares both
+  operands and their floor in the canonical unit of their dimension.
+- A quantity gives its declared `scale` as its floor. A quantity with no `scale` gives the size of
+  one of its declared units: a value in `h` gives 1 h, a value in `day` gives 24 h.
+- Inside the band, the operands are equal. So `==`, `<=` and `>=` hold, and `<`, `>` and `!=` do
+  not.
+- The same band applies in every evaluator: a formula, a guard, a trigger, a gate, a reset, an
+  assertion, the ends of a membership test, and the reference interpreter of the tests.
+
+This model compares values of 0 with a small literal. It gives the readings below its text.
+
+```scn
+scenario "Bands"
+    horizon 1 h
+
+record fixture: assumption "A fixture."
+
+wait: h = 0 h  @fixture
+fine: h = 0 h scale 0.001 h  @fixture
+long: day = 0 day  @fixture
+below = formula(wait < 0.000000001 h)
+fine_below = formula(fine < 0.000000001 h)
+long_below = formula(long < 0.00000001 h)
+wait_below = formula(wait < 0.00000001 h)
+literals = formula(1 h > 0.999999999 h)
+closer = formula(1 h > 0.999999998999999999 h)
+```
+
+| Reading | Value | Why |
+| --- | --- | --- |
+| `below` | `false` | The floor of `wait` is 1 h. The band is 1e-9 h, and the gap of 1e-9 h is on its closed edge. |
+| `fine_below` | `true` | The floor of `fine` is its scale, 0.001 h. The band is 1e-12 h. |
+| `long_below` | `false` | The floor of `long` is one day, 24 h. The band is 2.4e-8 h, wider than the gap of 1e-8 h. |
+| `wait_below` | `true` | The band is 1e-9 h, narrower than the gap of 1e-8 h. |
+| `literals` | `false` | Two literals have no floor. The band is 1e-9 × 1 h, and the gap is on its edge. |
+| `closer` | `true` | The gap is just outside the band. |
+
+## How a floor goes through an expression
+
+A formula, inline or named, takes its floor from the quantities that it reads. The floor is in the
+unit of the result.
+
+| Expression | Its floor |
+| --- | --- |
+| A quantity | Its declared `scale`, or one of its declared units |
+| A formula with a declared `scale` | That scale. A declared scale of a result wins. |
+| An authored literal, and an expression of literals only | Zero |
+| `x + 5 L`, `x - 5 L` | The floor of `x`. A literal offset leaves the floor as it is. |
+| `a + b`, `a - b` | The signed contributions of each quantity are added, also through its aliases. The floor is the largest absolute contribution among independent quantities. |
+| `3 * x`, `x / 3` | The floor of `x`, times or divided by the literal in canonical units |
+| `a * b`, `a / b` | The product or the quotient of the floors |
+| `x ** n`, `sqrt(x)` | The floor raised to `n`, or its square root |
+| `abs(x)`, `exp(x)` and the other functions of one plain number | The floor of `x` |
+| `min`, `max`, `clip` | The largest floor of the quantities that contribute |
+| `a if C else b` | The floor of the arm that the condition selects |
+| `c.at(k).x` | The floor of the member that the key selects |
+| A frozen formula of a finished occurrence | Its floor at the finish |
+
+In a comparison:
+
+- A literal threshold takes the floor of the quantity that it compares with, on either side:
+  `wait < 0.000000001 h` uses the floor of `wait`.
+- Two operands that the engine compares independently use the larger of their two floors.
+- The relative term `factor × max(|a|, |b|)` always applies, also when both floors are zero.
+
+## Exact literals
+
+A number that the model writes is the exact decimal of its text. The compiler never reads it
+through a float. `0.1 day` is exactly 2.4 h, and `48 people/day` is exactly 2 people/h.
+
+- An authored literal contributes no floor to a comparison, whatever its unit. This also holds for
+  an expression of literals only, and for a formula that names one.
+- The compiler folds constant expressions exactly, wherever the result is rational. It uses the
+  folded value for a range, a domain, the ends of a test, a fixed key, the support of a drawn input
+  and a cited datum.
+- The factor of a unit is exact. `0.01` in `units.json` is 1/100.
+- The run calculates with the float nearest to each exact value.
+- A datum of evidence is exact. A value equals its cited datum only when the two are the same
+  number in the same dimension ([evidence.md](evidence.md#the-datum-rule)).
+
+## Intervals and bounds
+
+- An interval is reversed only when its lower end is above its upper end by more than their band.
+  A reversed interval is an error of the compiler when its ends are fixed, and stops the run by name
+  when only the run knows them.
+- The interval `[x, x]` holds the values that compare equal to `x`.
+- Hard bounds that are inverted by less than their band admit one point, their midpoint.
+- A stock inside its own band of a bound counts as on the bound, for sharing, comparisons and
+  triggers. The residual on its books stays.
+- A stock leaves a bound only when the net rate away from it is more than 10⁻¹² times its gross
+  inflow plus outflow. Equality holds the stock on the bound. Every method uses the same rule.
+
+## Scale hints
+
+`scale` states the numerical size of a value. It stands after the range, or on its own row under
+the declaration.
+
+```scn
+tuners:
+    "The piano tuners of the town."
+    input rate: tunings/(tuner * year) = pert(600, 1000, 1200).draw() in [500, 1500]
+        "Tunings that one tuner does in a year"
+        @assumption "The example assumes about four tunings in each working day, and a spread around it."
+    input staff = 3 tuner in [1 tuner, 10 tuner]
+        "Tuners in the town"
+        @assumption "The example assumes three tuners."
+    input need = 5000 tunings in [0 tunings, 20000 tunings]
+        "Tunings that the pianos need in the year"
+        @assumption "The example assumes 2500 pianos, each tuned twice in a year."
+    due: tunings = this.need in [0,] scale 20000 tunings @counts
+        "Tunings that the pianos still need"
+```
+
+- A scale helps the numerical calculation. It is no bound. An inventory bound limits a stock, and
+  a `capacity` limits a rate.
+- A bare number in a scale takes the declared unit.
+- A new unknown of a solver can declare a scale: `level: 1 = 0 in [-30, 30] scale 10`.
+- A formula can declare the scale of its result: `gap = formula(this.a - this.b) scale 1 L`.
+
+With no `scale`, the engine infers the size of each stock for integration. The size is the largest
+of one declared unit, the starting value, the starting values of the stocks that flows join to it,
+and its finite bounds. A declared scale replaces that inference. Declare a scale when the inferred
+size understates how large a value grows.
+
+## What a scale can change
+
+A declared scale is part of the model. It can change three things:
+
+| What | How |
+| --- | --- |
+| A comparison inside the band | The floor of a comparison is the scale. A smaller scale makes the band narrower, so a comparison can change its result. |
+| The accuracy of integration | The absolute tolerance of a stock is `atol_factor` times its size. |
+| The choice among equally optimal answers of a solver | The final distance step divides each unknown that is no flow by its scale ([flows-and-solvers.md](flows-and-solvers.md#the-selection-order)). |
+
+A scale never changes a hard rule. The books of a stock balance, a stock stays inside its range,
+and two equal claims get equal shares, whatever the scale.
+
+In the solver below, `x + y == 1 h` has many answers. With no declared scale, each unknown uses the
+width of its domain, 10 h, and the final step selects `x = 0.5 h` and `y = 0.5 h`. With `scale 2 h` on `x` and `scale 1 h` on `y`, it selects `x = 0.8 h`
+and `y = 0.2 h`.
+
+```scn
+planner:
+    split = solver:
+        solve_for:
+            x: h in [0 h, 10 h] scale 2 h
+            y: h in [0 h, 10 h] scale 1 h
+        constraints:
+            x + y == 1 h
+```
+
+**Units of display never change an answer.** A display unit is the unit in which a report shows a
+value, or in which a caller writes an edit or a time. The engine converts it to the canonical unit
+first. The final distance step divides each flow rate by one canonical unit of its dimension, so the
+unit in which a model writes a rate does not change the rates that a solver selects.
+
+The declared unit of a value is different. It is part of the model: for a value with no `scale`,
+one declared unit is the floor of its comparisons. To make the floor independent of the declared
+unit, declare a `scale`.
+
+## Contacts and placement
+
+A **contact** is the time at which a stock reaches a bound or a threshold between two scheduled
+times. The engine locates it to the crossing tolerance in time.
+
+- A contact joins a nearby **moment** only when two tests pass: its located time is within the
+  crossing tolerance of the moment, and the stock at the time of the moment is within its own band
+  of the threshold or the bound. Else the contact is a moment of its own, at its located time.
+- An earlier contact runs before the stages that are due. A later contact waits across those stages
+  when their writes keep it.
+- The books always balance. A transfer posts equally at both ends. A read, a group of events or a
+  located crossing moves no material.
+- When the flows can put a stock exactly on its bound or threshold, the engine posts the small
+  correction on the legs that move the stock toward that value, in proportion to their rates. This
+  placement is a preference. The engine does not make it when it would break a hard relation of the
+  author, a frozen allowance, a capacity, or the range of another stock.
+- A run fails only when a hard rule breaks by more than its band.
+
+The engine pages give the details ([engine/README.md](../engine/README.md)).
+
+## Near-ties
+
+A tiny difference can change a discrete result: a trigger fires or not, a branch goes one way or
+the other, a claim is served or not. The engine does not calculate more precisely. It detects the
+case and marks it.
+
+- A decision is a near-tie when the two sides of the comparison that decides it are inside their
+  band, now and an instant later.
+- The trace marks a near-tie with the detail `near`: the origin, the comparison, the difference and
+  the tolerance, in canonical units.
+- The trace marks a firing in its entry `fire`, a trigger that came near and did not fire in an
+  entry `miss`, and a gate that released in an entry `release`.
+- Sides that cross through the boundary are no near-tie. The time of the crossing decides.
+- `napkin run` gives a summary of the near-ties under its table ([cli.md](../cli.md)).
+
+A threshold that sits at the edge of its band can decide differently under other settings, another
+solver or another platform. The trace says where this can happen.
+
+## Numerical settings
+
+The configuration of a run holds its numerical settings. A model sets only the longest step, with
+`resolution` on its scenario line.
+
+| Setting | Default | What it sets |
+| --- | ---: | --- |
+| `rtol` | 1e-9 | The relative tolerance of integration, and a term of the comparison factor |
+| `atol_factor` | 1e-10 | The absolute tolerance of a stock, as a factor of its size, and a term of the comparison factor |
+| `max_step` | 1 h | The longest step of integration. `resolution` sets it for the default run. |
+| `max_evaluations` | 2,000,000 | The most evaluations of the rates in one run |
+| `crossing` | 1e-8 h | The tolerance in time of a crossing, and the least time between two moments that the engine tells apart |
+
+The engine chooses its own steps. A run that needs finer steps sets `max_step`.
+
+## Reproducibility
+
+- **The same run is deterministic.** The same code, configuration, seed and thread settings on one
+  machine give the same record, bit for bit.
+- **Other runs agree within tolerance.** A sample alone or in a batch, another solver, or another
+  platform gives values that agree within the stated tolerances, not bit for bit.
+- A threshold at the edge of its band can fire differently across those settings. The near-ties in
+  the trace show where.
+- A run that stops at a breakpoint and goes on gives the same record as the run straight through,
+  on one platform, with the same program, engine version, settings and seed
+  ([events.md](events.md#breakpoints-checkpoints-and-edits)).
+- A budget of a solver counts work, never seconds. A run that succeeds on one machine succeeds on
+  another ([flows-and-solvers.md](flows-and-solvers.md#budgets)).
+- The draws of a sampled run are keyed by the seed, the place of the draw and its owner. Another
+  step size, an extra report or a skipped branch moves no draw
+  ([values-and-types.md](values-and-types.md#the-run-mode)).

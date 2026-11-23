@@ -144,7 +144,7 @@ runs rounds (`napkin/engine/timeline/moment.py`). One round has three steps:
 Another round follows at the same time while a stage is due there or a condition acted. Round zero is
 the setup. More than `max_rounds` rounds at one time stop the run with the name of the limit.
 
-**Rates read as the round began** ([change 27](../design/decisions.md)). A stage or a firing reads the
+**Rates read as the round began** ([change 27](../design/decisions.md#change-27)). A stage or a firing reads the
 rates and the solver results of the last re-share, also through a formula. The writes of a round
 reach the rates only at the re-share after its stages. A flow that joins reads zero until then. A
 flow that leaves keeps its last rate until then. The setup has no rate to read. In this package, a
@@ -203,7 +203,7 @@ Between two moments each connected set runs on its method. The next moment is th
 - an event of a method (a stock that reaches a bound, the end of a segment) that changes what a
   condition or another set reads.
 
-A condition on a value that moves is watched step by step ([change 20](../design/decisions.md);
+A condition on a value that moves is watched step by step ([change 20](../design/decisions.md#change-20);
 `napkin/engine/timeline/triggers.py`). For a value on a line, the engine calculates the time of the
 crossing exactly. For a value on a curve, it reads the form of the method's solution over each step:
 
@@ -219,7 +219,7 @@ there, or misses there, has the detail `near` in its trace entry. The
 [events page](../language/events.md) tells how a model writes triggers.
 
 A contact joins a nearby moment only when its time and its stock both qualify (amended
-[change 27](../design/decisions.md)). [methods.md](methods.md#contacts-and-moments) tells the rule.
+[change 27](../design/decisions.md#change-27)). [methods.md](methods.md#contacts-and-moments) tells the rule.
 
 ## The stock ledger
 
@@ -273,7 +273,7 @@ each path. A report claims nothing that the record does not show.
 value from `longest` to `shortest` hours before each time. Equal ends make a fixed delay. A lag:
 
 - reads the pieces of the history with five Gauss-Legendre points in each piece;
-- is `Unavailable` where its window begins before 0 h ([change 22](../design/decisions.md));
+- is `Unavailable` where its window begins before 0 h ([change 22](../design/decisions.md#change-22));
 - is valid only for a number that a proof says never falls. For another value, the report gives the
   plain reading and a note that tells why.
 
@@ -289,7 +289,7 @@ At 0 h the lagged value is `Unavailable`, because the window starts at -1440 h. 
 
 A breakpoint names a location of the compiled program: an event, a stage or a statement, for every
 occurrence or for one member or occurrence (`napkin.program.checkpoint.Breakpoint`). The engine stops
-before that location and gives a checkpoint ([change 15](../design/decisions.md)).
+before that location and gives a checkpoint ([change 15](../design/decisions.md#change-15)).
 
 A checkpoint holds the stop (why, where, which occurrence, what runs next), the logical state, the
 record so far, the edits so far, and the saved state of the engine. Its text form starts with the line
@@ -325,7 +325,7 @@ A record over its budget of pieces at a stop ends there, and the run gives no ch
 ## The run store
 
 The run store (`napkin/store.py`) keeps the record of each run on disk, so that a command does not run
-the same run twice. It reuses only an identical request ([change 28](../design/decisions.md)):
+the same run twice. It reuses only an identical request ([change 28](../design/decisions.md#change-28)):
 
 - The key of an entry is a digest of the canonical program, the configuration with its request (the
   horizon, the selected keys and the budget of pieces), the engine code, the versions of Python, NumPy
@@ -371,18 +371,23 @@ The numerical settings of a run (`Numerics`) set every tolerance of the engine:
 
 | Tolerance | Value | Where it applies |
 | --- | --- | --- |
-| Comparison band | `max(rtol, atol_factor) × max(scale, \|a\|, \|b\|)`, 1e-9 of the size by default | Every comparison of two numbers, in every evaluator ([change 29](../design/decisions.md)). |
+| Comparison band | `max(rtol, atol_factor) × max(scale, \|a\|, \|b\|)`, 1e-9 of the size by default | Every comparison of two numbers, in every evaluator ([change 29](../design/decisions.md#change-29)). |
 | Conservation allowance | `atol_factor × max(scale, \|amount\|)` | The retirement of an occurrence's stock, the amounts of a frozen stock, the bounds at setup. |
 | Integration accuracy | `rtol`, and `atol_factor` times the size (Component) or the scale (Sparse, MovingDeclared) of each stock | The numerical methods ([methods.md](methods.md#integration-tolerances)). |
 | Crossing tolerance | `crossing`, 1e-8 h | The time of a contact or a crossing, and the time between two moments. |
 | Step cap | `max_step`, 1 h, or the `resolution` of the scenario | The interval at which a numerical method reads its roots and its field inside a long step. |
+
+A declared `scale` can change only three things ([change 33](../design/decisions.md#change-33)): the
+outcome of a comparison inside its band, the accuracy of the integration, and the choice among answers
+of a solver that are equally optimal for its nonflow unknowns. A change of the display units changes
+nothing.
 
 The scale of a value is its declared `scale`, or else the size of one of its declared units. A
 literal in the model is exact: it adds no floor to a comparison band, and the relative term of the
 band still applies. The
 [numerics page](../language/numerics.md) tells how a model declares a scale.
 
-**Reproducibility** ([change 11](../design/decisions.md)):
+**Reproducibility** ([change 11](../design/decisions.md#change-11)):
 
 - The same run is deterministic. The same code, configuration, seed and thread settings on one
   machine give the same record, bit for bit.

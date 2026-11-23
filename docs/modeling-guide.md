@@ -1,731 +1,1023 @@
-# How to model with napkin
+# How to write a model
 
-This guide is for anyone who builds a model with napkin, on any subject. [language.md](language.md)
-is the contract of each line. This guide is about the choices that the contract leaves open: the
-parts of a model, the record of each value and the checks. Section 15 is the checklist that every new
-model and every change answers.
+This guide is for the author of a model. It builds one small model in nine steps, and it checks each
+step with the compiler. Then it gives short rules for units, evidence, solvers and checks, and a
+checklist.
 
-The catalogue of this repository adds its own conventions for attackers and defenders
-([scenarios/docs/conventions.md](../scenarios/docs/conventions.md)).
+The [language reference](language/README.md) gives the rules of each line. The words of this guide,
+such as **stock**, **run** and **record**, have the meanings that [the terms](language/README.md#terms)
+give. The examples and the catalogue show good practice. After this guide, read
+[`examples/piano_tuners`](../examples/piano_tuners/model.scn),
+[`examples/reservoir`](../examples/reservoir/model.scn) and
+[`examples/incident_response_tempo`](../examples/incident_response_tempo/model.scn).
+
+Each command in this guide starts with `napkin`. In a checkout without the installed command, write
+`.venv/bin/python -m napkin` in its place. [cli.md](cli.md) gives each command and each flag.
 
 ## Contents
 
 1. [Start a model](#1-start-a-model)
-2. [Things](#2-things)
-3. [States, stocks and flows](#3-states-stocks-and-flows)
-4. [Inputs](#4-inputs)
-5. [Events](#5-events)
-6. [Actors and what they see](#6-actors-and-what-they-see)
-7. [Outputs and checks](#7-outputs-and-checks)
-8. [Units](#8-units)
-9. [Evidence](#9-evidence)
-10. [Texts](#10-texts)
-11. [A variant, an option or a run](#11-a-variant-an-option-or-a-run)
-12. [The same moment](#12-the-same-moment)
-13. [Check a model](#13-check-a-model)
-14. [Change a model safely](#14-change-a-model-safely)
+2. [Name the question](#2-name-the-question)
+3. [Add values](#3-add-values)
+4. [Add a flow](#4-add-a-flow)
+5. [Add an event with stages](#5-add-an-event-with-stages)
+6. [Add a trigger](#6-add-a-trigger)
+7. [Declare named runs](#7-declare-named-runs)
+8. [Edit a run](#8-edit-a-run)
+9. [Read the record](#9-read-the-record)
+10. [Give an input a spread](#10-give-an-input-a-spread)
+11. [Choose units and scales](#11-choose-units-and-scales)
+12. [Cite evidence](#12-cite-evidence)
+13. [Write a solver](#13-write-a-solver)
+14. [Check a model](#14-check-a-model)
 15. [The checklist](#15-the-checklist)
 
 ## 1. Start a model
 
-`napkin new DIR` writes a model that compiles and runs as written. Then it says what to replace:
+`napkin new DIR` writes two files. `DIR/model.scn` is a model that compiles and runs as written.
+`DIR/style.toml` is the picture of the model, which `napkin draw` reads.
 
-```
-$ napkin new demo
-Wrote demo/model.scn.
-It compiles and runs as written: napkin run demo
+1. Write the starter in the folder `clinic`:
 
-Replace next, in demo/model.scn:
-  - the title, "A new scenario", and the lines summary, horizon and scope under it;
-  - the inputs, each with its value, its range and its text: service.rate;
-  - the records, which each value cites: guess. Give each value a record of its own.
-After each change, `napkin compile demo` checks the model (docs/language.md gives each line).
-$ napkin run demo
-base
-                  at the end (720 h)
-  People served   300 people
-```
+   ```console
+   $ napkin new clinic
+   Wrote clinic/model.scn and its picture, clinic/style.toml.
+   It compiles and runs as written: napkin run clinic
 
-The new file has one thing, `service`. It holds a stock of the people who wait, and a flow that moves
-them into a tally of the people served. It also has one output and one assumption record, `guess`,
-which every value cites. `napkin new DIR --variants east,west` also writes a variant for each name
-(section 11).
+   Replace next, in clinic/model.scn:
+     - the title, "A new scenario", and the lines summary, horizon and scope under it;
+     - the inputs, each with its value, its range and its text: service.rate;
+     - the records, which each value cites: guess. Give each value a record of its own.
+   After each change, `napkin compile clinic` checks the model (docs/language/README.md describes each line).
+   ```
 
-Write the model in this order:
+2. Run the starter:
 
-1. The question and its outputs: what the model counts, in which unit, and for whom (`scope`).
-2. The things: each real thing or actor (section 2).
-3. Their states, stocks and flows (section 3), and their inputs (section 4).
-4. The events that change the states (section 5), and what each actor sees (section 6).
-5. The checks and the outputs (section 7).
-6. The options and the runs (section 11).
+   ```console
+   $ napkin run clinic
+   A new scenario: a median run to 720 h
+                               unit         0 h        720 h
+   service.rate                people/day   10         10
+   service.waiting             people       1000       700
+   service.served              people       0          300
+   service.serve.actual_rate   people/h     0.416667   0.416667
+   service.serve.request       people/h     0.416667   0.416667
+   people_served               people       0          300
+   ```
 
-Give each value its record when you write the value (section 9). After each part, run
-`napkin compile`. Each diagnostic gives its file, line and column, and the closest names. For a
-mistake in a unit:
+The starter has one entity, `service`. Its flow `serve` moves people from the stock `waiting` to the
+stock `served`, at the rate of the input `rate`. The formula `people_served` follows `served`. Each
+value cites one `record` declaration, `guess`.
 
-```
-$ napkin compile demo
-demo/model.scn:11:5: error: unknown unit 'people/dy'; did you mean people/day, people/days or people? (service/rate)
-```
+The next steps replace the starter with a model of the water tank of a clinic. Each step gives the
+new lines and the output of the compiler.
 
-`napkin fmt` formats the files of a model in place. The examples `examples/piano_tuners` and
-`examples/reservoir` are two short models to read next. [cli.md](cli.md) gives every command and
-flag.
+## 2. Name the question
 
-## 2. Things
+The scenario line gives the title of the model, its question, its horizon and what it covers.
 
-- Make one thing for each real thing or actor that has its own state or makes its own decisions:
-  the water plant, the repair crews, the people of a district, the operator of a dam.
-- Do not make bookkeeping things. A "model" thing that holds inputs, a "readiness" thing that holds
-  hidden markers, or a thing that holds only a status, is a sign of a missing real thing. Put each
-  part on the thing that it describes.
-- Name each thing as a reader would: `repair_crews`, not `restoration_readiness`. A thing's `title`
-  names it on the picture; without a title, its name in words does (`repair_crews` reads "Repair
-  crews"). Its text describes it.
-- Name a thing for the actor or the object, not for its work. The engineers check the plant before
-  a restart; "restart checks" is their work, not a thing.
-- What a thing holds or knows is a state of that thing, not a thing of its own. The crews know that
-  the operators called them: `var called = false` on the crews.
-- Make a thing without a template (`name:`) for one thing. Make a template (`Name:`, with a capital
-  letter) for several things of one kind, and one instance of it for each thing (`north: District`).
-  `name: Template * k` makes k copies, `name.1` to `name.k`.
-- Give each instance its own values with lines under it, such as `population = 80000 people  @census`.
-  Each new value has a record of its own.
-- For many things of one kind whose values come from data, put the data in a table of the package and
-  name it on the line of the thing: `zones: Zone from "zones.csv"`. Each row is one instance, and each
-  column gives one member, with its unit and its record in the header:
-  `population: people @census`. Keep the formulas, the flows and the events in the template; the
-  table holds values only ([language.md](language.md), §2.3).
-- Make a template of its own for a part that only some things have. Every instance has every flow,
-  share and check of its template, and an instance cannot add a member.
-- Hide only machinery that has no meaning for a reader, such as the copies that carry parcels between
-  two places. To hide it on the picture, name its template, or the thing made without one, in `hide`
-  under `[layout]` in `style.toml` ([draw.md](draw.md)).
+1. Replace the two comment lines and the scenario line at the top of `clinic/model.scn` with these
+   lines:
 
-```text
-District:  @district_model
-    "The people of one district that the plant supplies."
-    role community
-    let population = 50000 people  @district_model
-        "People in the district"
+   ```scn
+   scenario "Clinic water in an outage"
+       summary "The water main to a clinic breaks. The clinic uses the water in its tank until a crew repairs the
+           main. How low does the tank go?"
+       horizon 3 days
+       scope "One clinic and its water tank."
+   ```
 
-north: District
-    "The people of the northern district."
-    title "Northern district"
-    population = 80000 people  @census
-        "People in the northern district"
+2. Write the unit of water in the new file `clinic/units.json`:
 
-south: District
-    "The people of the southern district."
-```
+   ```json
+   {"L": {"dimensions": {"water": 1}, "scale": 1, "description": "One litre of water."}}
+   ```
 
-## 3. States, stocks and flows
+The prelude gives units of time and of people, but no unit of volume (`napkin/std/units.json`). The
+engine calculates time in hours, so the compiler converts `3 days` to 72 h.
 
-- Name each state and each of its values for what a person would see:
-  `var pressure: "normal" | "low" = "normal"`.
-- Hold each state in one thing. Other things read it there (`plant.pressure`); they do not copy it.
-  A state that repeats another thing's state (an echo state) goes.
-- A state has no dead value, which it never takes. It also has no zero-length value, which it leaves
-  at the moment that it takes it. A step that happens at one moment is an event, not a value of a
-  state.
-- Define nothing conditionally. An event's `when` says when it happens; the options set the states
-  that the world starts in.
-- Make each amount that moves a number var, and let flows move it. The compiler finds what each
-  number var is from the file (language.md, §2.4):
-  - a **stock**, when a flow takes from it: the people who wait, the water in a tank;
-  - a **tally**, when flows only fill it: the tunings done, the hours with low pressure;
-  - a **number state**, when no flow joins it and only events set it.
-- A flow moves its rate per hour while its `while` holds. Write the rate in the unit of the var per
-  unit of time, and let the compiler check it. When several flows take from one var, give the var a
-  `share` (language.md, §2.5).
-- Where items move between stocks and none is made or lost, say so with a check:
-  `assert a + b is T within d`.
-- Give each stock and tally a size: the high end of its range (`in`), or `size` where it has none. The
-  solver reads it.
+## 3. Add values
 
-`examples/piano_tuners` holds a stock and a flow out of it:
+A value has a name, a unit or a type, an initial value and, if necessary, a range. An **input** is a
+value that a named run or an edit can set before the run.
 
-```text
-    var due: tunings = need size 20000 tunings  @counts
-        "Tunings that the pianos still need"
-    var done: tunings = 0 tunings size 20000 tunings  @counts
-        "Tunings done"
-    flow tune: due -> done at rate * staff  @counts
-```
+1. Replace the entity `service`, the formula `people_served` and the `record` declaration `guess`
+   with these lines:
 
-## 4. Inputs
+   ```scn
+   tank:
+       "The water tank of the clinic."
+       input start: L = 6000 L in [0 L, 10000 L]
+           "Water in the tank when the main breaks"
+           @assumption "The guide assumes that the tank is 60% full when the main breaks."
+       water: L = this.start in [0 L, 10000 L] scale 10000 L @books
+           "Water in the tank"
 
-- Each input belongs to the thing that it describes: the crews' repair time on the crews, the
-  population on the district.
-- An input that every instance of a template shares belongs to one thing that they all read, by
-  its name or through a link. Then it stays one input.
-- Write the label, the first text under a value, as a short noun phrase: "Time that the crews take
-  to repair the pump". A label that names one instance only belongs under that instance's line for
-  the member: `population:`, with the new text under it.
-- Each input has its record, and its range too: write the range on the input's line
-  (`in 1 h to 72 h`). Let the record say whether the sources give the limits or the model chooses
-  them, and why the model chose the default value. A range that a reader can explore is not a
-  measured interval.
-- Do not write a fixed time or amount in a `when` (`since(x) >= 2 h`). It is an input that a reader
-  cannot see or change, and it has no record. Make it a value, `input` or `let`, with its record.
-- A yes/no input has the value `true` or `false`: `input notice = true`. Read it as a condition
-  (`notice`, `not notice`), or write `1 if notice else 0` where a number is needed. A yes/no
-  condition that changes during a run is a yes/no state: `var called = false`.
-- Write each number with its unit, in the unit that the source gives: `input delay: h = 3 days`. The
-  compiler converts it to 72 h, so do not convert it by hand.
-- Input names (`thing.value`) stay stable: the options, the saved edit documents and the tests name
-  them. A rename moves every one of them in the same change.
+   clinic:
+       "The clinic, which takes its water from the tank."
+       input use: L/h = 150 L/h in [0 L/h, 500 L/h]
+           "Water that the clinic uses in an hour"
+           @assumption "The guide assumes a small clinic that uses 3600 L in a day."
 
-```text
-    input repair_time = 6 h in 1 h to 72 h  @crew_tiers
-        "Time that the crews take to repair the pump"
+   record books: identity "The model counts each litre of water once, in the place where it is."
+   ```
+
+2. In `clinic/style.toml`, replace the `[role]` table with this table, which names the new entity:
+
+   ```toml
+   [role]
+   clinician = ["clinic"]
+   ```
+
+3. Compile the model:
+
+   ```console
+   $ napkin compile clinic
+   clinic/model.scn: Clinic water in an outage
+     run:           median, to 72 h, steps of at most 1 h
+     entities:      tank, clinic
+     inputs:        tank.start, clinic.use
+     stores:        tank.water
+     units:         L, L/h
+     model hash:    4eed4a686d98c5e518574a4e893deabd6a09bb04460096e8e45f78c8a6d70e7a
+   ```
+
+Each part of these lines has one function:
+
+| Part | What it does |
+| --- | --- |
+| `input start: L = 6000 L` | Declares an input in litres, with its initial value. |
+| `in [0 L, 10000 L]` | Gives the range. An edit outside the range is an error. A flow cannot move a stock outside its range. |
+| `water: L = this.start` | Declares a value that starts at the input `start` of the same entity (`this`). |
+| `scale 10000 L` | Gives the numerical size of the value ([section 11](#11-choose-units-and-scales)). |
+| The first text under a line | Gives the label of the value. The reports and the pictures show it. |
+| `@assumption "…"` on its own row | Writes a `record` declaration in place: the evidence of this one value. |
+| `@books` | Cites the named `record` declaration `books` at the end of the file. |
+
+The compiler checks the unit of each number. If `use` gets `150 L` in place of `150 L/h`, the
+compiler gives this error:
+
+```console
+clinic/model.scn:17:22: error: use is declared L/h, and its initializer is L [unit]
 ```
 
-### Distributions
+The compiler warns of each value that cites no `record` declaration. Without `@books`, it prints this
+warning before the summary:
 
-Give an input a distribution when its source, or the model, gives a spread and not one value
-(language.md, §2.4). A run without samples takes the median; `napkin sample` draws a value for each
-sample.
-
-- Choose the family from what the source reports:
-  - a lowest, a most likely and a highest value: `pert(min, mode, max)`. Use
-    `triangular(min, mode, max)` when the most likely value has no more weight than the values near
-    it;
-  - a lowest and a highest value only: `uniform(min, max)`, or `loguniform(min, max)` when they are
-    orders of magnitude apart;
-  - a mean and a standard deviation: `normal(mean, sd, min=, max=)`;
-  - a median and a geometric standard deviation, or a spread that grows with the value:
-    `lognormal(median, gsd, min=, max=)`;
-  - a share from 0 to 1, with its mean and the count behind it: `beta(a, b)`;
-  - the chance that a condition holds: `bernoulli(p)`, for a yes/no input;
-  - one of several values, each with its weight: `categorical(name=p, …)`, for an input with named
-    values.
-- Set the bounds of a normal or a lognormal to the limits that the value can take, or to the range
-  that the source covers. These bounds lie within the input's range (`in low to high`).
-- A distribution has a record, as every value has. Cite a `source` record when the source reports
-  the spread: list its claims, and say in the explanation which parameters the source gives. A
-  `datum:` names one figure that the value equals, so the record of a distribution names none. Cite
-  an `assumption` record for a spread that the model chooses, and say why. A chosen spread is not a
-  measured distribution.
-- Two values that move together share a cause. Make the cause one input, and let both values read
-  it: `median=1.5 * detection_time`. Values drawn alone can give combinations that never occur.
-- Shares that add up to 1 are draws divided by their total. Shares drawn alone break a check that
-  they add up to 1 in most samples, and such a sample rejects the study.
-- Each copy of a set draws its own value. To give every copy the same draw, put the input on one
-  thing that the copies read.
-
-```text
-    input detection_time: h = pert(1 h, 2 h, 8 h) in 0.5 h to 12 h
-        "Time until the operators see the low pressure"
-        @assumption "The model chooses a spread of the detection time around two hours. It is not a measured
-            distribution. The limits are times that a reader can explore, not a measured interval."
+```console
+clinic/model.scn:12: warning: tank.water: a stored value rests on no record: cite one (@name) or write one under it [no_record]
 ```
 
-## 5. Events
+A model with warnings still runs. The checks of the catalogue refuse it
+([section 14](#14-check-a-model)).
 
-- An event says when and what. `event name once when C:` says when it happens, and the lines under
-  it say what changes. Write the event's text as one sentence in the present tense: it names the
-  change.
-- An event with several outcomes says what can happen when it fires: `name chance:` heads each
-  outcome, with its text and its lines under it. A chance is a number or an expression (the model's
-  estimate), a condition (1 when it holds) or `else`. The central run takes the likeliest outcome;
-  the samples of a study draw them (language.md, §2.6).
-- Name each outcome for what happens: `done`, `stopped`, `skipped`, or a word of the case. An
-  outcome's name is not a state: a state that a reader should see is a named state that the outcome
-  sets.
-- A change that several events make is an event with no `when` (`event name:`): a line of another
-  event names it (`x.name`), and it fires then, after that event's step. Its text names its change.
-- Every event belongs to a thing or a template. The file has no event at the top level.
-- The first change of a run can be the event `start` of one thing, `event start when t >= 0 h:`. It
-  fires first, at t = 0.
-- An event reads the values of its own thing bare, and the values of another thing by its name
-  (`plant.pressure`). In a template, read through a link each thing that differs between the
-  instances, and let each instance bind it (`let district = north`). Then a second district is one
-  more instance, and the template does not change.
-- Make each event react to a consequence that its thing can see. The operators react to the low
-  pressure that they see, not to the failure of the pump inside the plant.
-- Start each clock at the first moment that its thing could know. The crews cannot start a repair
-  that no one has asked for. So their clock starts when the operators call them, not at the failure.
-- Use one clock for each thing. Time each delay from the event that starts it, `since(x) >= d`, and
-  use `elapsed(s) >= d` for "after d hours in this state".
-- An event fires each time its condition becomes true. Write `once` for an event that happens one
-  time in a run. A repeatable event that watches a crossing of a continuous value sets, in each
-  outcome, a named state that its condition reads; another event sets the state back, and the event
-  can fire again.
-- Do not add guards to a `when` that always hold when the event can happen. An example is "and the
-  pump has failed" with a clock that starts at the failure.
-- A line of an outcome may change another thing. The picture then shows who changes what, and the
-  records of the event say why it can.
-- Use `after` only for a step that takes time. When the step can be stopped or found moot while it
-  waits, give the event outcomes whose chances are conditions. The engine reads them when the delay
-  ends: `done` with the condition under which the step still applies, and `skipped` or `stopped`
-  with `else`. An instant step has no `after`, and its condition goes in its `when`.
-- A step that did not happen but that a reader expects ("the job never runs") is a milestone: an
-  event with a text and no lines.
+The `[role]` table of `style.toml` says who plays each entity in the picture. No run reads it.
+`napkin compile` also checks `style.toml`. If `[role]` names an entity that the model does not have,
+the compiler gives an error:
 
-```text
-    # The clock runs from the moment the pressure falls: the operators watch the pressure.
-    event find once when plant.pressure is "low" and elapsed(plant.pressure) >= detection_time:  @pressure_alarm
-        "The operators see the low pressure and call the crews."
-        crews.called = true
-
-    # The repair takes time, and the pump can run again before it ends.
-    event repair once after repair_time when called:  @crew_tiers
-        done plant.pump is "failed":
-            "The crews repair the pump, and the pressure comes back."
-            plant.pump = "repaired"
-            plant.pressure = "normal"
-        skipped else:
-            "The pump already runs again, so the crews have nothing to repair."
+```console
+clinic/style.toml: error: role.operator: service is not a template or a thing [style]
 ```
 
-## 6. Actors and what they see
+## 4. Add a flow
 
-- Each event reads only what its thing could know. The record on its line says how the thing knows
-  it: a sensor, a report, a person who sees it.
-- An actor says what it observes with `sees` (language.md, §2.7). Its choices, its events with the
-  line `choice`, read only what it sees, the time and its own inputs; the compiler rejects any other
-  name there. A person can be infected and not know it.
-- Read the state of the thing that an event depends on, not the state of the actor that changes it.
-  The plant reads whether its release path is isolated (`store.path is "isolated"`), not whether the
-  operators have finished. Then a second way to isolate the path needs no change to the plant.
-- An event or a flow that reads a state that its thing cannot know is a fault of the model. Fix it:
-  the event or the flow reacts to what its thing can see. The same applies to a clock that starts
-  before its thing could know, a fixed time in a `when`, and a record that does not say how a thing
-  knows.
-- Draw the model and read the picture ([draw.md](draw.md)). It shows each thing, and an arrow for
-  each kind of link to another thing: what it reads, what it changes and what material it moves. If
-  an arrow surprises a reader, the model is wrong.
+A **flow** moves a quantity per hour from one stock to another. Its `request` is the rate that it
+asks for, and its `capacity` is its limit. Its `actual_rate` is the rate that it gets.
 
-A choice has the model's chances, so a run that nobody plays takes them. `napkin play` stops at each
-choice of the actor that `--control` names, shows what the actor sees and asks for a pick
-([engine.md](engine.md#play)):
+1. Add these lines to the entity `clinic`, under the input `use`:
 
+   ```scn
+       used: L = 0 L in [0,] scale 10000 L @books
+           "Water that the clinic used"
+       flow draw: tank.water -> this.used @books
+           request = formula(this.use)
+           capacity = formula(this.use)
+   ```
+
+2. Run the model:
+
+   ```console
+   $ napkin run clinic
+   Clinic water in an outage: a median run to 72 h
+                             unit   0 h    72 h
+   tank.start                L      6000   6000
+   tank.water                L      6000   0
+   clinic.use                L/h    150    150
+   clinic.used               L      0      6000
+   clinic.draw.actual_rate   L/h    150    0
+   clinic.draw.request       L/h    150    150
+   clinic.draw.capacity      L/h    150    150
+   ```
+
+The tank is empty at 40 h, because 6000 L / 150 L/h = 40 h. After that time, the flow gets 0 L/h,
+but its request and its capacity stay at 150 L/h. The flow touches `tank.water` and `clinic.used`,
+so both are stocks. The engine keeps an exact balance of each stock.
+
+A request is soft, and a capacity is hard. The clinic cannot take more than it asks for, so its
+capacity has the same formula as its request. `formula(...)` keeps the calculation, and the engine
+calculates it each time that it reads it. A plain expression keeps only its value at 0 h. Step 6
+needs a formula, because the request then reads a value that an event changes.
+
+The range `[0,]` has no upper end. It says that `used` cannot go below zero.
+
+## 5. Add an event with stages
+
+An **event** is an activity with stages. Each `after D:` stage runs D hours after the stage before
+it. Each start of an event makes one **occurrence**.
+
+1. Add these entities and this start line above the `record` declarations:
+
+   ```scn
+   main:
+       "The water main that fills the tank."
+       input supply: L/h = 400 L/h in [0 L/h, 2000 L/h]
+           "Water that the main brings in an hour when it works"
+           @assumption "The guide assumes that the main can bring 400 L in an hour."
+       state: enum[BROKEN, REPAIRING, WORKING] = BROKEN
+           "Water main"
+           @assumption "The guide assumes that the main breaks when the run starts."
+       flow fill: SOURCE -> tank.water @books
+           request = formula(this.supply if this.state == WORKING else 0 L/h)
+           capacity = formula(this.supply if this.state == WORKING else 0 L/h)
+
+   crew:
+       "The repair crew of the water company."
+       input travel: h = 4 h in [0 h, 48 h]
+           "Time that the crew takes to reach the main"
+           @assumption "The guide assumes a local crew, four hours away."
+       input work: h = 20 h in [1 h, 96 h]
+           "Time that the crew takes to repair the main"
+           @assumption "The guide assumes that the repair takes 20 hours of work."
+       repair = event(): @call_out
+           "The crew goes to the main and repairs it."
+           after this.travel:
+               main.state = REPAIRING
+           after this.work:
+               main.state = WORKING
+
+   crew.repair.start()
+   ```
+
+2. Add this `record` declaration at the end of the file:
+
+   ```scn
+   record call_out: assumption "The water company sends the crew when the main breaks, at 0 h."
+   ```
+
+3. Read the state of the main, its rate and the water in the tank at four times:
+
+   ```console
+   $ napkin run clinic --value main.state,main.fill.actual_rate,tank.water --at 0h,4h,24h,72h
+   Clinic water in an outage: a median run to 72 h
+                           unit   0 h      4 h         24 h      72 h
+   main.state                     BROKEN   REPAIRING   WORKING   WORKING
+   main.fill.actual_rate   L/h    0        0           400       150
+   tank.water              L      6000     5400        2400      10000
+   ```
+
+These are the parts of the event:
+
+- `state: enum[BROKEN, REPAIRING, WORKING] = BROKEN` is an enum value. A bare member, such as
+  `WORKING`, takes its enum from its place.
+- The flow `fill` comes from `SOURCE`, which is outside the model. Its request and its capacity read
+  `state`.
+- The line `crew.repair.start()` at the top level starts one occurrence of `repair` at 0 h.
+- The first stage runs at 4 h, after `travel`. The second stage runs 20 h later, at 24 h, after
+  `work`.
+- The event cites `@call_out`. An event with a stage needs a `record` declaration, as an input does.
+
+At 72 h the tank is full. Its upper bound then limits the main to 150 L/h, the room that the clinic
+makes.
+
+## 6. Add a trigger
+
+A **trigger** is a `when` condition that the engine monitors. When the condition becomes true, the
+body of the trigger runs, and it starts the event.
+
+1. Replace the entity `clinic` with these lines:
+
+   ```scn
+   clinic:
+       "The clinic, which takes its water from the tank."
+       input use: L/h = 150 L/h in [0 L/h, 500 L/h]
+           "Water that the clinic uses in an hour"
+           @assumption "The guide assumes a small clinic that uses 3600 L in a day."
+       input reserve: L = 3000 L in [0 L, 10000 L]
+           "Water in the tank at which the clinic starts to save water"
+           @assumption "The guide assumes that the clinic saves water below 20 hours of its usual use."
+       input cut = 0.5 in [0, 1]
+           "Share of its usual use that the clinic keeps when it saves water"
+           @assumption "The guide assumes that the clinic can halve its use for some hours."
+       saving: bool = false
+           "The clinic saves water"
+           @assumption "The clinic uses its usual amount of water when the main breaks."
+       used: L = 0 L in [0,] scale 10000 L @books
+           "Water that the clinic used"
+       flow draw: tank.water -> this.used @books
+           request = formula(this.use * this.cut if this.saving else this.use)
+           capacity = formula(this.use * this.cut if this.saving else this.use)
+       save = event(): @water_plan
+           "The tank reaches the reserve. The clinic saves water until the main works again."
+           when tank.water <= this.reserve:
+               this.save.start()
+           after 0 h:
+               this.saving = true
+           until main.state == WORKING
+           after 0 h:
+               this.saving = false
+   ```
+
+2. Add this `record` declaration at the end of the file:
+
+   ```scn
+   record water_plan: assumption "The clinic has a plan to save water when its tank is low."
+   ```
+
+3. Read the rate of the clinic and the water at four times:
+
+   ```console
+   $ napkin run clinic --value clinic.saving,clinic.draw.actual_rate,tank.water --at 0h,20h,24h,72h
+   Clinic water in an outage: a median run to 72 h
+                             unit   0 h     20 h   24 h    72 h
+   clinic.saving                    false   true   false   false
+   clinic.draw.actual_rate   L/h    150     75     150     150
+   tank.water                L      6000    3000   2700    10000
+   ```
+
+These are the parts of the trigger and of the event:
+
+- `when tank.water <= this.reserve:` reads a stock that moves between moments. The engine finds the
+  time at which the tank reaches 3000 L. That time is 20 h, because 6000 L − 150 L/h × 20 h =
+  3000 L. The engine does not sample the condition at fixed times.
+- The trigger has no `reset` line. So its condition must become false before the trigger can start
+  the event again. `reset when false` permits one start in a run.
+- `until main.state == WORKING` is a gate. The occurrence waits at the gate until the condition holds.
+- The request reads `saving`, so it is 75 L/h from 20 h to 24 h. At 24 h the tank holds 2700 L,
+  because 3000 L − 75 L/h × 4 h = 2700 L.
+
+Use `<=` or `>=` in a trigger on a value that moves. A moving value has no first time at which it is
+strictly below a threshold. If the trigger is `tank.water < this.reserve`, the run stops:
+
+```console
+clinic/model.scn: error: the run failed at 0 h: a strict threshold on a value that changes continuously: tank.water < clinic.reserve has no first instant; use an inclusive threshold [run]
 ```
-$ napkin play examples/reservoir --control operator
-note: checked for run base only; `napkin compile` checks every run
 
-At 40 h, operator decides (operator.decide).
-  The water reaches the level at which the operator opens the spillway.
-  It sees:
-    reservoir.water = 0.7 fraction
-  It can pick:
-    1.  open: The operator opens the spillway.
-    2.  wait: The operator waits, and the spillway stays closed.
-Pick 1-2 or a name: wait
-Why (optional):
-  operator picks wait.
+## 7. Declare named runs
 
-The run base ends at 120 h.
-  Water let out over the spillway           0 fraction
-  Time with the water above the risk level  40 h
-1 pick.
-```
+A **named run** is a run that the model declares under `runs:`. Each named run takes options, and each
+option sets inputs.
 
-## 7. Outputs and checks
+1. Add these lines above the `record` declarations:
 
-- An output gives one result in its unit, with its label, its record and whom it covers (`scope`, or
-  the scope of the scenario line). An output is cumulative unless it is a `level`; a cumulative
-  output never falls.
-- A value that is not estimated is never zero: write `unestimated` with its reason, and no `= E`.
-- Every setting that a reader can choose either runs or is rejected by a check that says why: an
-  `assert` that reads inputs only, with its message.
-- Counts of people that an output adds come from one sum (`assert a + b is T within d`), or the
-  output says why they are different people (`distinct` with its record). Without one of them, the
-  compiler rejects the sum.
-- A `category` is a free tag that the language does not read. Tools that read the reports can use it.
-- A `lag` delays a cumulative count as the reports give it, such as deaths that come some days after
-  the harm ([engine.md](engine.md)). `napkin run --at` gives every output at other times too.
+   ```scn
+   options "Repair crew":
+       "Local crew":
+           crew.travel = 4 h @crews
+       "Regional crew":
+           crew.travel = 16 h @crews
 
-```text
-output people: people = sum(District.population)  @district_model
-    "People that the plant supplies"
-    level
-    distinct  @districts_apart
-```
+   runs:
+       local = "Local crew"
+       regional = "Regional crew"
+   ```
 
-## 8. Units
+2. Add this `record` declaration at the end of the file:
 
-- Every number has its unit, and every model has the units of the prelude (`napkin/std/units.json`):
-  `h`, `hour`, `hours`, `day`, `days`, `week`, `weeks`, `month`, `months`, `year`, `years`,
-  `person`, `people`, `fraction`, `ratio` and `percentage_points`. No file declares a prelude name
-  again.
-- A composed unit needs no entry: `a/b` divides, `a-b` multiplies and binds tighter than `/`, and
-  `a^n` is a power. So `tunings/tuner-year` is tunings per tuner per year.
-- Declare a unit of your own in the package's `units.json`, with its dimensions and its scale in
-  execution units. `examples/piano_tuners` declares two:
+   ```scn
+   record crews: assumption "The guide assumes a local crew 4 hours away, and a regional crew 16 hours away."
+   ```
 
-  ```json
-  {"tunings": {"dimensions": {"tunings": 1}, "scale": 1, "description": "One tuning of one piano."},
-   "tuner": {"dimensions": {"tuners": 1}, "scale": 1, "description": "One piano tuner who works full time."}
-  }
+3. Compile the model, and find the named runs in the summary:
+
+   ```console
+   $ napkin compile clinic
+   clinic/model.scn: Clinic water in an outage
+     run:           median, to 72 h, steps of at most 1 h
+     named runs:    local, regional
+     entities:      tank, clinic, main, crew
+     inputs:        tank.start, clinic.use, clinic.reserve, clinic.cut, main.supply, crew.travel, crew.work
+     stores:        tank.water, clinic.saving, clinic.used, main.state
+     flows:         clinic.draw: tank.water -> clinic.used, main.fill: SOURCE -> tank.water
+     units:         L, L/h, h
+     model hash:    1a63c1f39b3dd9ffaea7a83cf2726e7378aab0f2e705fdd352f25e0700688cea
+   ```
+
+4. Run each named run:
+
+   ```console
+   $ napkin run clinic --run local --value main.state,clinic.saving,tank.water --at 0h,20h,24h,36h,72h
+   Clinic water in an outage: the run local, a median run to 72 h
+                   unit   0 h      20 h        24 h      36 h      72 h
+   main.state             BROKEN   REPAIRING   WORKING   WORKING   WORKING
+   clinic.saving          false    true        false     false     false
+   tank.water      L      6000     3000        2700      5700      10000
+   $ napkin run clinic --run regional --value main.state,clinic.saving,tank.water --at 0h,20h,24h,36h,72h
+   Clinic water in an outage: the run regional, a median run to 72 h
+                   unit   0 h      20 h        24 h        36 h      72 h
+   main.state             BROKEN   REPAIRING   REPAIRING   WORKING   WORKING
+   clinic.saving          false    true        true        false     false
+   tank.water      L      6000     3000        2700        1800      10000
+   ```
+
+These are the rules of options and named runs:
+
+- An option sets an input by its full path, with a constant and a `record` declaration. A setting
+  without a `record` declaration is an error.
+- A named run takes at most one option of each group. Two options of one run cannot set one input.
+- Without `--run`, `napkin run` calculates the default run: a median run with the values of the model.
+- An unknown name is an error:
+  `napkin run: error: --run nowhere: no run of the model; its runs are local and regional`.
+
+With the regional crew, the main works again at 36 h. The tank then holds 1800 L.
+
+A named run changes inputs only. A **variant** changes the model itself, for one place or case.
+`napkin new DIR --variants east,west` writes a package with two variants
+([the language reference](language/README.md#variants-and-changes)).
+
+## 8. Edit a run
+
+An **edit** changes an input before the run, or a value at a breakpoint.
+
+### An edit before the run
+
+An edit document is a JSON file that sets inputs. Its shape is `napkin/schema/edits.schema.json`.
+
+1. Find the model hash on the last line of `napkin compile clinic` (step 7).
+2. Write the edit document `clinic-edits.json`:
+
+   ```json
+   {
+     "schema_version": "0.0.1",
+     "model_hash": "1a63c1f39b3dd9ffaea7a83cf2726e7378aab0f2e705fdd352f25e0700688cea",
+     "reason": "The regional crew needs 30 hours for the repair.",
+     "runs": {"regional": {"crew.work": "30 h"}}
+   }
+   ```
+
+3. Run the named run with the edit document:
+
+   ```console
+   $ napkin run clinic --run regional --edits clinic-edits.json --value main.state,clinic.saving,tank.water --at 0h,36h,46h,72h
+   Clinic water in an outage: the run regional, a median run to 72 h, with the edits of clinic-edits.json
+                   unit   0 h      36 h        46 h      72 h
+   main.state             BROKEN   REPAIRING   WORKING   WORKING
+   clinic.saving          false    true        false     false
+   tank.water      L      6000     1800        1050      7550
+   ```
+
+These are the rules of an edit document:
+
+- `set` edits every run, `options` edits the runs that take an option, and `runs` edits one named
+  run. The narrowest edit wins.
+- An edit follows the type of its input. A JSON number is in the unit of the input. A text can give
+  a number with its unit (`"30 h"`) or a member of an enum. A Boolean input takes `true` or `false`.
+  An input that holds a distribution takes a distribution (`"pert(48 h, 96 h, 200 h)"`).
+- The compiler checks the whole document before any run. An edit outside the range of its input is
+  an error:
+
+  ```console
+  bad-edits.json: error: runs/regional/crew.work: 300 h is above the range of work [range]
   ```
 
-- Units that several packages share go in a library: the folder that the main file names with
-  `library "PATH"`, whose `vocabulary.json` holds the units and the shared records. The units come
-  from the prelude, then the library, then the package's folder, then the variant's folder
-  (language.md, §2.12). A unit is declared in one folder only.
-- Give each kind of count its own dimension: tunings and tuners, people and visits, an episode and
-  the patient who has it. Then the compiler refuses to add them, or to move one into the other.
-- Give money a unit whose dimension holds its price year, such as the `USD2025` of this repository's
-  library. Then the compiler refuses to add dollars of two years. A value of another year needs a
-  conversion to the model's year, with its record.
-- Write each number in the unit that its source gives. The compiler converts it to the execution
-  units, in which time is in hours, so the reports give `720 h` for 30 days. Do not insert a
-  conversion by hand.
+- The document names one model hash. After a change of the model, the compiler refuses the document
+  ([section 14](#14-check-a-model)).
 
-## 9. Evidence
+### An edit at a breakpoint
 
-Every value of the model cites a record (language.md, §2.10). A record says where the value comes
-from, and the reports carry it with each outcome. The compiler rejects a value without its record.
-For an input with no record:
+`napkin play` stops the run before an event, a stage or a statement. At the stop, `PATH = VALUE`
+edits a stored value. `go` continues the run, and `quit` stops it.
 
-```
-$ napkin compile demo
-demo/model.scn:11:5: error: an input or a fixed value has its record (service/rate)
-```
+1. Stop before the first stage of `clinic.save`, and add 1000 L to the tank, for example from a water
+   truck:
 
-- Choose the kind of the record from the support that the value has:
-  - `source`: a source reports the value for this setting, with its claims under `claims:`;
-  - `source_transfer`: a source reports it for another setting, and the model applies it here;
-  - `assumption`: the model assumes it, and says why;
-  - `identity`: it is true by definition or by counting;
-  - `convention`: it follows a rule of the project, with the ID of a convention of the library.
-- Write a record in place when one line uses it: `@assumption "…"` on its own line under the line.
-  Name it when several lines use it: `record counts: identity "…"` at the end of the file, cited as
-  `@counts`. A named record has a name that is unique in the model: no record belongs to a template.
-- The claims, the sources and the assumptions with an ID live in the folder's `evidence/`
-  (`claims.json`, `sources.json`, `assumptions.json`), or in the library. Their shape is
-  `napkin/schema/library.schema.json`.
-- Each part keeps its own records. The records on an event's line support when it happens; the
-  records on an outcome's line support that outcome's chance and its change.
-- The record on an event's line says how its thing knows what the `when` reads: a sensor, a report,
-  a person who sees it. An `identity` record that only says how the model counts (no item is created
-  or lost) does not say this.
-- An option's line (`thing.x = v  @record`) carries its own record: a record that supports that
-  value. The record of the input's default does not support the values of the other options.
-- When two events merge into one, the records of the second move to the line that carries its claim.
-  Copy a record word for word when it moves: the evidence index matches records by their content.
-- Keep each support explicit. Nothing passes from one declaration to another. A template's records
-  do not support an instance's new value, and a thing's records do not support its events. The one
-  exception is the instance itself: its template's records support it, unless it gives records of
-  its own.
-- Keep the status of every value: reported, applied from elsewhere, true by definition or assumed.
-  A range that the model chooses is not an empirical interval. `napkin compile` counts them:
-  `evidence: 0 sourced values, 5 assumed`.
+   ```console
+   $ napkin play clinic --run regional --break 'clinic.save.step[0]' --value tank.water,clinic.saving
+   Clinic water in an outage: the run regional, a median run to 72 h
 
-## 10. Texts
+   Stop 1 at 20 h: before clinic.save.step[0] (stage at clinic/model.scn:38), in clinic.save#0 of clinic.
+   Next: clinic.save.step[0] of clinic.save#0, from its start.
+     tank.water      3000 L   edit: a number        Water in the tank
+     clinic.saving   false    edit: true or false   The clinic saves water
+   Edit with PATH = VALUE, or: save FILE, go, quit.
+   > tank.water = 4000
+     tank.water: 3000 L -> 4000 L
+   > go
 
-- The first text under a line is what a reader sees: the label of a value, the description of a
-  thing, the card of an event or an outcome, the message of a check, the menu line of an option.
-- Write a label as a short noun phrase that names one thing: "People served", "Time with low
-  pressure".
-- Write the text of an event or an outcome as one sentence in the present tense, with the actor
-  first: "The crews repair the pump, and the pressure comes back."
-- Write a status as a short, plain statement of the condition: "Dosing wrong", "Pump repaired".
-- Use one word for one meaning everywhere, and put no model word in a text: say "after 15 days",
-  not "at the horizon".
+   Stop 2 at 33.3333 h: before clinic.save.step[0] (stage at clinic/model.scn:38), in clinic.save#1 of clinic.
+   Next: clinic.save.step[0] of clinic.save#1, from its start.
+     tank.water      3000 L   edit: a number        Water in the tank
+     clinic.saving   true     edit: true or false   The clinic saves water
+   Edit with PATH = VALUE, or: save FILE, go, quit.
+   > go
 
-This repository writes its texts in ASD-STE100 Simplified Technical English, with the project
-glossary ([CONTRIBUTING.md](../CONTRIBUTING.md#writing-style)).
+   The run ends at 72 h.
+                   unit   0 h     72 h
+   tank.water      L      6000    10000
+   clinic.saving          false   false
+   edit at 20 h, before clinic.save.step[0]: tank.water 3000 L -> 4000 L
+   ```
 
-## 11. A variant, an option or a run
+These are the parts of the session:
 
-Choose by what differs between the cases that you compare:
+- `clinic.save.step[0]` is the path of the first stage of `save`. `clinic.save#0` is the first
+  occurrence of `save`.
+- The edit puts the tank above the reserve. The tank falls to the reserve again at 33.3333 h, so the
+  trigger starts a second occurrence, `clinic.save#1`.
+- The engine records an edit of a stock as a transfer from outside the model, so the balance of the
+  stock stays exact.
+- At a stop, `save FILE` writes a checkpoint. `napkin play clinic --from FILE` continues the run from
+  it, in the same process or in a new one.
 
-| What differs | Use | Example |
-| --- | --- | --- |
-| The things: another place, other systems, other people or other evidence | A **variant**: a folder of its own, `variants/<name>/` | `water_controls_wipe` has a variant for each of 16 places, such as `juneau` |
-| A condition of the same things, or how they act, which a reader chooses | An **option**, in a group of options | The groups Response, Access, Attacker and Reach of `water_controls_wipe` |
-| A combination of options that every reader, test and edit sees | A **run**: a named combination, compared with another run by `versus` | `delayed_kept_human = "Delayed response" + "Keeps hidden access" + "Human team" versus delayed_kept` |
-| One number that a reader explores | An input with its range, which an edit sets | `napkin run examples/piano_tuners --set tuners.staff=5` |
-| A value that is uncertain | A distribution, which `napkin sample` draws | The rate of `examples/piano_tuners` |
+An input is fixed for the run. At a stop, an edit of an input is an error:
 
-### A variant: another place or system
-
-A variant is the file `variants/<name>/model.scn` of a package. It starts with `variant "Title"`, and
-it reads the package's main file first (language.md, §2.12). It is a model of its own,
-`package:name`, with its own hash, runs and results. `--variant NAME` picks it in every command.
-
-- Make a variant when the things differ: one water system or several, other hospitals, other
-  populations and the records of each. The mechanism stays in the main file.
-- Put what the places share in the main file and its modules: the templates, the shared things, the
-  outputs, the options and their records. Give each place its variant, with the summary and the
-  scope of that place, its things and their records. Each variant then builds only its own things.
-- Use a template's name where a list of its instances goes (`sum(Utility.unserved)`), so a module
-  does not name the instances that each variant declares.
-- A variant's lines come after its main file's lines, and the order of the lines decides the order
-  of one moment (section 12). So keep the main file free of things when their order matters.
-- A variant can add options to a group of the main file, and runs of its own.
-- Do not switch things on and off with options to put several places in one model. Every structure
-  keeps every thing, so the build of such a model is slow, and each run carries the things of every
-  place.
-- A new variant changes no hash of its siblings, and it needs no change to the main file.
-
-`water_controls_wipe` has one main file and a module, `water.scn`, for the mechanism. Each of its 16
-variants declares the water systems, the homes and the hospitals of one place:
-
-```text
-# scenarios/water_controls_wipe/variants/juneau/model.scn
-variant "Juneau, Alaska"
-    summary "An AI agent wipes the controls of the water system of Juneau, Alaska through the remote-support
-        platform of the OT integrator that it uses."
-…
-juneau: Utility
-    "City and Borough of Juneau, Alaska. Its ID in the federal inventory is AK2110342."
-    title "Juneau"
-…
-    demand = 4.7619 Mgal/day  @juneau_demand
+```console
+> clinic.use = 200
+  error: clinic.use: an edit changes a stored value, and this is a value of kind input
 ```
 
-The variant `washington_dc` adds the option "The Aqueduct only" to the group Reach, and the run
-`delayed_kept_aqueduct` that takes it.
+## 9. Read the record
 
-`napkin new` writes a package with variants. With several variants, `napkin run` asks you to pick
-one:
+A run gives one **record**. `--value` selects the paths to read, and `--at` selects the times.
 
-```
-$ napkin new towns --variants east,west
-Wrote towns/model.scn, and the variants east and west in towns/variants/.
-It compiles and runs as written: napkin run towns --variant east
-…
-$ napkin run towns
-…
-napkin run: error: towns has 2 variants: pick one with --variant NAME
-  east  east
-  west  west
-```
+1. Read four values of the regional run at four times:
 
-### An option: a choice that a run can make
+   ```console
+   $ napkin run clinic --run regional --value tank.water,clinic.used,clinic.save#0.started,clinic.save#0.done --at 0h,20h,36h,72h
+   Clinic water in an outage: the run regional, a median run to 72 h
+                           unit   0 h           20 h    36 h   72 h
+   tank.water              L      6000          3000    1800   10000
+   clinic.used             L      0             3000    4200   9600
+   clinic.save#0.started   h      unavailable   20      20     20
+   clinic.save#0.done             unavailable   false   true   true
+   clinic.save#0.started at 0 h: unavailable: clinic.save#0 has not started at 0 h
+   clinic.save#0.done at 0 h: unavailable: clinic.save#0 has not started at 0 h
+   ```
 
-An option sets inputs, the start values of vars and text values (language.md, §2.9). Each line that
-sets an input or a start value cites its record. The options sit in groups: `options "Response":`. A
-run takes one option of each group that it names; a group that it does not name keeps the values
-that the file writes.
+2. If necessary, give the times in other units of time:
 
-- Make an option when a reader chooses between named conditions of the same things: how fast the
-  crews respond, what the world holds at the start, who acts.
-- Split the options into groups that do not overlap. No option repeats the values of another, and
-  two groups never set the same value.
-- Name each group for what its options are, and each option for what it is.
-- An option with no lines keeps the values that the file writes. In `water_controls_wipe`, "Delayed
-  response" has no lines: the inputs' own values are the delayed response.
-- Behaviour that only some options reach sits in events that cannot happen with the others. Its
-  evidence then shows as possible, not used, in those runs.
-- When the support for an event differs by option, write one event for each case. The `when` of
-  each tests the start state that the options set, and each has its own record.
-- An option that sets the start value of a var gives the runs that take it a structure of their
-  own. The compiler builds one structure for each set of start states that the runs use, so keep
-  these options few.
+   ```console
+   $ napkin run clinic --run regional --value tank.water,clinic.used --at 1day,2days,3days
+   Clinic water in an outage: the run regional, a median run to 72 h
+                 unit   1 day   2 days   3 days
+   tank.water    L      2700    4800     10000
+   clinic.used   L      3300    6000     9600
+   ```
 
-`--option` puts an option into a run in place of its group's choice. The tool checks that combination
-when you ask for it, and only for that run:
+These are the rules of a reading:
 
-```
-$ napkin run scenarios/water_controls_wipe --variant juneau --run early_kept --option "Delayed response"
-note: checked for run early_kept only; `napkin compile` checks every run
-early_kept: Delayed response · Keeps hidden access
-                                                                at the end (2160 h)
-  Replacement controllers in stock                              1050 parts
-  Person-days without normal water service                      93900 person-days
-…
-```
+- Each named value has a path that a caller can read. The model has no report block.
+- `clinic.save#0.started` is a field of the first occurrence of `save`. Before that occurrence
+  starts, the field is unavailable, and the report gives the reason.
+- Without `--value`, the report gives each named value. Without `--at`, it gives 0 h and the horizon.
+- A time after the horizon is an error: `napkin run: error: --at 4days: the run goes from 0 h to 72 h`.
+- `--json` gives one JSON document, with the unit, the label and the evidence of each value.
+- `--lag PATH=FROM..TO` gives a reporting lag of a value that never falls ([cli.md](cli.md)).
 
-napkin refuses a combination whose start states no run takes: "No run of the model starts from the
-start states of these options". To explore such a combination, declare a run that takes it.
+This is the model of steps 2 to 7:
 
-### A run: a named combination
+```scn
+scenario "Clinic water in an outage"
+    summary "The water main to a clinic breaks. The clinic uses the water in its tank until a crew repairs the
+        main. How low does the tank go?"
+    horizon 3 days
+    scope "One clinic and its water tank."
 
-A run names one option of each group that it uses: `early_kept = "Early response" + "Keeps hidden
-access"`. A model with no options and no runs has one run, `base`.
+tank:
+    "The water tank of the clinic."
+    input start: L = 6000 L in [0 L, 10000 L]
+        "Water in the tank when the main breaks"
+        @assumption "The guide assumes that the tank is 60% full when the main breaks."
+    water: L = this.start in [0 L, 10000 L] scale 10000 L @books
+        "Water in the tank"
 
-- Declare the runs that readers compare, and that the tests and the edits must hold for. The engine
-  checks each edit on every declared run, as one transaction. So each run is a promise: every edit
-  holds in it.
-- napkin checks a combination that no run makes only when a caller asks for it: `--option` on the
-  command line, or `model.combination(run, options)` in Python ([python-api.md](python-api.md)).
-- A run that is the matched comparison of another run says so with `versus`. `napkin sample` then
-  samples both on the same draws.
-- Without a text of its own, a run's label is the names of its options, joined by " · ". Give a run
-  of three options a text that reads as one.
-- Each run is simulated, so each run adds time to `napkin run` and to the tests. The run store keeps
-  each simulated run ([engine.md](engine.md#the-run-store)).
+clinic:
+    "The clinic, which takes its water from the tank."
+    input use: L/h = 150 L/h in [0 L/h, 500 L/h]
+        "Water that the clinic uses in an hour"
+        @assumption "The guide assumes a small clinic that uses 3600 L in a day."
+    input reserve: L = 3000 L in [0 L, 10000 L]
+        "Water in the tank at which the clinic starts to save water"
+        @assumption "The guide assumes that the clinic saves water below 20 hours of its usual use."
+    input cut = 0.5 in [0, 1]
+        "Share of its usual use that the clinic keeps when it saves water"
+        @assumption "The guide assumes that the clinic can halve its use for some hours."
+    saving: bool = false
+        "The clinic saves water"
+        @assumption "The clinic uses its usual amount of water when the main breaks."
+    used: L = 0 L in [0,] scale 10000 L @books
+        "Water that the clinic used"
+    flow draw: tank.water -> this.used @books
+        request = formula(this.use * this.cut if this.saving else this.use)
+        capacity = formula(this.use * this.cut if this.saving else this.use)
+    save = event(): @water_plan
+        "The tank reaches the reserve. The clinic saves water until the main works again."
+        when tank.water <= this.reserve:
+            this.save.start()
+        after 0 h:
+            this.saving = true
+        until main.state == WORKING
+        after 0 h:
+            this.saving = false
 
-```text
+main:
+    "The water main that fills the tank."
+    input supply: L/h = 400 L/h in [0 L/h, 2000 L/h]
+        "Water that the main brings in an hour when it works"
+        @assumption "The guide assumes that the main can bring 400 L in an hour."
+    state: enum[BROKEN, REPAIRING, WORKING] = BROKEN
+        "Water main"
+        @assumption "The guide assumes that the main breaks when the run starts."
+    flow fill: SOURCE -> tank.water @books
+        request = formula(this.supply if this.state == WORKING else 0 L/h)
+        capacity = formula(this.supply if this.state == WORKING else 0 L/h)
+
+crew:
+    "The repair crew of the water company."
+    input travel: h = 4 h in [0 h, 48 h]
+        "Time that the crew takes to reach the main"
+        @assumption "The guide assumes a local crew, four hours away."
+    input work: h = 20 h in [1 h, 96 h]
+        "Time that the crew takes to repair the main"
+        @assumption "The guide assumes that the repair takes 20 hours of work."
+    repair = event(): @call_out
+        "The crew goes to the main and repairs it."
+        after this.travel:
+            main.state = REPAIRING
+        after this.work:
+            main.state = WORKING
+
+crew.repair.start()
+
+options "Repair crew":
+    "Local crew":
+        crew.travel = 4 h @crews
+    "Regional crew":
+        crew.travel = 16 h @crews
+
 runs:
-    early_kept = "Early response" + "Keeps hidden access"
-    standard_kept = "Standard response" + "Keeps hidden access"
-    delayed_kept = "Delayed response" + "Keeps hidden access"
-    delayed_none = "Delayed response" + "No hidden access"
-    delayed_kept_human = "Delayed response" + "Keeps hidden access" + "Human team" versus delayed_kept
-        "Delayed response · Human team keeps hidden access"
+    local = "Local crew"
+    regional = "Regional crew"
+
+record books: identity "The model counts each litre of water once, in the place where it is."
+record call_out: assumption "The water company sends the crew when the main breaks, at 0 h."
+record water_plan: assumption "The clinic has a plan to save water when its tank is low."
+record crews: assumption "The guide assumes a local crew 4 hours away, and a regional crew 16 hours away."
 ```
 
-## 12. The same moment
+## 10. Give an input a spread
 
-- The events due at one moment fire one at a time, in the order of their lines in the model: the
-  things in their order, and within a thing its events in theirs. After each one, every condition is
-  read again, so the next event reads what the earlier ones wrote (language.md, §2.6).
-- Design the model so that the result of a moment does not depend on that order. Where two events can
-  meet and the result does depend on which goes first, put the thing that goes first earlier in the
-  file, and say why in a comment. The order is a claim about the world ("when the repair ends as
-  the alarm sounds, the repair goes first").
-- Prefer the order of the lines to a guard. A guard that keeps two steps from meeting reads a value
-  that the thing may not know, and it adds a record to every run.
-- The compiler does not look for pairs of events that meet. Read the events of a run with
-  `napkin run --events`, and check each moment that holds two.
+A distribution gives an input a spread of numbers. `.draw()` takes one number from the distribution
+in each run.
 
+1. Replace the input `work` of the entity `crew` with these lines:
+
+   ```scn
+       input work: h = pert(12, 20, 48).draw() in [1 h, 96 h]
+           "Time that the crew takes to repair the main"
+           @assumption "The guide assumes 12 to 48 hours of work, and 20 hours as the most likely time."
+   ```
+
+2. Sample the regional run 200 times, and read the water at 40 h:
+
+   ```console
+   $ napkin sample clinic --run regional --value tank.water --at 40h --samples 200 --exceed tank.water=1500
+   Clinic water in an outage: the run regional, 200 samples from the seed 0, at 40 h
+                unit   central   mean      p5     p25    p50       p75       p95
+   tank.water   L      1969.91   2449.08   1500   1500   1703.83   3378.54   4525.34
+   tank.water: moved most by crew.work.draw[0] of crew (-0.95)
+   P(tank.water > 1500) = 111/200 = 0.555 (95% from 0.483246 to 0.625099)
+   ```
+
+These are the rules of a distribution:
+
+- The draw is the whole initializer, so the numbers of `pert(12, 20, 48)` take the unit of `work`.
+- A median run takes the median of the distribution. `napkin run` gives 22.5541 h for `work`.
+- The range of the input must contain the support of the distribution. An edit can give the input
+  any number in its range.
+- The `central` column is the median run. The other columns describe the 200 samples.
+- A spread that the model chooses is an assumption, not a measured distribution. Its `record`
+  declaration says so.
+
+[values-and-types.md](language/values-and-types.md) gives each family of distributions. The rest of
+this guide uses the model of step 9, in which `work` is 20 h.
+
+## 11. Choose units and scales
+
+Follow these rules for units:
+
+- Give each kind of quantity its own dimension in `units.json`. This model has `water`, and
+  `examples/piano_tuners` has `tunings` and `tuners`. The compiler then refuses to add litres to
+  people.
+- Write a compound unit with `*` and `/`: `L/h`, or `tunings/(tuner * year)`. A compound unit needs no
+  entry. Put a product below the line in brackets.
+- Write each number in the unit of its source, and let the compiler convert it. For example,
+  `150 L/day` in an `L/h` value is 6.25 L/h. Do not convert a number by hand.
+- Give money a unit that holds its price year, such as `USD2025` in `scenarios/library/vocabulary.json`.
+  The compiler then refuses to add the dollars of two years.
+- Put the units that several packages share in a library. The main file names the library with
+  `library "../library"`, and its `vocabulary.json` holds the units.
+
+Give each stock a `scale` near the largest value that it can reach, for example its upper bound. The
+scale has these effects:
+
+| Item | Effect |
+| --- | --- |
+| A value without `scale` | Its scale is one of its declared unit, for example 1 L. |
+| The comparison band | Two numbers compare equal when they differ by no more than 1e-9 × max(scale, \|a\|, \|b\|). |
+| The integration | The absolute tolerance of a stock is 1e-10 × its scale. |
+| A number written in the model | It is exact, and it adds nothing to the comparison band. |
+
+A scale is not a bound: a stock can go above its scale. A scale that is too small asks the
+integration for more accuracy near zero than the model needs. A scale that is too large makes the
+comparisons near zero coarse. With `scale 10000 L`, the comparison band of `tank.water` near 0 L is
+1e-5 L.
+
+A scale changes only these three things:
+
+- the result of a comparison inside the comparison band;
+- the accuracy of the integration;
+- the choice among equal answers of a solver, for unknowns that are not flows.
+
+A change of the units of display changes nothing. [numerics.md](language/numerics.md) gives the
+rules.
+
+## 12. Cite evidence
+
+Each of these parts cites a `record` declaration:
+
+- an input that is not a text, and a stored value;
+- an event with a stage or a trigger;
+- a case of a status display, and an assertion;
+- a value that an instance gives itself, and a column of a table.
+
+A part without a `record` declaration gives the warning `no_record`. A setting of an option or of a
+`change` without a `record` declaration is an error. A formula, a link, an enum member and a text
+need no `record` declaration.
+
+Write a `record` declaration in one of two forms:
+
+- In place: `@kind "explanation"` on its own row, under the line. Use this form for one line.
+- Named: `@name` on the line, and `record name: kind "explanation"` at the end of the file. Use this
+  form for several lines. The name is unique in the model.
+
+The kind says who chose the number:
+
+| Kind | Use it when |
+| --- | --- |
+| `source` | A source reports the number for this case. List its claims under `claims:`. |
+| `source_transfer` | A source reports the number for another case, and the model applies it here. |
+| `assumption` | The model assumes the number, and the explanation says why. |
+| `identity` | The number is true by definition or by counting. |
+| `convention` | The number follows a convention of the library. |
+
+A claim with `datum: key` ties a value to one number of the claim. The heat-wave model shows the
+pattern:
+
+```scn
+    input heat_death_threshold = 34 degC in [25 degC, 40 degC] @heat_curve_limits
+        "Heat-related death curve: threshold"
+        @source "Heat-related deaths in Phoenix rise above 34 °C (Petitti et al. 2016)."
+            claims:
+                E-GRONLUND26-S1-PHX
+                    datum: petitti_heat_deaths_threshold
 ```
-$ napkin run examples/reservoir --events
-base
-                                             at the end (120 h)
-  Water let out over the spillway            0.5 fraction
-  Time with the water above the risk level   0 h
-  events:
-    40 h  The operator opens the spillway.  (operator.decide.open)
+
+- The datum of the claim must be equal to 34 degC after the conversion of units. If the two numbers
+  differ, the compiler gives the warning `datum` with both numbers.
+- A value that only the run calculates, such as a draw, cannot be equal to a datum. The compiler
+  gives the warning `datum` for it too.
+- The range cites a second, named `record` declaration, `heat_curve_limits`. It says that the limits
+  are a choice for a reader to explore, not a measured interval.
+
+The claims, the sources and the assumptions with an ID are in the folder `evidence/` of the package
+(`claims.json`, `sources.json`, `assumptions.json`), or in the library. In the catalogue,
+`tools.evidence.integrate` is the only writer of claims and sources
+([the evidence guide](../scenarios/docs/evidence/README.md)). [evidence.md](language/evidence.md)
+gives the rules.
+
+## 13. Write a solver
+
+Use the local rule of an endpoint first. Write a solver only for a decision that no endpoint can make
+alone.
+
+### Local allocation
+
+An endpoint shares its limit among its own flows. In the package `share` below, the tank has one
+outlet of 300 L/h. The clinic and the homes each request 200 L/h, and the clinic comes first:
+
+```scn
+scenario "One tank for two users"
+    summary "A clinic and a row of homes take water from one tank through one outlet. The clinic comes first."
+    horizon 1 day
+    scope "One tank, one clinic and the homes near it."
+
+tank:
+    "The water tank."
+    water: L = 4000 L in [0 L, 10000 L] scale 10000 L @books
+        "Water in the tank"
+        outflow.capacity = 300 L/h
+        outflow.allocation = priority(clinic.draw, homes.draw)
+
+clinic:
+    "The clinic."
+    used: L = 0 L in [0,] scale 10000 L @books
+        "Water that the clinic used"
+    flow draw: tank.water -> this.used @books
+        request = 200 L/h
+
+homes:
+    "The homes near the clinic."
+    used: L = 0 L in [0,] scale 10000 L @books
+        "Water that the homes used"
+    flow draw: tank.water -> this.used @books
+        request = 200 L/h
+
+record books: identity "The model counts each litre of water once, in the place where it is."
 ```
 
-## 13. Check a model
+The package uses the `units.json` of step 2. The tank is empty at 13.3333 h:
 
-The commands check a model at each step ([cli.md](cli.md)):
-
-- `napkin compile` reads, checks and proves the model, each variant and each run, and lists its
-  runs and options. `--inputs` and `--outputs` add each input, with its unit, range and record kind,
-  and each output.
-- `napkin run` runs the runs and prints each outcome at the end. `--run NAME` runs one run, `--set
-  NAME=VALUE` gives an input another value, `--at TIME,…` gives the outcomes at other times too, and
-  `--events` lists the events.
-- `napkin sample` draws every input that has a distribution and prints the spread of each outcome.
-- `napkin draw` draws the picture as SVG ([draw.md](draw.md)).
-- `napkin fmt --check` reports each file that is not formatted.
-- `napkin play` gives the choices of an actor to you, or to a program with `--json`.
-
-```
-$ napkin compile examples/piano_tuners --inputs --outputs
-piano_tuners  Piano tuners
-  runs:     base (1)
-  inputs (3):
-    tuners.rate    pert(600 tunings/tuner-year, 1000 tunings/tuner-year, 1200 tunings/tuner-year)   500 to 1500 tunings/tuner-year   assumption   Tunings that one tuner does in a year
-    tuners.staff   3 tuner                                                                          1 to 10 tuner                    assumption   Tuners in the town
-    tuners.need    5000 tunings                                                                     0 to 20000 tunings               assumption   Tunings that the pianos need in the year
-  outputs (1):
-    tunings_done   tunings   cumulative   Tunings done in the year   The pianos of one town.
-  compiled · evidence: 0 sourced values, 3 assumed
-$ napkin run examples/piano_tuners --set tuners.staff=5 --at 6months
-base
-                             at 4380 h      at the end (8760 h)
-  Tunings done in the year   2436 tunings   4873 tunings
-$ napkin sample examples/piano_tuners --samples 50
-piano_tuners: Piano tuners
-50 samples, seed 0, at the end of the run (8760 h)
-  base
-
-tunings_done: Tunings done in the year (tunings)
-  base  mean 2904; middle 50%: 2702 to 3171; middle 90%: 2396 to 3364
-        inputs that move it most (rank correlation): tuners.rate +1.00
+```console
+$ napkin run share --value clinic.draw.actual_rate,homes.draw.actual_rate,tank.water --at 0h,12h,24h
+One tank for two users: a median run to 24 h
+                          unit   0 h    12 h   24 h
+clinic.draw.actual_rate   L/h    200    200    0
+homes.draw.actual_rate    L/h    100    100    0
+tank.water                L      4000   400    0
 ```
 
-### Tests
+Without the line `outflow.allocation`, the endpoint uses `proportional()`, and each flow gets
+150 L/h. No solver is necessary for either rule.
 
-A model's tests check what the model means, with mathematics of their own. Write them with pytest
-and the Python API ([python-api.md](python-api.md)): `load_package`, `evaluate_study` and
-`sample_result`.
+### A solver for a joint decision
 
-- Test a property, not a number that the model gave once: a balance, a bound, a value that doubles
-  when its cause doubles, an order of events.
-- Compute the expected value from the inputs that the test sets or reads, with mathematics that is
-  independent of the engine. Do not copy the value from a run, and do not compute it by hand from a
-  default that the model file writes.
-- Test a counterexample too: an edit that a check must reject, or a case at a bound.
+In the package `refill` below, two tanks have their own connections. The main brings at most 500 L/h
+for both. No endpoint sees both connections, so the water company owns a solver:
 
-This test of the model from `napkin new demo` sets the rate twice and checks the property:
+```scn
+scenario "Two tanks on one main"
+    summary "The water company fills two tanks from one main. The main cannot fill both at their full rates.
+        Which tank gets the water?"
+    horizon 1 day
+    scope "The tanks of one clinic and one school."
 
-```python
-from pathlib import Path
+clinic:
+    "The clinic and its water tank."
+    water: L = 2000 L in [0 L, 10000 L] scale 10000 L @books
+        "Water in the tank of the clinic"
+    flow fill: SOURCE -> this.water @books
+        request = 400 L/h
+        capacity = 400 L/h
 
-import pytest
+school:
+    "The school and its water tank."
+    water: L = 2000 L in [0 L, 10000 L] scale 10000 L @books
+        "Water in the tank of the school"
+    flow fill: SOURCE -> this.water @books
+        request = 400 L/h
+        capacity = 400 L/h
 
-import napkin
+company:
+    "The water company, which runs the main."
+    input limit: L/h = 500 L/h in [0 L/h, 2000 L/h]
+        "Water that the main brings in an hour"
+        @assumption "The guide assumes that the main brings 500 L in an hour."
+    refill = solver:
+        inputs:
+            clinic_fill = clinic.fill
+            school_fill = school.fill
+            most = this.limit
+        solve_for:
+            clinic_fill.actual_rate
+            school_fill.actual_rate
+        constraints:
+            clinic_fill.actual_rate + school_fill.actual_rate <= most
+        objective:
+            minimize(max(0 L/h, clinic_fill.request - clinic_fill.actual_rate))
+            minimize(max(0 L/h, school_fill.request - school_fill.actual_rate))
 
-FOLDER = Path(__file__).resolve().parents[1]
-
-
-def served(rate):
-    """The people served at the end of the run, with the rate set to `rate` people a day."""
-    (model,) = napkin.load_package(FOLDER).values()
-    edits = {
-        'schema_version': napkin.SCHEMA_VERSION,
-        'model_hash': model.model_hash,
-        'set': {'service.rate': rate},
-    }
-    study = napkin.evaluate_study(model, edits)
-    assert study.admissible, study.diagnostics
-    final = napkin.sample_result(study)['runs']['base']['reporting_points']['final']
-    return final['values']['people_served']
-
-
-def test_twice_the_rate_serves_twice_the_people_while_people_wait():
-    assert served(20) == pytest.approx(2 * served(10))
+record books: identity "The model counts each litre of water once, in the place where it is."
 ```
 
+Each fill requests 400 L/h. The clinic comes first, until its tank is full at 20 h:
+
+```console
+$ napkin run refill --value clinic.fill.actual_rate,school.fill.actual_rate,clinic.water,school.water --at 0h,12h,20h,24h
+Two tanks on one main: a median run to 24 h
+                          unit   0 h    12 h   20 h    24 h
+clinic.fill.actual_rate   L/h    400    400    0       0
+school.fill.actual_rate   L/h    100    100    400     400
+clinic.water              L      2000   6800   10000   10000
+school.water              L      2000   3200   4000    5600
 ```
-$ python -m pytest -q demo/tests/test_demo.py
-.                                                                        [100%]
-1 passed in 0.95s
+
+Without the `objective` section, the solver shares fairly, and each fill gets 250 L/h.
+
+Follow these rules for a solver:
+
+- `inputs` names the values and flows that the solver reads, each under a name of its own.
+- `solve_for` names each rate or value that the solver sets. A flow that the solver does not name
+  keeps the local rule of its endpoints.
+- `constraints` holds affine relations with `==`, `<=` and `>=`.
+- `objective` ranks the answers. Each line keeps the optimum of the lines above it.
+- Each rate has one writer. If two solvers compete for one hard limit, the compiler refuses the
+  model. One solver must own the joint decision.
+- An objective that minimizes the total shortfall can leave one claim with nothing. Put such an
+  objective first only when the total is more important than the coverage.
+
+[flows-and-solvers.md](language/flows-and-solvers.md) gives the rules of the language, and
+[engine/solver.md](engine/solver.md) gives how the engine selects an answer.
+
+## 14. Check a model
+
+### The checks of each model
+
+1. Compile the model, and correct each error and each warning.
+2. Format the files with `napkin fmt clinic`. `napkin fmt --check clinic` lists the files that it
+   would change.
+3. Write an assertion for each rule that must hold.
+4. Calculate one reading of each named run by hand, and compare it with the record.
+5. Draw the model with `napkin draw clinic`, and examine the arrows ([draw.md](draw.md)). An arrow
+   that you do not expect shows an error in the model.
+
+This assertion reads two inputs. The engine checks it once, at 0 h:
+
+```scn
+assert clinic.reserve < tank.start @water_plan
+    "The tank holds more than the reserve when the main breaks."
 ```
 
-The tests of this repository follow the rules in [CONTRIBUTING.md](../CONTRIBUTING.md#testing).
+An edit that gives `clinic.reserve` the number 7000 stops the run:
 
-## 14. Change a model safely
+```console
+$ napkin run clinic --edits reserve-edits.json --value tank.water
+Clinic water in an outage: a median run to 72 h, with the edits of reserve-edits.json
+             unit   0 h
+tank.water   L      6000
+clinic/model.scn: error: the run failed at 0 h: assert[0]: the assertion does not hold [run]
+```
 
-A change moves only what it means to move. Prove it, do not assume it.
+The assertion changes the model, so it changes the model hash. The engine now refuses the edit
+document of step 8:
 
-1. **Record the results first.** Keep the report of each run that the change can reach:
-   `napkin run TARGET --json > before.json` (`--json full` adds the trace). It holds every outcome
-   with its status, and every event with its time. Where the change can move what an edit admits,
-   also keep the results of a few edits: some near the defaults, some that a check rejects, and some
-   with round times that make steps meet at one moment.
-2. **Say what the change should move** before the first comparison: the outcomes, events, statuses
-   and records that it means to change, and why.
-3. **Compare.** Every other outcome within 1e-6 × max(1, |value|) with the same status; every other
-   event time within 1e-6 h; the same statuses; the same edits admitted and rejected. Never loosen
-   the tolerance, and never edit the model to fit a result.
-4. **Explain each difference.** List each one that the change means to make, with its size; any
-   other is a fault of the change.
-5. **Count the evidence.** Every claim and assumption that a run used is still cited, unless the
-   change removes it on purpose and says so.
-6. **Keep names stable,** or rename a name everywhere in the same change.
+```console
+$ napkin run clinic --run regional --edits clinic-edits.json --value tank.water
+clinic-edits.json: error: the edits are for another revision of the model [model_hash]
+```
 
-A change of meaning changes the model's hash. Then napkin refuses the saved edit documents and play
-logs of the old model, so make them again. A comment, a blank line or a rename keeps the hash
-(language.md, §2.12).
+An assertion that reads a stock is checked after each round and between moments. The heat-wave model
+checks that each hour of work is in one place:
+
+```scn
+    assert this.untouched + this.remaining + this.completed in [this.required - 1e-05 h, this.required + 1e-05 h] @counts_hour_work
+```
+
+### The checks of the catalogue
+
+For a package in `scenarios/`, use the check of the repository:
+
+1. Show the scope and the stages: `python -B -m tools.check --scenario ID --plan`.
+2. Do the check: `python -B -m tools.check --scenario ID`.
+
+The check has four stages: lint, the Python tests of the package and the central contracts, the
+evidence, and the committed summaries. The evidence stage refuses each warning `no_record` and each
+warning `datum`. `python -B -m tools.new NAME` writes the folder of a new package of the catalogue.
+[CONTRIBUTING.md](../CONTRIBUTING.md#testing) gives each check.
 
 ## 15. The checklist
 
-Answer each question with yes, or change the model.
+Confirm each item before you publish a model or a change of a model.
 
-1. Can you name each thing's states, and their values, in words that a person would use?
-2. Is every thing a real thing or actor, with no bookkeeping thing?
-3. Is each state held in one thing only, with no echo state, and no dead or zero-length value?
-4. Is each input on the thing that it describes?
-5. Does each event react to something that its thing can see?
-6. Does the record on each event's line say how its thing knows what the `when` reads?
-7. Does every event say how often it happens: `once`, or a condition that becomes true again only
-   when the world changes?
-8. Is every guard needed, with none that always holds when the event can happen?
-9. Do the groups of options not overlap, with no option that repeats the values of another?
-10. Where two events can meet at one moment, does the order of their lines put first the one that
-    goes first in the world, and does a comment say why?
-11. Does the picture tell the story with no other explanation?
-12. Does every flow, event and outcome that a reader sees have a text of one sentence?
-13. Is every value that is not estimated marked `unestimated`, with its reason?
-14. Is every part and line of the files read by the calculation, the picture or a reviewer?
-15. Does each clock start at the first moment that its thing could know?
-16. Is every time and amount in a `when` a value with a record, and not a number in the expression?
-17. Does each event read the state of the thing that it depends on, and not the state of another
-    actor?
-18. Does each actor's `sees` list what it can observe, and nothing that it cannot?
-19. Is each place or system that has things of its own a variant, and each choice of a reader an
-    option?
-20. Does each value have its unit, in the unit of its source, with no conversion by hand?
+The question and the parts:
+
+1. The scenario line gives the question, the horizon and what the model covers (`scope`).
+2. Each entity is a real thing or a real actor, with a name that a reader understands.
+3. Each value is on the entity that it describes. Other entities read it there.
+
+The values:
+
+4. Each number has its unit, in the unit of its source.
+5. Each input has a label, a range and a `record` declaration. The range includes each number that a
+   named run, an edit or a distribution can give.
+6. Each stock that cannot go below zero has the range `[0,]` or a lower bound of zero.
+7. Each stock has a `scale` near the largest value that it can reach.
+8. Each delay and each threshold is an input with its `record` declaration, not a number in a `when`.
+
+The flows, events and triggers:
+
+9. Each flow has a request. A flow that cannot take more than it asks for has the same capacity.
+10. A request or a capacity that must follow a changing value is a `formula(...)`.
+11. Each trigger on a moving value uses `<=` or `>=`.
+12. Each trigger reads only what its entity can know.
+
+The runs and the evidence:
+
+13. Each named run sets inputs through options, and each setting cites a `record` declaration.
+14. Each `record` declaration says who chose the number: a source, the model or a definition.
+15. A range that a reader can explore cites an assumption that says so.
+
+The checks:
+
+16. `napkin compile` gives no error and no warning. `napkin fmt --check` lists no file.
+17. An assertion checks each balance and each rule between inputs.
+18. One reading of each named run agrees with a calculation by hand.
