@@ -260,17 +260,18 @@ napkin.study(model, runs=None, edits=None, *, jobs=1, progress=None, cancel=None
 ```
 
 `model` is a `Compiled`. The result is `{name: record}` for each named run of `runs`, or for each
-named run of the model, or `{None: record}` of the default run when the model has none. The study
-checks the edit document whole, in every run, before any run starts. Each run goes through the run
-store when a store is active ([cli.md](cli.md#the-run-store)).
+named run of the model. When the model has none, the result is `{None: record}` of the default run.
+The study checks the edit document whole, in every run, before any run starts. Each run goes through
+the run store when a store is active ([cli.md](cli.md#the-run-store)).
 
 - `jobs` above 1 runs the runs on that many new processes. The results come in the order of the runs.
 - The study calls `progress(done, total)` as runs finish.
 - `cancel`, an event such as a `threading.Event`, stops the study between runs with
   `napkin.engine.study.Cancelled`.
 
-`napkin.engine.study.edits_for(model, edits)` gives an edit document for the model's revision: the
-schema version and the model hash, with the keys `set`, `options`, `runs` and `reason` of `edits`.
+`napkin.engine.study.edits_for(model, edits)` gives an edit document for the model's revision. The
+document has the schema version and the model hash, with the keys `set`, `options`, `runs` and
+`reason` of `edits`.
 
 ```python
 import napkin

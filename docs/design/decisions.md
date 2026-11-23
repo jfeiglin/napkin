@@ -469,14 +469,13 @@ refused at the end of a route. This revises the G0 rule that also refused a tall
   actors and picks are removed from the language, the program, the engine and the reference. This
   revises the actor half of [D1](#d1) and the controller choices of a run in [D9](#d9). It also
   revises the G0 rule "A human prompt pauses one atomic stage" and `R-A5-14`. Eligibility is an
-  ordinary guard.
-  `readonly` applies only to the assignments of the model.
+  ordinary guard. `readonly` applies only to the assignments of the model.
 - **Exact resume is a rule.** The conditions are one supported platform and the same compiled
   program, engine version, numerical settings and seed. Under these conditions, a run that stops and
   resumes with no edit matches a run with no stop. Both give the same recorded values, draws, event
-  times and event order. A breakpoint alone
-  never changes which branch fires. The tests check three cases: no breakpoint, a stop resumed in
-  one process, and a stop saved and resumed in a fresh process.
+  times and event order. A breakpoint alone never changes which branch fires. The tests check three
+  cases: no breakpoint, a stop resumed in one process, and a stop saved and resumed in a fresh
+  process.
 - **Edits.** An edit changes a live stored value. Types and bounds hold, and the engine calculates
   the derived rates again. A finished occurrence stays frozen. The record holds an edit of a stock
   as an external transfer. An edit that breaks a proof that a value never falls withdraws that
@@ -595,8 +594,9 @@ acts" and the group of the card ([change 19](#change-19)).
 - (a) [Change 28](#change-28) replaces the rule for a shorter request from a stored record.
 - (b) **A finished occurrence is frozen.** The error is an actual write to it. An actual write is an
   assignment to its value, or a `move` of an amount that is not zero. It can also be a flow that
-  carries a rate that is not zero into or out of its stock. A connected flow at a zero rate writes nothing, and the run continues
-  ([D7](#d7)). [Change 29](#change-29) adds the allowance for computed transfers.
+  carries a rate that is not zero into or out of its stock. A connected flow at a zero rate writes
+  nothing, and the run continues ([D7](#d7)). [Change 29](#change-29) adds the allowance for
+  computed transfers.
 - (c) `napkin new` writes two files: `model.scn` and `style.toml`. The `[role]` of `style.toml`
   gives the picture of the starter its icon.
 
@@ -605,7 +605,8 @@ acts" and the group of the card ([change 19](#change-19)).
 **A stale rate is an error, for every flow.** The owner, 2026-11-20. [Change 27](#change-27) replaced
 this rule. Change 25 made a stage stop the run by name in one case. In that case, an earlier stage
 of the same round changed what the rate of a flow depends on. The stage then read that rate before
-the engine shared the flows again. It extended the read error of [D5](#d5) from the results of a solver to local sharing.
+the engine shared the flows again. It extended the read error of [D5](#d5) from the results of a
+solver to local sharing.
 
 ### Change 26
 
@@ -698,8 +699,9 @@ gives them as a model author sees them.
 - An interval is reversed only when its lower end exceeds its upper end by more than their band.
   Two hard bounds that are inverted within the band admit one point: their midpoint.
 - Authored evidence stays exact.
-- For a crossing of a stock, the clock applies the time tolerance in hours and the comparison band
-  of the stock in its unit before it groups the contact ([change 27](#change-27)).
+- For a crossing of a stock, the clock applies the time tolerance in hours. It also applies the
+  comparison band of the stock in its unit. It applies both before it groups the contact
+  ([change 27](#change-27)).
 - A stage that writes a move of an amount that is not zero writes. The computed transfers at a
   frozen stock accumulate in each direction from its finish, against the conservation allowance of
   that stock ([D7](#d7), [change 24](#change-24)).
@@ -710,25 +712,27 @@ separate rulings for residuals at bounds, thresholds and frozen lots.
 1. **The books always balance.** Each accepted transfer posts equally at both ends. The balance of a
    stock changes only through posted transfers. A read, a group of events or the location of a
    crossing cannot move material.
-2. **Exact placement is a preference.** After the test of time and value of change 27, when the
-   flows can put a stock exactly on a bound or a threshold, the engine posts the signed correction
-   to the legs that move it toward that value, in proportion to their rates just before the contact.
-   If no leg moved toward the value, the legs keep the amounts that they carried. A connected
-   placement applies as one. If the correction would break a hard equation, a frozen allowance, a
-   capacity or the limit of another stock, the engine keeps the amounts that the trajectories gave.
-3. **The band decides the status.** For comparisons, triggers and sharing, a stock within its own
-   comparison band of a bound or a threshold counts as on it, whatever the residual in its books. A
-   stock on a bound leaves it only when the net flow away from it is more than 10⁻¹² times the sum
-   of its incoming and outgoing traffic. Each method refines a decision that is numerically
-   uncertain. When it still cannot decide, it holds and records a near-tie. Example: an inlet fixed
-   at 1 L/h and an outlet fixed at 0.999999999999 L/h post 2 L and 1.999999999998 L over two hours.
-   The stock, empty at the start, holds the difference of 0.000000000002 L, and stays on its bound
-   while its balance is within its band.
+2. **Exact placement is a preference.** The test of time and value of change 27 comes first. Then,
+   when the flows can put a stock exactly on a bound or a threshold, the engine posts the signed
+   correction. The correction goes to the legs that move the stock toward that value, in proportion
+   to their rates just before the contact. If no leg moved toward the value, the legs keep the
+   amounts that they carried. A connected placement applies as one. A correction can break a hard
+   equation, a frozen allowance, a capacity or the limit of another stock. In that case, the engine
+   keeps the amounts that the trajectories gave.
+3. **The band decides the status.** This holds for comparisons, triggers and sharing. A stock within
+   its own comparison band of a bound or a threshold counts as on it. The residual in its books does
+   not change this. A stock on a bound leaves it only when the net flow away from it is more than a
+   limit. The limit is 10⁻¹² times the sum of its incoming and outgoing traffic. Each method refines
+   a decision that is numerically uncertain. When it still cannot decide, it holds and records a
+   near-tie. Example: an inlet fixed at 1 L/h and an outlet fixed at 0.999999999999 L/h post 2 L and
+   1.999999999998 L over two hours. The stock, empty at the start, holds the difference of
+   0.000000000002 L, and stays on its bound while its balance is within its band.
 4. **A failure needs a material breach.** The run fails only when it breaks a hard rule by more
-   than the band of that rule. If a placement would exceed a frozen allowance while the stock stays within its
-   band, the engine skips the placement, keeps the accepted part and continues. A stock outside its
-   target band at a nearby scheduled time keeps its located contact. The engine checks each affected
-   stock and each shared allowance or cap before it posts a connected group of corrections.
+   than the band of that rule. A placement can exceed a frozen allowance while the stock stays
+   within its band. In that case, the engine skips the placement, keeps the accepted part and
+   continues. A stock outside its target band at a nearby scheduled time keeps its located contact.
+   The engine checks each affected stock and each shared allowance or cap before it posts a
+   connected group of corrections.
 5. **Report each tie in a fixed order.** The record keeps each affected stock, leg, direction and
    target.
 

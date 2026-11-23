@@ -117,11 +117,11 @@ examples/reservoir/model.scn: A reservoir in a storm
 ```
 
 **`--json`** prints one document with the keys `model`, `title`, `horizon` (in hours), `runs`,
-`model_hash`, `entities`, `inputs`, `stores`, `formulas`, `distributions`, `links`, `collections`,
-`flows`, `units`, `diagnostics` and `warnings`. Each value has its `path` and its `unit`. Each flow
-has its `path`, its `kind` (`directed`, `reversible` or `legs`), its `source`, its `sink` and its
-`unit`. A flow with legs has its `legs` instead of its ends. Each diagnostic and each warning has
-its `code`, `message`, `file`, `line` and `column`.
+`model_hash`, `entities`, `inputs` and `stores`. The other keys are `formulas`, `distributions`,
+`links`, `collections`, `flows`, `units`, `diagnostics` and `warnings`. Each value has its `path`
+and its `unit`. Each flow has its `path`, its `kind` (`directed`, `reversible` or `legs`), its
+`source`, its `sink` and its `unit`. A flow with legs has its `legs` instead of its ends. Each
+diagnostic and each warning has its `code`, `message`, `file`, `line` and `column`.
 
 ## napkin run
 
@@ -189,10 +189,11 @@ A run that stops before its horizon prints the values up to the time at which it
 and exits 1.
 
 **`--json`** prints one document with the keys `model`, `title`, `run`, `edits`, `mode`, `horizon`,
-`times` (in hours), `values`, `records`, `near_ties`, `stopped`, `violations`, `attempts`,
-`placements`, `diagnostics` and `warnings`. Each entry of `values` has the `unit`, the `label`, the
-member's `title`, the `values` at the times, the `lag`, the `note` and the evidence `trail`. A value
-with no reading is `{"unavailable": reason}`. A status display is `{"rating", "text", "case"}`.
+`times` (in hours) and `values`. The other keys are `records`, `near_ties`, `stopped`, `violations`,
+`attempts`, `placements`, `diagnostics` and `warnings`. Each entry of `values` has the `unit`, the
+`label`, the member's `title`, the `values` at the times, the `lag`, the `note` and the evidence
+`trail`. A value with no reading is `{"unavailable": reason}`. A status display is
+`{"rating", "text", "case"}`.
 
 ## napkin sample
 
@@ -239,7 +240,8 @@ sample.
 `at`, `drawn`, `values`, `exceed`, `draws` and `warnings`. Each entry of `values` has the `unit`,
 the `label`, the `central` value, `estimated`, `reason`, `mean`, `sd`, `sem`, `least`, `greatest`,
 `percentiles`, `tails` and `drivers`. Each entry of `draws` is one sample: its `seed`, its `values`
-and its `draws`, each with its `site`, `owner` and `value` (a number in canonical units).
+and its `draws`. Each of its draws has its `site`, `owner` and `value` (a number in canonical
+units).
 
 ## napkin play
 
@@ -391,10 +393,10 @@ napkin new [-h] [--title TEXT] [--variants NAME,…] DIR
 | `--variants NAME,…` | Also write `variants/NAME/model.scn` for each NAME. A name is a small letter, then small letters, digits and `_` |
 
 The command writes `DIR/model.scn` and `DIR/style.toml`. The model has one entity with an input, two
-stocks and a flow between them, one formula at the top level, and one `record` declaration that each
-value cites. It uses the prelude's units only. The stylesheet gives the entity its role in the picture
-(`[role]`), because the model has no role. Each variant changes the input to its own value. The
-command writes no file when one of its files is there already (exit 2).
+stocks and a flow between them. It also has one formula at the top level, and one `record`
+declaration that each value cites. It uses the prelude's units only. The stylesheet gives the entity
+its role in the picture (`[role]`), because the model has no role. Each variant changes the input to
+its own value. The command writes no file when one of its files is there already (exit 2).
 
 ```text
 $ napkin new demo --title "A clinic queue" --variants east,west

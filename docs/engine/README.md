@@ -100,9 +100,9 @@ The plan (`napkin/engine/timeline/plan.py`) reads the program once for each conf
 - **Kinds.** An input is fixed for the run. A stored value starts from its initializer. A formula,
   a reduction, a keyed read, and a request or a capacity written as `formula(...)`, is evaluated at
   each read.
-- **Stocks.** A value is a stock when a flow or a `move` touches it anywhere in the program, also in an
-  occurrence that did not start yet. The plan finds them from the ends of the flows and the targets of
-  the moves (`Plan._declare_ends`, `Plan._stock_targets`).
+- **Stocks.** A value is a stock when a flow or a `move` touches it anywhere in the program. This
+  also holds in an occurrence that did not start yet. The plan finds them from the ends of the flows
+  and the targets of the moves (`Plan._declare_ends`, `Plan._stock_targets`).
 - **Connected sets.** `Plan.connect` makes the connected sets and gives each one its method
   (next section). A set whose rates read the actual rates or results of another set settles after
   that set: it has a higher level.
@@ -273,9 +273,16 @@ values and adds the unit, the label, the status display, the evidence trail and 
 each path. A report claims nothing that the record does not show.
 
 **The evidence trail** of a value lists the parts that the value can read, with the records that
-each part cites. It tells whether this run exercised each part. A part is exercised when it acted: a
-flow moved material, an event started, a trigger fired, a stage committed, a solver solved, or a
-value was read. A part whose use the record cannot show has no answer (`exercised` is `None`).
+each part cites. It tells whether this run exercised each part. A part is exercised when it acted:
+
+- a flow moved material
+- an event started
+- a trigger fired
+- a stage committed
+- a solver solved
+- a value was read.
+
+A part whose use the record cannot show has no answer (`exercised` is `None`).
 
 **A reporting lag** (`napkin.Lag(shortest, longest)`, in hours) shows the mean of the history of a
 value from `longest` to `shortest` hours before each time. Equal ends make a fixed delay. A lag:
@@ -326,11 +333,12 @@ record = resume(model.program, loads(dumps(edited)))
 
 This run stops at 40 h, before the stage of `operator.decide`.
 
-**Exact resume.** On one platform, with the same program, engine version, numerical settings and
-seed, a run that stops and resumes with no edit gives the same values, draws, event times and event
-order as the run straight through. A breakpoint alone never changes which branch fires. A stage that
-stopped runs again from its start. Its draws use the same keys, so they are the same. A checkpoint of
-another program or another engine version is refused with `CheckpointError`.
+**Exact resume.** The conditions are one platform and the same program, engine version, numerical
+settings and seed. Under these conditions, a run that stops and resumes with no edit matches the run
+straight through. Both give the same values, draws, event times and event order. A breakpoint alone
+never changes which branch fires. A stage that stopped runs again from its start. Its draws use the
+same keys, so they are the same. A checkpoint of another program or another engine version is
+refused with `CheckpointError`.
 
 A record over its budget of pieces at a stop ends there, and the run gives no checkpoint. The
 [Python API](../python-api.md) tells how a `Session` uses checkpoints, and the
@@ -341,9 +349,12 @@ A record over its budget of pieces at a stop ends there, and the run gives no ch
 The run store (`napkin/store.py`) keeps the record of each run on disk, so that a command does not run
 the same run twice. It reuses only an identical request ([change 28](../design/decisions.md#change-28)):
 
-- The key of an entry is a digest of the canonical program, the configuration with its request (the
-  horizon, the selected keys and the budget of pieces), the engine code, the versions of Python, NumPy
-  and SciPy, the machine, the processor and the NumPy CPU features.
+- The key of an entry is a digest of these:
+  - the canonical program
+  - the configuration with its request (the horizon, the selected keys and the budget of pieces)
+  - the engine code
+  - the versions of Python, NumPy and SciPy
+  - the machine, the processor and the NumPy CPU features.
 - A run with edits also keys its edit log. A log with no edit keys as the run without it.
 - The order of the selected keys can differ. The store gives the manifest in the caller's order.
 - A different horizon, selection or budget runs again, also a shorter horizon or a smaller selection.
@@ -400,10 +411,13 @@ The numerical settings of a run (`Numerics`) set every tolerance of the engine:
 | Crossing tolerance | `crossing`, 1e-8 h | The time of a contact or a crossing, and the time between two moments. |
 | Step cap | `max_step`, 1 h, or the `resolution` of the scenario | The interval at which a numerical method reads its roots and its field inside a long step. |
 
-A declared `scale` can change only three things ([change 33](../design/decisions.md#change-33)): the
-outcome of a comparison inside its band, the accuracy of the integration, and the choice among answers
-of a solver that are equally optimal for its nonflow unknowns. A change of the display units changes
-nothing.
+A declared `scale` can change only three things ([change 33](../design/decisions.md#change-33)):
+
+- the outcome of a comparison inside its band
+- the accuracy of the integration
+- the choice among answers of a solver that are equally optimal for its nonflow unknowns.
+
+A change of the display units changes nothing.
 
 The scale of a value is its declared `scale`, or else 1 in its declared unit (1 mL for a value in mL). A
 literal in the model is exact: it adds no floor to a comparison band, and the relative term of the
@@ -414,13 +428,16 @@ band still applies. The
 
 - The same run is deterministic. The same code, configuration, seed and thread settings on one
   machine give the same record, bit for bit.
-- Anything else agrees within the stated tolerances, not bit for bit: a sample alone or in a batch,
-  another platform, other thread settings, a solver formed fresh against a kept one.
+- Anything else agrees within the stated tolerances, not bit for bit:
+  - a sample alone or in a batch
+  - another platform
+  - other thread settings
+  - a solver formed fresh against a kept one.
 - A threshold that sits at a tolerance boundary can fire differently across those settings. The
   trace marks such a decision as a near-tie.
-- A draw is keyed by the seed, its site and its owner (the first 64 bits of the SHA-256 of
-  `seed|site|owner`), never by its place in a stream. So a branch that is not taken, an extra read, a
-  report or the step length of an integrator moves no draw.
+- A draw is keyed by the seed, its site and its owner, never by its place in a stream. The key is
+  the first 64 bits of the SHA-256 of `seed|site|owner`. So a branch that is not taken, an extra
+  read, a report or the step length of an integrator moves no draw.
 - A sum over a list adds in a pairwise tree of a fixed shape (`napkin/engine/timeline/trees.py`). Its bits depend on
   the present values only. The language promises no order of a sum over a list.
 

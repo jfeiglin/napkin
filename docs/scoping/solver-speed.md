@@ -8,10 +8,14 @@ what the owner deferred. The words in **bold** type have the meanings that
 ## The need
 
 A declared **solver** selects its answer by the selection order of the language
-([D0](../design/decisions.md#d0)): the hard constraints, the written objectives in order, fair
-sharing of the claims, then the flows nearest their **requests** and the other unknowns nearest
-their references. The solve library (`napkin/engine/solve/`) does this with an exact rule for each
-step.
+([D0](../design/decisions.md#d0)):
+
+1. the hard constraints
+2. the written objectives in order
+3. fair sharing of the claims
+4. the flows nearest their **requests** and the other unknowns nearest their references.
+
+The solve library (`napkin/engine/solve/`) does this with an exact rule for each step.
 
 On the network of prototype A3 at 30,000 places (30,000 places, 35,000 **routes**, 15,000 sources),
 the last two steps were too slow for use:
@@ -24,8 +28,12 @@ the last two steps were too slow for use:
 The owner ranks defensibility first, then speed, then precision
 ([change 10](../design/decisions.md#change-10)). A **run** of 20 minutes is not used. The inputs are
 uncertain by tens of percent, so 1e-7 against 1e-10 is not a reason to be slow. What is
-defensibility stays exact: the books of each **stock** balance, equal claims get equal shares, each
-value stays in its range, and a run that cannot answer stops with a named failure.
+defensibility stays exact:
+
+- the books of each **stock** balance
+- equal claims get equal shares
+- each value stays in its range
+- a run that cannot answer stops with a named failure.
 
 ## What was measured
 
@@ -44,16 +52,17 @@ outside the repository and are not part of the archive. The scripts make them ag
   3,000 places a time is the best of three runs. At 30,000 places there is one run, one case at a
   time, stopped at 15 minutes.
 - The problems: the network of A3 as the bench of the solve library forms it
-  (`scratch/rewrite/b1/solve/bench.py` at commit `ARCHIVE_SHA`), in the four cases of A3: normal
-  need, need x1.45, 1,000 routes down ("damaged"), and need x1.7. Also the problem that the engine
-  forms for the same network at its first solve (`tools/bench/port/s5-engine/bench.py`).
-- Each candidate solved the same problem as the step of the library: the face at the start of the
-  distance step, or the face and the basis after the objective for fair sharing.
+  (`scratch/rewrite/b1/solve/bench.py` at commit `ARCHIVE_SHA`). The cases are the four cases of A3:
+  normal need, need x1.45, 1,000 routes down ("damaged"), and need x1.7. Also the problem that the
+  engine forms for the same network at its first solve (`tools/bench/port/s5-engine/bench.py`).
+- Each candidate solved the same problem as the step of the library. For the distance step, it is
+  the face at the start of that step. For fair sharing, it is the face and the basis after the
+  objective.
 - Correctness came first. Each candidate took the place of the step of the library in each test of
-  `tests/engine/solve/test_spec_answers.py` (the answers of the language) and `test_random.py`
-  (exact rational references, with its deep sweep): 827 cases, or 822 for a candidate of the
-  distance step, because five cases test the fallback of the library. The tables give each error
-  against the tolerance of its test.
+  `tests/engine/solve/test_spec_answers.py` and `test_random.py`. The first holds the answers of the
+  language. The second holds exact rational references, with its deep sweep. That is 827 cases, or
+  822 for a candidate of the distance step, because five cases test the fallback of the library.
+  The tables give each error against the tolerance of its test.
 
 ## The measured tables
 
@@ -132,11 +141,11 @@ tolerances of the steps. All three keep the rules of the selection order, and no
 2. **LDL' by qdldl in the distance step** (`napkin/engine/solve/distance.py`). The Newton system of
    the step is quasi-definite, and its pattern stays the same over a stage. qdldl orders the system
    and analyses its pattern one time in each stage, and each step factorizes only the new values.
-   Without pivots, LDL' can be inaccurate on these systems. A solve whose backward error is above
-   1e-10, or a factorization that qdldl refuses, makes the stage continue by SuperLU from the point
-   that it reached. A stage that does not converge so runs again by SuperLU alone. qdldl 0.1.9 has
-   the Apache-2.0 license, with wheels for CPython 3.8 to 3.14 on Linux, macOS and Windows, x86-64
-   and ARM.
+   Without pivots, LDL' can be inaccurate on these systems. A solve can have a backward error above
+   1e-10, or qdldl can refuse a factorization. In either case, the stage continues by SuperLU from
+   the point that it reached. A stage that does not converge so runs again by SuperLU alone. qdldl
+   0.1.9 has the Apache-2.0 license, with wheels for CPython 3.8 to 3.14 on Linux, macOS and
+   Windows, x86-64 and ARM.
 3. **Fair sharing in connected parts** (`napkin/engine/solve/fair.py`). Claims that share no row,
    through the columns that the face leaves free, are independent. Each part gets its own level
    variable in one program, which is the programs of the parts side by side. The number of programs
@@ -191,11 +200,15 @@ A precision profile is a named set of tolerances and algorithms for the solvers,
 and `fast`. The design:
 
 - The profile is part of the identity of the run. Its store key, its **record**, its **checkpoint**
-  and the line of its report name it, so two runs with different profiles are never the same run.
-- The strict invariants are exact in each profile: the books of each stock balance, equal claims
-  get equal shares, each value stays in its range, a proof that a value never falls holds, and a
-  near-tie (a choice of who is served within the tolerance of its boundary) has a report with its
-  size.
+  and the line of its report name it. Thus, two runs with different profiles are never the same
+  run.
+- The strict invariants are exact in each profile:
+  - the books of each stock balance
+  - equal claims get equal shares
+  - each value stays in its range
+  - a proof that a value never falls holds
+  - a near-tie (a choice of who is served within the tolerance of its boundary) has a report with
+    its size.
 - A profile that cannot answer falls back by name. The record says which step fell back to which
   profile. A step that `default` cannot answer either stops with its named failure.
 - Published runs use `default`.
@@ -204,9 +217,9 @@ and `fast`. The design:
 
 Need x1.45 and need x1.7 at 30,000 places. In P1 the distance step gave no answer. At x1.45 it did
 not finish in 15 minutes. At x1.7 the Newton iteration did not converge in 500 Newton steps (nor in
-2,000), and the QP algorithm of HiGHS then called the face infeasible. That face is feasible at the
+2,000). The QP algorithm of HiGHS then called the face infeasible. That face is feasible at the
 primal tolerance 1e-9 of HiGHS, and infeasible to HiGHS at 1e-7. After the adoption, the two cases
-are still open: fair sharing takes 396 s and 607 s, and the distance step does not finish in what is
+are still open. Fair sharing takes 396 s and 607 s, and the distance step does not finish in what is
 left of 15 minutes.
 
 ## The changes
@@ -219,11 +232,17 @@ left of 15 minutes.
 - `napkin/engine/solve/solver.py`: `Work.superlu`, the runs of a stage that SuperLU factorized.
 - `pyproject.toml` and `requirements.lock`: `qdldl`.
 
-What stays: the tolerance 1e-10 of fair sharing with its renewals, FIX 1e-7, a refactorization
-every 100 updates, the HiGHS of SciPy, the primal simplex after the first program, and the QP
-algorithm of HiGHS as the last fallback of the distance step. A checkpoint holds the same state of
-a solver as before (its program, its basis and its last problem). None of the three changes keeps
-anything between two solves.
+What stays:
+
+- the tolerance 1e-10 of fair sharing with its renewals
+- FIX 1e-7
+- a refactorization every 100 updates
+- the HiGHS of SciPy
+- the primal simplex after the first program
+- the QP algorithm of HiGHS as the last fallback of the distance step.
+
+A checkpoint holds the same state of a solver as before (its program, its basis and its last
+problem). None of the three changes keeps anything between two solves.
 
 ## The checks
 
@@ -232,8 +251,9 @@ anything between two solves.
 - `tests/engine/test_solvers.py` (new: a stock held at both bounds is one equality),
   `test_random_solvers.py` (with its 900 deep cases), `test_programs.py`, `test_checkpoints.py` and
   `test_edits.py`: 287 tests.
-- Exact resume in three ways (no stop, a stop resumed in one process, a stop resumed in a fresh
-  process) for a solver with two stocks held at 0 L and two parts: the same record.
+- Exact resume in three ways for a solver with two stocks held at 0 L and two parts: the same
+  record. The three ways are no stop, a stop resumed in one process, and a stop resumed in a fresh
+  process.
 
 ## The risks and the open questions
 
@@ -241,8 +261,8 @@ anything between two solves.
   some faces LDL' sends it in a wrong direction. The change to SuperLU and the second run guard the
   answer, at a cost of time where they act.
 - Fair sharing on a connected network is still one program for each level (155 to 660 s at 30,000
-  places). One program that holds each claim that cannot rise would save at most the programs that
-  repeat a level (less than 1% on a connected network).
+  places). One program could hold each claim that cannot rise. It would save at most the programs
+  that repeat a level (less than 1% on a connected network).
 - What the distance step needs to answer under shortage at 30,000 places (need x1.45 and x1.7, and
   the second solve of the engine). Its Newton iteration did not converge there in P1, by either
   factorization.

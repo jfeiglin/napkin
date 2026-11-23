@@ -1,8 +1,13 @@
 # The design of the compiler and the engine
 
-This folder gives the design of napkin: the principles, the chain from the text of a model to the
-record of a run, and the rulings and measurements that support them. The words in **bold** type
-below have the meanings that [the terms](../language/README.md#terms) give.
+This folder gives the design of napkin:
+
+- the principles
+- the chain from the text of a model to the record of a run
+- the rulings and measurements that support them.
+
+The words in **bold** type below have the meanings that
+[the terms](../language/README.md#terms) give.
 
 | Page | What it holds |
 | --- | --- |
@@ -128,8 +133,9 @@ A connected set of stocks runs on one method between two moments (`plan.Connecte
 
 ## The libraries
 
-Napkin owns the meaning of a moment, the sharing and the conservation, the place of a crossing,
-the proofs, the units and the names of the random streams. It gives the rest to libraries.
+Napkin owns the meaning of a moment, the sharing and the conservation, and the place of a crossing.
+It also owns the proofs, the units and the names of the random streams. It gives the rest to
+libraries.
 
 | Library | What napkin uses it for | Where |
 | --- | --- | --- |
@@ -145,11 +151,11 @@ The dependencies of the package are `jsonschema`, `numpy`, `qdldl` and `scipy` (
 ### Expressions and operations
 
 An expression is a tree of typed nodes (`napkin/core/expr.py`). Two nodes that compute the same
-thing are one object. Each operation has one contract in `napkin/core/ops.py`: its arity, its rule
-of units, its domain, the points where it is not smooth, its partial derivatives and how it moves
-with each argument. Each consumer (the evaluation, the units, the intervals, the derivatives, the
-picture) has one handler for each operation. A consumer that has no handler for an operation
-must say so, so no operation is half supported without a word.
+thing are one object. Each operation has one contract in `napkin/core/ops.py`. The contract gives
+its arity, its rule of units, its domain and the points where it is not smooth. It also gives its
+partial derivatives and how it moves with each argument. Each consumer (the evaluation, the units,
+the intervals, the derivatives, the picture) has one handler for each operation. A consumer that has
+no handler for an operation must say so, so no operation is half supported without a word.
 
 ## Archive
 

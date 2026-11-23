@@ -166,9 +166,9 @@ earlier accounting work.
 - Keep the output folder outside the engine package.
 - The script runs each sample in a fresh process with one thread for BLAS and the run store off.
 - Each row has three paired timings in alternating order: B/F, F/B, B/F.
-- For the tank rows and `held-pipes`, a calibration run on each engine sets one repeat count, so
-  that each batch lasts at least 1.5 s on either engine. A batch shorter than 1 s makes the result
-  invalid.
+- For the tank rows and `held-pipes`, a calibration run on each engine sets one repeat count. The
+  count makes each batch last at least 1.5 s on either engine. A batch shorter than 1 s makes the
+  result invalid.
 - A sample that runs longer than 2 h 55 min stops, and the script records it as incomplete.
 - The gate is the median of the three paired ratios of the run-plus-record time, F/B. Its limit is
   1.05 for each row. The `events` guard has the limit 1.10. The `declared` row also checks the time of
@@ -212,8 +212,9 @@ guard, `--baseline-guard-run-seconds 7498.460` gives the earlier baseline time o
 a new baseline sample.
 
 **The counters.** A diagnostic run counts `Allocation.allocated`, `Instant.values`, `Instant.settle`,
-the accepted and the rejected Radau steps, the posts of stocks (`Run.post_stock`), the held and
-declared allocation work, and the amounts of the legs. Timing samples have no counters.
+and the accepted and the rejected Radau steps. It also counts the posts of stocks
+(`Run.post_stock`), the held and declared allocation work, and the amounts of the legs. Timing
+samples have no counters.
 
 ### The benchmark of models
 

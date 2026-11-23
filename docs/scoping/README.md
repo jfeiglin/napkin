@@ -1,7 +1,7 @@
 # Feature scoping
 
-This folder holds one page for each future feature that needs more than a row of a table: its scope
-and its plan, before the work starts. The table of possible future features in
+This folder holds one page for each future feature that needs more than a row of a table. The page
+gives its scope and its plan, before the work starts. The table of possible future features in
 [known-issues.md](../known-issues.md) gives the short list. A row of that table links to its page
 here when the feature has one.
 

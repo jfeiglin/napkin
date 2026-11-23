@@ -2,7 +2,7 @@
 
 This page lists the known issues of the engine, the tools and the notebook of the catalogue, and the
 features that could come next. Each row says what we know now. A row goes when its issue is fixed or
-its feature is done: the change that does it removes the row and says so in
+its feature is done. The change that does it removes the row and says so in
 [CHANGELOG.md](../CHANGELOG.md).
 
 ## Known issues
@@ -16,7 +16,7 @@ its feature is done: the change that does it removes the row and says so in
 ## Possible future features
 
 A feature that needs more than a row has a page of its scope and its plan in the folder
-`docs/scoping/`, and its row links to that page.
+`docs/scoping/`. Its row links to that page.
 
 | Feature | What it gives | What it needs |
 | --- | --- | --- |

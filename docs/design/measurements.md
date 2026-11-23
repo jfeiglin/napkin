@@ -21,9 +21,9 @@ the opposite.
   Without a proof that the value never falls, a lag is not valid ([D10](decisions.md#d10)).
 - Evidence can document separate populations, or explain why an estimate is absent. A citation
   does not prove a numeric invariant.
-- A proof over a model with occurrences covers each place that can write the value: each flow of an
-  **entity** or of an **event**, and each statement of each **stage**. A stock that an event can
-  drain never counts as a value that never falls.
+- A proof over a model with occurrences covers each place that can write the value. These places are
+  each flow of an **entity** or of an **event**, and each statement of each **stage**. A stock that
+  an event can drain never counts as a value that never falls.
 - An **edit** at a **breakpoint** is one more writer of the value. An edit that breaks the proof
   withdraws the proof for the edited **run** ([change 15](decisions.md#change-15)).
 
@@ -49,8 +49,8 @@ show capabilities and costs at that time. After G0, the build added the parser, 
 the engine and an independent reference interpreter (`tests/reference/`).
 [docs/engine/verification.md](../engine/verification.md) gives the tests that compare them today.
 
-The scripts and the results of the six prototypes are in the folders `a1`, `a2`, `a3`, `a4a`, `a4b`
-and `a5` of `scratch/rewrite/` at commit `ARCHIVE_SHA` ([the archive](README.md#archive)).
+The scripts and the results of the six prototypes are in `scratch/rewrite/` at commit `ARCHIVE_SHA`
+([the archive](README.md#archive)). The folders are `a1`, `a2`, `a3`, `a4a`, `a4b` and `a5`.
 
 ### The notation
 
@@ -73,8 +73,13 @@ stale solver result with a warning. G0 replaced both rules ([D4](decisions.md#d4
 ### The solver
 
 A prototype of the selection order, on one kept instance of HiGHS, gave each expected answer of the
-spec for a solver: the staff hours, the pump, the provider, both rows of the case with two
-bottlenecks, and the rates and levels of the worked network in W and in kW.
+spec for a solver:
+
+- the staff hours
+- the pump
+- the provider
+- both rows of the case with two bottlenecks
+- the rates and levels of the worked network in W and in kW.
 
 | What was measured | Result |
 | --- | --- |
@@ -113,22 +118,23 @@ changes its equations or freezes a moving rate ([D3](decisions.md#d3)).
 A prototype ran occurrences whose flows join and leave a shared network. It gave the numbers of the
 spec for the table of current flows, the frozen request, the shared limit and the **trigger** at
 hour 10. When the prototype did not treat a join as a change of what the trigger reads, the trigger
-fired at hour 6, with 12 L in the tank.
+fired at hour 6. The tank then held 12 L.
 
-With the total of each endpoint kept as an exact sum, each rate was equal to that of a problem formed
-again, in 59 of 59 checks. A running floating-point total differed after 9,451 of 10,000 joins and
-leaves. 100,000 starts and finishes with 1,000 active occurrences took 53 s under a shared limit
-that does not bind, and 118 s under one that binds, in Python on a busy machine. At G0, the rule that
-a proof covers the flows of events rested on that design and on two runs.
+The prototype kept the total of each endpoint as an exact sum. With that, each rate was equal to
+that of a problem formed again, in 59 of 59 checks. A running floating-point total differed after
+9,451 of 10,000 joins and leaves. In Python on a busy machine, 100,000 starts and finishes with
+1,000 active occurrences took 53 s under a shared limit that does not bind. Under one that binds,
+they took 118 s. At G0, the rule that a proof covers the flows of events rested on that design and
+on two runs.
 
 ### The catalogue
 
 A translator changed 6,691 of the 6,960 logical lines of the models of that time mechanically
-(96.1%). Then six models had a full translation by hand. A check of meaning passed on each: each
-number with its unit, each text, the kind of each name, and the outputs that the old compiler proved
-cumulative. The same check refused a translation that was wrong on purpose: it changed the
-accumulated unserved volume of the water model into a formula of the present shortfall. At G0, no
-translated model had run, and the translations used spellings that G0 replaced
+(96.1%). Then six models had a full translation by hand. A check of meaning passed on each. It
+covered each number with its unit, each text, the kind of each name, and the outputs that the old
+compiler proved cumulative. The same check refused a translation that was wrong on purpose. That
+translation changed the accumulated unserved volume of the water model into a formula of the present
+shortfall. At G0, no translated model had run, and the translations used spellings that G0 replaced
 ([change 1](decisions.md#change-1)).
 
 ## Delivery experiments on the engine before the rewrite

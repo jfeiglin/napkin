@@ -157,8 +157,8 @@ The range of a stock is its inventory bound. A flow never takes a stock outside 
   instant. A junction can carry 8 W through a stock of 0 Wh.
 - A stock inside its own **comparison band** of a bound counts as on that bound
   ([numerics.md](numerics.md#the-comparison-band)).
-- A stock leaves its bound only when the net rate away from it is more than 10⁻¹² times the sum of
-  its gross inflow and outflow. Equality holds the stock on the bound.
+- A stock leaves its bound only when the net rate away from it is more than a limit. The limit is
+  10⁻¹² times the sum of its gross inflow and outflow. Equality holds the stock on the bound.
 - The books of each stock balance. The engine posts each transfer equally at both ends.
 
 ## Routes and legs

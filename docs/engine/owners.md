@@ -48,9 +48,9 @@ The rules of the physical path:
 
 - A held interval adds its rate times its time. A moving interval uses the method's cumulative amount
   through the accepted end.
-- The engine posts a stock when a stage reads or writes it, a rate changes, a set is built again, an
-  occurrence finishes, a checkpoint saves, or the run ends. A moment of one stock does work in
-  proportion to the stocks that it touches.
+- The engine posts a stock when a stage reads or writes it, a rate changes, or a set is built again.
+  It also posts it when an occurrence finishes, a checkpoint saves, or the run ends. A moment of one
+  stock does work in proportion to the stocks that it touches.
 - The engine keeps the gross amount of each leg, because the rules of frozen stocks read it.
 - A post changes the books at both ends of a leg. A placement proposes posts, under the physical and
   the authored limits. The status of a stock (on a bound, on a threshold) comes from its own band.
@@ -190,5 +190,5 @@ baseline `6202824` ([verification.md](verification.md#the-paired-engine-benchmar
 ## Benchmarks and the verification contract
 
 [verification.md](verification.md) holds the workloads of the paired benchmark, its rules and its
-commands, the generated corpus with its 44 transformations, and the rules by which the corpus compares
-two runs.
+commands. It also holds the generated corpus with its 44 transformations, and the rules by which the
+corpus compares two runs.

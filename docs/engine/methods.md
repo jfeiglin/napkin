@@ -144,13 +144,15 @@ stock is a straight line.
 
 - Local sharing at an instant (`network.Instant.settle`) gives the rates that hold just after the
   instant. A stock stays on a bound while its sharing keeps it there.
-- A moment solves again only the coupled parts that a change reaches: the flows at the stock that met
-  its bound, the flows whose requests or capacities changed, and the stocks that left a bound.
+- A moment solves again only the coupled parts that a change reaches:
+  - the flows at the stock that met its bound
+  - the flows whose requests or capacities changed
+  - the stocks that left a bound.
 - A part has a closed form where one holds (one flow, or groups in supply order). Else
-  `selection.select` applies the selection order of local sharing: the hard rows, fair sharing tier
-  by tier, the preferred routes, then the values nearest their targets.
-- Where every flow is directed and rigid and no endpoint has a capacity or a request, a moment solves
-  only the groups downstream of the change, upstream first.
+  `selection.select` applies the selection order of local sharing. The order is the hard rows, fair
+  sharing tier by tier, the preferred routes, then the values nearest their targets.
+- Sometimes every flow is directed and rigid, and no endpoint has a capacity or a request. Then a
+  moment solves only the groups downstream of the change, upstream first.
 
 Where local sharing has no defined answer, the run stops and names the stocks. This occurs for a
 ring of empty stocks that feed one another, and for a ring of full stocks that pass room around.
@@ -235,7 +237,7 @@ engine does not trace these trial solves.
   the answer would move a stock off its bound, or where a comparison changes branch.
 - The engine locates each contact on the incoming dense trajectory, and solves the problem there with
   the new flags.
-- A failure of an evaluation is placed at its time: the steps become shorter, by halves, until the
+- A failure of an evaluation is placed at its time. The steps become shorter, by halves, until the
   failure lies within the crossing tolerance of the last step that answered.
 
 Each evaluation of the rates is a whole solve. So a set of more than 20 stocks (`declared.MOVING`)
@@ -284,7 +286,7 @@ These are the switching surfaces of a rate, when one side moves (`integrate.swit
 One step never mixes two branches:
 
 - At the start of a segment, the engine classifies each surface by its comparison band
-  (`integrate.comparison_side`): a gap inside the band is zero, else its sign.
+  (`integrate.comparison_side`). A gap inside the band is zero, else its sign.
 - A segment that starts at a switch starts on its far side (`integrate.far_sides`). The method
   supplies the velocity: the rates of its allocated field, so a stock held on a bound uses its
   physical net rate.
@@ -319,9 +321,9 @@ breaks them, it integrates again to the located contact before it publishes the 
 
 ## Release from a bound
 
-A stock on a bound leaves it only when its net rate away from the bound is strictly more than 10⁻¹²
-of its gross traffic (`napkin/engine/departure.py`). The gross traffic is the sum of its incoming and
-outgoing rates. Equality keeps the bound.
+A stock on a bound leaves it only when its net rate away from the bound is strictly more than a
+limit. The limit is 10⁻¹² of its gross traffic (`napkin/engine/departure.py`). The gross traffic is
+the sum of its incoming and outgoing rates. Equality keeps the bound.
 
 - Near that boundary, the engine compares the individual rates in exact arithmetic before they cancel
   (`departure.refined`).
@@ -430,9 +432,13 @@ posted, and the time of the last post.
   times time. Component, Sparse and MovingDeclared integrate each leg's rate on the accepted dense
   output (`napkin/engine/continuous/transfers.py`). Trial states of the solver never post.
 - **A read does not post.** `Stocks.stock_balance` calculates a balance at a time without a change.
-  `Stocks.post_stock` posts it once at a time. The engine posts a stock at these events: a stage
-  reads or writes it, a rate changes, a set is built again, an occurrence finishes, a checkpoint
-  saves, or the run ends.
+  `Stocks.post_stock` posts it once at a time. The engine posts a stock at these events:
+  - a stage reads or writes it
+  - a rate changes
+  - a set is built again
+  - an occurrence finishes
+  - a checkpoint saves
+  - the run ends.
 - **An accepted prefix only.** A reader sees only the transfers up to the accepted time of the
   method (`MovingTransfers._transferred`). A segment that went past a moment gives no credit for its
   tail.

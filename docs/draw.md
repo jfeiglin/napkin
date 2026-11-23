@@ -26,9 +26,9 @@ docs/draw-example.svg: 2 things, 2 arrows
 
 ![The picture of examples/reservoir: the operator, the reservoir, the legend and the panels](draw-example.svg)
 
-The model `examples/reservoir/model.scn` has two entities. Its `style.toml` places them, gives the
-reservoir an icon and the operator a role, shows the rule of the operator's event, and turns on the
-panels of the reservoir:
+The model `examples/reservoir/model.scn` has two entities. Its `style.toml` places them, and gives
+the reservoir an icon and the operator a role. It also shows the rule of the operator's event, and
+turns on the panels of the reservoir:
 
 ```toml
 [layout]
@@ -63,8 +63,8 @@ The file also gives the symbols of the equations in `[symbol.reservoir]` (`water
   subtitle gives the name of the package, `reservoir`, and how long a run lasts, 5 days.
 - **The operator** is in column 1. `[role]` gives it the role `operator`, and `[icon]` names no icon
   for it, so its card has the icon of its role, `server`. Its row of events (`[triggers] rules`)
-  gives the rule of `decide` in words: "decide — when water is at least level, once; after 0 h:
-  sets order, by order, open: sets gate".
+  gives the rule of `decide` in words. The row reads "decide — when water is at least level, once;
+  after 0 h: sets order, by order, open: sets gate".
 - **The reservoir** is in column 2, with the icon `drop`. Its stock, the water in the reservoir, is
   the blue row. The storm fills it: the teal pipe comes from outside the model, the small circle.
   The two yellow rows are tallies: the water let out over the spillway, and the time with the water
@@ -109,14 +109,14 @@ stored value that a statement assigns, or that a solver solves for, is a state.
 
 **Stocks, tallies and flows.** A card shows its stocks as blue rows and its tallies as yellow rows
 with a gauge. It shows four rows at most (`[layout] stocks`): the stocks first, then those with more
-pipes. `[stocks]` can name the rows and their order. A row "+n" stands for the others. A flow between
-two stock rows of one card, or between a stock row and the outside of the model, is a teal pipe with
-a valve. The flows between the same two ends are one pipe, which shows their number. A flow into a
-tally, or into a stock that the card does not show, is in the tooltip of its row. A flow to or from
-another card is an arrow of the kind "moves".
+pipes. `[stocks]` can name the rows and their order. A row "+n" stands for the others. A teal pipe
+with a valve shows a flow between two stock rows of one card. It also shows a flow between a stock
+row and the outside of the model. The flows between the same two ends are one pipe, which shows
+their number. A flow into a tally, or into a stock that the card does not show, is in the tooltip of
+its row. A flow to or from another card is an arrow of the kind "moves".
 
-**State machines.** Each stored enum value of a thing is a small state machine: a pill for each
-state, and a green dot on the state at the start. Each event that sets the value is a purple
+**State machines.** Each stored enum value of a thing is a small state machine. It has a pill for
+each state, and a green dot on the state at the start. Each event that sets the value is a purple
 transition. It starts from the states in which the event can start, or from "any state". A
 number on each transition names it in the key under the machine. When an option sets the start of
 the value, the key says "Options set the start: …". A machine with at most 4 states and 6 transitions
@@ -128,8 +128,8 @@ event and of the values that it reads, so better names in the model give better 
 its events without `[triggers]`.
 
 **Arrows.** One arrow joins two cards for each kind of link between their parts. A part is a formula,
-the start value or the bounds of a value, a member's own value, the settings of an endpoint, a flow,
-an event or a solver. Assertions are no parts: no run reads them.
+the start value or the bounds of a value, or a member's own value. A part can also be the settings
+of an endpoint, a flow, an event or a solver. Assertions are no parts: no run reads them.
 
 | Kind | What a part of one card does | The head of the arrow is at | Drawn as |
 | --- | --- | --- | --- |
@@ -154,11 +154,10 @@ too. The tooltip of an arrow names the values that it stands for.
 **Panels.** `[equations]` puts panels under the legend, for the things that it names.
 
 - **Equations.** For each thing, the lines give the balance of each stock (dS/dt = what flows in −
-  what flows out), and the rate and the bounds of each flow. They give the formulas that the rates
-  read, as many hops deep as `depth` says. Other lines give the changes that events make at once
-  (`G ← OPEN at decide, open`).
-  A line that does not fit ends with "… (continues in the LaTeX)". Each line keeps its LaTeX in an
-  attribute `data-latex`.
+  what flows out). They also give the rate and the bounds of each flow. They give the formulas that
+  the rates read, as many hops deep as `depth` says. Other lines give the changes that events make
+  at once (`G ← OPEN at decide, open`). A line that does not fit ends with "… (continues in the
+  LaTeX)". Each line keeps its LaTeX in an attribute `data-latex`.
 - **Symbols.** Each symbol of the lines, with its meaning, its unit, its value and, for an input,
   its chosen range and its distribution. A chosen range is the range that a reader can set. It is
   not a measured interval, and a note under the table says so.
@@ -376,8 +375,8 @@ thing's own level wins over its template's level, and a name is in one level at 
 | `options` | Whether the rows name the options that switch an event on or off: true or false | true |
 
 At every level, the tooltip of the card holds the full line of each event. The words come from the
-model: the names of the event and of the values that it reads, and the units as the model writes
-them. A few other words join them, such as "when", "has passed since" and "is at most".
+model. They are the names of the event and of the values that it reads, and the units as the model
+writes them. A few other words join them, such as "when", "has passed since" and "is at most".
 
 ### `[equations]`: the equations of a card
 
@@ -415,9 +414,9 @@ reservoir = "r"      # the subscript of the card of reservoir in the symbols tha
 ```
 
 A symbol is a letter or a Greek name (such as `delta`), an optional `'`, and an optional `_` with a
-subscript of letters, digits and commas. The picture uses a thing's symbol exactly as the file
-writes it. A template's symbol has no subscript: each instance adds its own. Two values never have
-one symbol, and two cards never have one subscript.
+subscript. The subscript has letters, digits and commas. The picture uses a thing's symbol exactly
+as the file writes it. A template's symbol has no subscript: each instance adds its own. Two values
+never have one symbol, and two cards never have one subscript.
 
 ### What `napkin compile` checks
 

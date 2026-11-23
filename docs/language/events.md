@@ -498,16 +498,16 @@ result of each of its formulas.
 - A formula that read 14 at the finish reads 14 after it, whatever changes later.
 - A formula that cannot be evaluated at the finish keeps the reason. The occurrence still finishes.
   A report can show the reason, and a read of the frozen value by the model fails with it.
-- A write to a finished occurrence stops the run. A write is an assignment to its value, a `move`
-  of a nonzero amount at its stock, or a nonzero rate of a flow at its stock. A connected flow at a
-  zero rate writes nothing.
+- A write to a finished occurrence stops the run. A write is an assignment to its value, or a
+  `move` of a nonzero amount at its stock. It can also be a nonzero rate of a flow at its stock. A
+  connected flow at a zero rate writes nothing.
 - A saved reference to an occurrence keeps naming it after later starts.
 
 **The stocks of an occurrence.** Each stock that an occurrence owns must be empty when the
 occurrence finishes, within the conservation tolerance of the stock. The author can wait for it to
-drain, `move` the rest to a stock of an entity, or send it to `SINK` through a declared flow. An
-occurrence that tries to finish with 8 L in its batch stops the run. The diagnostic names the stock,
-the amount, the occurrence and the time.
+drain, or `move` the rest to a stock of an entity. The author can also send it to `SINK` through a
+declared flow. An occurrence that tries to finish with 8 L in its batch stops the run. The
+diagnostic names the stock, the amount, the occurrence and the time.
 
 ## Limits of a run
 

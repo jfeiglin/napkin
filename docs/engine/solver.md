@@ -82,14 +82,15 @@ feed leaves the other flows to local sharing.
 
 `Former.problem` forms the problem of the set at an instant from the program:
 
-- **Unknowns.** Each flow of the set: a directed flow's rate within 0 and its capacity, a route's
-  signed rate within its capacity, or a flow with legs' served fraction within 0 and 1. Each other
-  result within its domain.
+- **Unknowns.** Each flow of the set. For a directed flow, the unknown is its rate within 0 and its
+  capacity. For a route, it is its signed rate within its capacity. For a flow with legs, it is its
+  served fraction within 0 and 1. Each other result within its domain.
 - **Targets.** A flow's target is its request. A served fraction's target is one when a leg asks, else
   zero. Another result's target is its reference: its initializer, or zero without one.
-- **Rows.** Each stock that rests on a bound: what leaves a stock at its lower bound must also arrive,
-  and what arrives at a stock at its upper bound must also leave. A stock at both bounds, such as one
-  held at `[0, 0]`, is one `==` row. Each endpoint's capacity. Each relation of `constraints`.
+- **Rows.** Each stock that rests on a bound. What leaves a stock at its lower bound must also
+  arrive. What arrives at a stock at its upper bound must also leave. A stock at both bounds, such
+  as one held at `[0, 0]`, is one `==` row. Each endpoint's capacity. Each relation of
+  `constraints`.
 - **Objectives**, in written order. A `maximize` is a negated minimum.
 - **Claims.** Each positive request of a flow and of an endpoint, in tiers. The endpoints' rules
   rank every claim (`network.claim_order`). The solver's own sharing acts only among the claims that
@@ -191,8 +192,8 @@ The ranks and the distance use the scales differently (`napkin/engine/solve/scal
 - **The physical ranks do not depend on a declared scale.** The hard constraints, the written
   objectives and fair sharing use physical coordinates. A flow is in its physical rate unit. A nonflow
   unknown is in its physical unit.
-- **Rows and objectives are normalized** after the engine chooses these coordinates: each row by its
-  largest coefficient, and each objective to a largest coefficient of one.
+- **Rows and objectives are normalized** after the engine chooses these coordinates. Each row is
+  normalized by its largest coefficient, and each objective to a largest coefficient of one.
 - **The flow distance** divides each flow by one canonical unit of its dimension. A served fraction
   uses the scale one. So the answer does not depend on the units in which a model writes its rates.
 - **The nonflow distance uses the declared scale.** The reference scale of a nonflow unknown is its
@@ -204,8 +205,8 @@ differ from zero when the route equations require it.
 
 ## When a solver solves
 
-- **Once in a round.** The engine forms the problem after the stages of a round commit, and solves each
-  affected solver once, in the order of the levels of the sets. The results publish together. A
+- **Once in a round.** The engine forms the problem after the stages of a round commit. It solves
+  each affected solver once, in the order of the levels of the sets. The results publish together. A
   problem equal to the one that the solver answered last is not solved again.
 - **Between moments.** For Declared, the answer holds until a stock meets a bound or leaves one. For
   MovingDeclared, the engine solves at each trial state of its integrator. These trial solves are not
@@ -268,9 +269,9 @@ same answers bit for bit. One `Solver` for each declared solver of a run, and no
 make sure of this. Anything else agrees within the tolerances of the steps
 ([change 11](../design/decisions.md#change-11)). Examples are a sample alone or in a batch, a problem
 formed fresh against a kept one, and another platform. There a threshold at a tolerance boundary can
-decide differently: a dual against `TAU`, a level against `FULL`, a miss against `MISS`, or a
-residual against the stall rule. Then the work differs and the answers agree within the tolerances. A solve near a budget can pass in one
-setting and stop by name in another.
+decide differently. Such a threshold is a dual against `TAU`, a level against `FULL`, a miss against
+`MISS`, or a residual against the stall rule. Then the work differs and the answers agree within the
+tolerances. A solve near a budget can pass in one setting and stop by name in another.
 
 ## Speed
 

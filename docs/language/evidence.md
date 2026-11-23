@@ -212,7 +212,7 @@ record operator: assumption "The example assumes that the operator brings water 
 A model declares what it can state. A model that cannot estimate a value leaves the declaration out
 and says why in its documentation or its evidence. The language has no empty value for a missing
 estimate. For example, a water model can calculate the volume of water that its customers did not
-get. It cannot tell how many people went a whole week without water, because equal daily totals can
+get. It cannot tell how many people went a whole week without water. Equal daily totals can
 be the same people each day or different people. It declares the volume, and its documentation
 explains why it has no weekly count of people.
 

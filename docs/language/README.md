@@ -245,9 +245,9 @@ refills                         0       1       1       1
 - The name of a value starts with a small letter. A name with a capital first letter is a template
   or a member of an enum.
 - These words name nothing else: `true`, `false`, `this`, `t`, `SOURCE`, `SINK`, `and`, `or`,
-  `not`, `if`, `else`, `in`, `from`, `to`, `when`, `after`, `until`, `reset`, `switch`, `move`,
-  `assert`, `flow`, `record`, `readonly`, `input`, `formula`, `event`, `solver`, `enum`, `bool`
-  and `scale`. Two more words are reserved because the old language used them
+  `not`, `if`, `else`, `in`, `from`, `to` and `when`. The same holds for `after`, `until`, `reset`,
+  `switch`, `move`, `assert`, `flow`, `record`, `readonly`, `input`, `formula`, `event`, `solver`,
+  `enum`, `bool` and `scale`. Two more words are reserved because the old language used them
   ([changes.md](changes.md)). The keywords of Python are free names.
 - `napkin fmt` writes a file in the layout of the formatter. The layout keeps each order that
   changes the meaning of the model.

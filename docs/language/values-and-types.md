@@ -113,8 +113,8 @@ clinic:
 clinic.delivery.request = 3 L/h
 ```
 
-- The path can name a value of an entity, a setting of a flow, a leg or an endpoint of an entity,
-  or the own value of a member.
+- The path can name a value of an entity, or the own value of a member. It can also name a setting
+  of a flow, a leg or an endpoint of an entity.
 - A path has one initializer. A second initializer is an error that names both lines.
 - A `readonly` value can take an initializer here. `readonly` bars an assignment, not an
   initializer.
@@ -202,8 +202,13 @@ space. A quantity is its dimension and its exact value in the canonical unit, no
 
 ### Where units come from
 
-The units of a model come from three places: the prelude (`napkin/std/units.json`), the library
-that the scenario line names, and `units.json` in the package and in a variant. The prelude has the
+The units of a model come from three places:
+
+- the prelude (`napkin/std/units.json`)
+- the library that the scenario line names
+- `units.json` in the package and in a variant.
+
+The prelude has the
 units of time (`h`, `hour`, `day`, `week`, `month`, `year` and their plurals) and `fraction`,
 `ratio`, `percentage_points`, `person` and `people`. A name of the prelude cannot be defined again.
 Each unit has a dimension and an exact factor: the size of one unit in the canonical unit of its
@@ -544,7 +549,8 @@ no draw. A categorical has no mean.
 `d.draw()` takes one value from the distribution. It draws each time that the engine executes it.
 
 - A draw stands where the engine captures a value once. These places are an initializer, a
-  statement of a stage, a capture of a trigger, an argument of a start and the delay of a stage.
+  statement of a stage and a capture of a trigger. They are also an argument of a start and the
+  delay of a stage.
 - A formula, a gate, a trigger, a reset and an assertion are read again, so they make no draw.
 - A branch that the engine does not take makes no draw.
 - Store a draw to read it twice. Two draws are independent. Correlated draws are not in the language.
@@ -582,8 +588,13 @@ An enum input can draw its default from a `categorical` over its members:
 | `sampled` | A sample, keyed by the seed | A sample among the eligible outcomes |
 
 The default run is a median run. A median run has no seed. A sampled run needs a whole-number seed.
-Three things key each draw: the seed, the place of the draw in the model, and the member, the
-occurrence or the firing that executes it. A read of a distribution, an extra report, another step
+Three things key each draw:
+
+- the seed
+- the place of the draw in the model
+- the member, the occurrence or the firing that executes it.
+
+A read of a distribution, an extra report, another step
 size or a branch that the engine does not take moves no other draw. The eligible outcomes of a
 `switch` are in [events.md](events.md#branch-with-switch).
 

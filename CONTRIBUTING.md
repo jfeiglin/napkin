@@ -1,8 +1,8 @@
 # Contributing
 
-This guide is for people who change `napkin`, its examples or its catalogue. It has eight parts: the
-setup of a checkout, the repository, the rules of a change, testing, speed, the publisher, the
-release, and the writing style.
+This guide is for people who change `napkin`, its examples or its catalogue. It has eight parts.
+They are the setup of a checkout, the repository, the rules of a change, testing, speed, the
+publisher, the release, and the writing style.
 
 Read [README.md](README.md) and [docs/README.md](docs/README.md) first. Before you change the engine,
 read [the engine](docs/engine/README.md) and [the design](docs/design/README.md). Before you change
@@ -504,16 +504,16 @@ These rules apply to everything that a reader sees in the briefs and the reading
    ("delegated border-zone blackout").
 2. **One word, one meaning.** Use the same word for the same thing everywhere (see the
    [glossary](#glossary)).
-3. **No model words.** Do not write binding, branch, configuration, variant, overlay, scope, state,
-   flag, cohort, witness, package, preset, ledger, vintage, partition, footprint, inventory (for
-   people or services), accounting window, horizon, metric or dimension. Do not use declared,
-   executed, authored, finite, disjoint, conserved, coupled or bookkeeping to describe the model.
-   These are names in the model, not in the world. Say what they mean: "after 15 days", "the people
-   the study follows", "each person is counted once".
-4. **Say who chose a value.** Keep the status of every value: reported by a source, taken from a
-   source and applied here, true by definition, or assumed for this scenario. Write "the scenario
-   assumes", "chosen for this scenario" or "reported by the study", not a bare "selected". A range
-   that a reader can explore is not a measured interval: say so.
+3. **No model words.** Do not write binding, branch, configuration, variant, overlay, scope or
+   state. Do not write flag, cohort, witness, package, preset, ledger, vintage or partition. Do not
+   write footprint, inventory (for people or services), accounting window, horizon, metric or
+   dimension. Do not use declared, executed, authored, finite, disjoint, conserved, coupled or
+   bookkeeping to describe the model. These are names in the model, not in the world. Say what they
+   mean: "after 15 days", "the people the study follows", "each person is counted once".
+4. **Say who chose a value.** Keep the status of every value. The status is one of these: reported
+   by a source, taken from a source and applied here, true by definition, or assumed for this
+   scenario. Write "the scenario assumes", "chosen for this scenario" or "reported by the study",
+   not a bare "selected". A range that a reader can explore is not a measured interval: say so.
 5. **Simple verb forms.** Use the present tense for what happens in a scenario. Do not use a word
    that ends in -ing as a noun or an adjective: write "the AI keeps its access", not "continuing
    access". A technical name is the exception (cooling, heating, shipping).
@@ -521,7 +521,7 @@ These rules apply to everything that a reader sees in the briefs and the reading
 #### Noun clusters
 
 6. **No more than three nouns together.** Break a longer cluster with a preposition or a short
-   clause: "time until crews start repairs", not "repair crew start delay time".
+   clause. Write "time until crews start repairs", not "repair crew start delay time".
 
 #### Sentences
 
@@ -538,7 +538,7 @@ These rules apply to everything that a reader sees in the briefs and the reading
     electricity", "Time until repair work starts".
 12. **A status is a short, plain statement of the condition.** For example: "Power off", "Crews
     repair the circuits", "Access removed".
-13. **Every quantity has its unit.** Do not show a yes/no condition as a percentage: make it a value
+13. **Every quantity has its unit.** Do not show a yes/no condition as a percentage. Make it a value
     of type `bool`, which reads `true` or `false`. A status display gives the text of the case that
     applies.
 14. **A pathway label names the defender response, then the attack.** It is the response label and

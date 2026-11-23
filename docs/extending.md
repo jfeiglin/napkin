@@ -21,14 +21,14 @@ files and the functions of today's code. The paths are relative to `napkin/`, un
 
 **One owner for each decision.** Each decision of the language or the engine has one owner: one
 function that makes it. Every other part calls that function and does not make the decision again.
-For example, `core/comparisons.py` owns the comparison band, `engine/departure.py` owns the rule
+For example, `core/comparisons.py` owns the comparison band. `engine/departure.py` owns the rule
 that releases a stock from a bound, and `program/check.py` owns the invariants of a program. Before
 you add a rule, find its owner. When no owner exists, make one function the owner, and make every
 caller use it.
 
 **Write the rule in [docs/engine/owners.md](engine/owners.md).** Add one row to the table of its
-subject. The row names the decision as a question, the code that owns it and the code that calls the
-owner, and the tests that check it.
+subject. The row names the decision as a question. It also names the code that owns it, the code
+that calls the owner, and the tests that check it.
 
 **Keep the two ways to write a program equal.** A model text and a program that `program/build.py`
 makes are the two ways to write a program
@@ -94,8 +94,8 @@ A function of the language is a call such as `erf(x)`. `tests/engine/test_erf.py
 the tests that a new function needs. Do these steps in order:
 
 1. Add an `Operation` to `OPERATIONS` in `core/ops.py`. It states the arity, the rule for units
-   (one of `UNIT_RULES`), the domain, the kinks, the partial derivatives and how the value moves
-   with each argument. `core/derivatives.py` takes the derivative from it.
+   (one of `UNIT_RULES`), the domain and the kinks. It also states the partial derivatives and how
+   the value moves with each argument. `core/derivatives.py` takes the derivative from it.
 2. Add the name to `FUNCTIONS` in `core/expr.py`.
 3. Give the function a handler in each table that `ops.handlers` checks: `TABLE` of
    `core/evaluation.py` (with its runtime function and its entry of `OF_ONE`), of `core/arrays.py`

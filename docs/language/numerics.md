@@ -35,7 +35,8 @@ max(rtol, atol_factor) × max(scale, |a|, |b|)
 - Inside the band, the operands are equal. So `==`, `<=` and `>=` hold, and `<`, `>` and `!=` do
   not.
 - The same band applies in every evaluator. These are a formula, a guard, a trigger, a gate, a
-  reset, an assertion, the ends of a membership test, and the reference interpreter of the tests.
+  reset and an assertion. They are also the ends of a membership test and the reference interpreter
+  of the tests.
 
 This model compares values of zero with small literals, and two literals with each other. A run
 gives the readings in the table below the model.
@@ -102,8 +103,8 @@ through a float. `0.1 day` is exactly 2.4 h, and `48 people/day` is exactly 2 pe
 - An authored literal contributes no floor to a comparison, whatever its unit. This also holds for
   an expression of literals only, and for a formula that names one.
 - The compiler folds constant expressions exactly, wherever the result is rational. A range, a
-  domain, the ends of a test, a fixed key, the support of a drawn input and a cited datum use the
-  folded value.
+  domain, the ends of a test and a fixed key use the folded value. The support of a drawn input and
+  a cited datum also use it.
 - The factor of a unit is exact. `0.01` in `units.json` is 1/100.
 - The run calculates with the float nearest to each exact value.
 - A datum of evidence is exact. A value equals its cited datum only when the two are the same
@@ -149,8 +150,14 @@ tuners:
 - A formula can declare the scale of its result: `gap = formula(this.a - this.b) scale 1 L`.
 
 With no `scale`, the engine infers the size of each stock for integration. The size is the largest
-of these: one declared unit, the starting value, the starting values of the stocks that flows join
-to it, and its finite bounds. A declared scale replaces that inference. Declare a scale when the inferred
+of these:
+
+- one declared unit
+- the starting value
+- the starting values of the stocks that flows join to it
+- its finite bounds.
+
+A declared scale replaces that inference. Declare a scale when the inferred
 size understates how large a value grows.
 
 ## What a scale can change
@@ -203,8 +210,9 @@ times. The engine locates it to the crossing tolerance in time.
   located crossing moves no material.
 - When the flows can put a stock exactly on its bound or threshold, the engine posts a small
   correction. It posts it on the legs that move the stock toward that value, in proportion to their
-  rates. This placement is a preference. The engine does not make it when it would break a hard relation of the
-  author, a frozen allowance, a capacity, or the range of another stock.
+  rates. This placement is a preference. A placement can break a hard relation of the author, a
+  frozen allowance, a capacity, or the range of another stock. In that case, the engine does not
+  make it.
 - A run fails only when a hard rule breaks by more than its band.
 
 The engine pages give the details ([engine/README.md](../engine/README.md)).

@@ -202,7 +202,7 @@ The units of a model come from four places, in this order (`model/library.py`,
 3. the `units.json` and the `evidence/` folder of the package;
 4. for a variant, the `units.json` and the `evidence/` folder of the variant.
 
-A unit or an entry of the evidence (a source, a claim, an assumption) is in one place only, and no
+A unit or an entry of the evidence (a source, a claim, an assumption) is in one place only. No
 file can define a name of the prelude again. A table (`sites: Place from "places.csv"`) is a CSV file of the package folder
 (`model/language/tables.py`).
 
@@ -360,10 +360,10 @@ The builder gives handles for expressions: `this`, `local`, `item`, `root`, `t`,
 constructors (`value`, `input_`, `link`, `flow`, `route`, `legs`, `event`, `after`, `until`, `when`,
 `solver`, `status`, `assertion` and others) make the dataclasses of `program/parts.py`.
 
-`Builder.finish()` gives each part its origin from its place (`grinder.refill.step[0].do[1]`), each
-draw its site (`<origin>.draw[0]`) and each flow with no unit the unit of its ends per hour. Then it
-runs `check.check`. A program that breaks a rule raises `ProgramError`. Each of its `diagnostics` has
-a `code`, a `part` (the origin) and a `message`:
+`Builder.finish()` gives each part its origin from its place (`grinder.refill.step[0].do[1]`), and
+each draw its site (`<origin>.draw[0]`). It gives each flow with no unit the unit of its ends per
+hour. Then it runs `check.check`. A program that breaks a rule raises `ProgramError`. Each of its
+`diagnostics` has a `code`, a `part` (the origin) and a `message`:
 
 ```python
 from napkin.program.build import SINK, Builder, flow, q, value
@@ -384,10 +384,10 @@ except ProgramError as error:
 problems earlier, with its own message at the line. The checker refuses the same problems in a
 program that the builder makes. Its codes are in the module docstring of `program/check.py`. They
 include `unknown_name`, `unknown_unit`, `duplicate_name`, `range`, `kind`, `link_unset`, `no_value`,
-`two_writers`, `readonly_write`, `fixed_write`, `result_write`, `assign_value`, `flow_end`,
-`parameter_end`, `route_end`, `flow_units`, `move_end`, `formula_draws`, `trigger_start`,
-`local_order`, `solve_for`, `priority_item`, `enum_member`, `distribution`, `collection`,
-`duplicate_literal`, `where_live`, `status_fallback` and `arguments`.
+`two_writers`, `readonly_write`, `fixed_write`, `result_write`, `assign_value`, `flow_end` and
+`parameter_end`. They also include `route_end`, `flow_units`, `move_end`, `formula_draws`,
+`trigger_start`, `local_order`, `solve_for`, `priority_item`, `enum_member`, `distribution`,
+`collection`, `duplicate_literal`, `where_live`, `status_fallback` and `arguments`.
 
 ## Diagnostics
 
@@ -488,10 +488,10 @@ computes. It covers:
 - the horizon and the numerical settings of its default run;
 - the version of the language, `LANGUAGE_VERSION`.
 
-It covers no label: no text, title, menu line, note or `record` declaration, and not the places of
-the lines, the comments or the names of the files. So a corrected label or a moved line keeps the
-hash, and a saved edit document stays valid. An edit document names the model hash of its revision
-(`model_hash`).
+It covers no label: no text, title, menu line, note or `record` declaration. It also does not cover
+the places of the lines, the comments or the names of the files. So a corrected label or a moved
+line keeps the hash, and a saved edit document stays valid. An edit document names the model hash of
+its revision (`model_hash`).
 
 ## Proofs over a program
 
