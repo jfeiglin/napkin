@@ -1,9 +1,10 @@
 """A request may switch across a constant capacity. The pump still obeys that capacity."""
+
+import pytest
+
 from napkin.engine import read, run
 from napkin.model.compile import compile_text
 from napkin.program.config import Configuration, Request
-import pytest
-
 
 MODEL = """plant:
     level: L = 0
@@ -17,11 +18,16 @@ MODEL = """plant:
 
 
 def test_a_pump_keeps_its_hard_cap_when_demand_switches_on():
-    program = compile_text(MODEL, {"L": {"volume": 1}, "h": {"time": 1}}).program
+    program = compile_text(MODEL, {'L': {'volume': 1}, 'h': {'time': 1}}).program
     record = run(program, Configuration(Request(2)))
     assert record.failure is None
-    paths = ["plant.level", "plant.tap.request", "plant.tap.capacity",
-             "plant.tap.actual_rate", "plant.delivered"]
+    paths = [
+        'plant.level',
+        'plant.tap.request',
+        'plant.tap.capacity',
+        'plant.tap.actual_rate',
+        'plant.delivered',
+    ]
     level, request, capacity, actual, delivered = read(record, program, paths, [1.0, 2.0])
     assert level.values == pytest.approx((1, 4))
     assert request.values == pytest.approx((2, 2))
@@ -35,9 +41,13 @@ def test_a_pump_keeps_its_hard_cap_when_demand_switches_on():
 def test_time_switched_demand_respects_either_ceiling(location):
     endpoint = '        inflow.capacity = 1 L/h\n' if location == 'inflow' else ''
     pipe = '        capacity = 1 L/h\n' if location == 'tap' else ''
-    source = ('plant:\n    water: L = 0 L\n' + endpoint +
-              '    flow tap: SOURCE -> this.water\n' + pipe +
-              '        request = formula(2 L/h if t > 0.5 h else 0 L/h)\n')
+    source = (
+        'plant:\n    water: L = 0 L\n'
+        + endpoint
+        + '    flow tap: SOURCE -> this.water\n'
+        + pipe
+        + '        request = formula(2 L/h if t > 0.5 h else 0 L/h)\n'
+    )
     m = compile_text(source, {'L': {'volume': 1}, 'h': {'time': 1}})
     rec = run(m.program, Configuration(Request(2)))
     assert rec.failure is None

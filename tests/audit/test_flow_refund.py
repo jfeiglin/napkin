@@ -1,8 +1,10 @@
 """A closed continuous transfer must leave enough inventory to refund its donor."""
+
 from textwrap import dedent
 
-import napkin
 import pytest
+
+import napkin
 
 
 def refund(tmp_path, name, rate, restate_at=None, *, bulk=10000000, empty=False):
@@ -50,6 +52,7 @@ def test_reinstalling_the_same_rate_leaves_the_refund_feasible(tmp_path):
     refund(tmp_path, 'unsplit', '0.05 L/h')
     refund(tmp_path, 'midpoint', '0.05 L/h', 0.5)
     refund(tmp_path, 'quarter', '0.05 L/h', 0.25)
+
 
 def test_empty_inspection_cannot_make_a_refund_possible(tmp_path):
     rate = '0.1 L/h * (t / (1 h))'

@@ -2,9 +2,9 @@
 
 Run from /home/user/napkin:
 
-    NAPKIN_STORE=off OPENBLAS_NUM_THREADS=1 .venv/bin/python scratch/rewrite/b1/s5-engine/bench.py [PLACES ROUTES SOURCES]
+    NAPKIN_STORE=off OPENBLAS_NUM_THREADS=1 .venv/bin/python tools/bench/port/s5-engine/bench.py [PLACES ROUTES SOURCES]
 
-The defaults are A3's 30,000 places, 35,000 routes and 15,000 sources (`scratch/rewrite/a3/network.py`):
+The defaults are A3's 30,000 places, 35,000 routes and 15,000 sources (`network.py` beside this script):
 each place has a level in [-30, 30], a store held at 0 Wh, a supply of the sum of the capacities of
 its sources (times the provider's factor), and a use whose request is its need; each route has its
 strength and its capacity, and the law `carried == pull * (origin.level - destination.level)`. The
@@ -19,7 +19,7 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'a3'))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from network import network  # A3's synthetic network
 
 from napkin.engine import read

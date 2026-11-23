@@ -1,6 +1,6 @@
 """Measure named aggregate outputs and their matched no-AI controls; check the legacy readings.
 
-From the repository root, use `python -m scratch.rewrite.a5.strategic_workforce_results OUTDIR`.
+From the repository root, use `python scenarios/cyber_learning_loop/tools/strategic_workforce_results.py OUTDIR`.
 """
 
 import argparse
@@ -13,7 +13,7 @@ import napkin
 from napkin import store
 from napkin.engine import edits_for
 
-FOLDER = Path(__file__).resolve().parents[3] / 'scenarios/cyber_learning_loop'
+FOLDER = Path(__file__).resolve().parents[1]
 OUTPUTS = {
     'surveillance_program.completed': 'staff_years',
     'effects_program.completed': 'staff_years',

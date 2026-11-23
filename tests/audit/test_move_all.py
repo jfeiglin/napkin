@@ -1,4 +1,5 @@
 """Moving the full contents of an occurrence-owned batch must allow it to retire empty."""
+
 from textwrap import dedent
 
 import napkin
@@ -7,7 +8,8 @@ import napkin
 def test_move_the_whole_batch_including_its_carried_balance(tmp_path):
     (tmp_path / 'units.json').write_text('{"L":{"dimensions":{"volume":1},"scale":1}}')
     path = tmp_path / 'model.scn'
-    path.write_text(dedent("""\
+    path.write_text(
+        dedent("""\
         scenario "Retire a batch"
             horizon 2 h
         plant:
@@ -20,7 +22,8 @@ def test_move_the_whole_batch_including_its_carried_balance(tmp_path):
                 after 1 h:
                     move batch from batch to this.bulk
         plant.work.start()
-    """))
+    """)
+    )
     model = napkin.load_scenario(path)
     record = napkin.run(model.program, model.configuration)
     assert record.failure is None, record.failure

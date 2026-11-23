@@ -12,7 +12,7 @@ moves and without rings, so no ring of empty stocks can form). Two cases:
 - `moving`: each request reads its origin's stock, `rate * stock / (stock + half)` (A4a's T2.3), so
   the set runs on the sparse integrator (`timeline/sparse.py`); no stock reaches its bound.
 
-    cd /home/user/napkin && OPENBLAS_NUM_THREADS=1 .venv/bin/python scratch/rewrite/b1/s2-engine/bench.py held 30000 35000
+    cd /home/user/napkin && OPENBLAS_NUM_THREADS=1 .venv/bin/python tools/bench/port/s2-engine/bench.py held 30000 35000
 """
 
 import sys
@@ -129,7 +129,9 @@ def main():
     for way in runner.ways.instances:
         if isinstance(way, Lines):
             empty = sum(way.level_at(store, horizon) <= 0 for store in way.stores)
-            print(f'  lines: {len(way.stores)} stores, {way.version.sum()} line starts, {empty} stores at zero')
+            print(
+                f'  lines: {len(way.stores)} stores, {way.version.sum()} line starts, {empty} stores at zero'
+            )
         elif isinstance(way, Sparse):
             print(f'  sparse: {len(way.stores)} stores, {way.evaluations} evaluations')
     for reading in found:

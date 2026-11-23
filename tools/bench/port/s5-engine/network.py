@@ -1,4 +1,4 @@
-"""The synthetic network of the earlier trials (`scratch/networks/net.py`, copied), and the
+"""The synthetic network of the earliest solver trials, copied, and the
 route-and-level program of the specification on it, as sparse arrays.
 
 Each place has a level (a unitless unknown in [-30, 30] with the reference value zero), a store held
@@ -10,6 +10,7 @@ with a capacity). Each route has one signed rate, a capacity for its magnitude a
 `program` gives the columns in the order: level[P], supply[S], use[P], carried[R], short[P].
 `short` is the positive-part shortfall of each place, an extra unknown with `use + short >= need`.
 """
+
 import numpy as np
 import scipy.sparse as sp
 from scipy.sparse.csgraph import minimum_spanning_tree
@@ -19,7 +20,7 @@ INF = np.inf
 
 
 def network(places=30000, routes=35000, sources=15000, seed=0):
-    """`scratch/networks/net.py`, with the strengths of `e6_full.py` (b * 100) and its route capacities."""
+    """The earliest trials' network, with the strengths of `e6_full.py` (b * 100) and its route capacities."""
     rng = np.random.default_rng(seed)
     xy = rng.uniform(0, 1, (places, 2))
     k = 6
@@ -45,8 +46,19 @@ def network(places=30000, routes=35000, sources=15000, seed=0):
     pmax = rng.uniform(1.0, 20.0, sources)
     pmax *= 1.6 * need.sum() / pmax.sum()
     cap = np.random.default_rng(3).uniform(2.0, 12.0, len(edges))
-    return dict(xy=xy, frm=frm, to=to, b=b, need=need, at=at, pmax=pmax, cap=cap,
-                places=places, routes=len(edges), sources=sources)
+    return dict(
+        xy=xy,
+        frm=frm,
+        to=to,
+        b=b,
+        need=need,
+        at=at,
+        pmax=pmax,
+        cap=cap,
+        places=places,
+        routes=len(edges),
+        sources=sources,
+    )
 
 
 def layout(net):
@@ -84,7 +96,9 @@ def program(net, need=None, up=None, level_range=30.0, shortfall=True):
         cols += [at['use'], at['short']]
         vals += [np.ones(P), np.ones(P)]
         m += P
-    A = sp.coo_array((np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))), shape=(m, n)).tocsr()
+    A = sp.coo_array(
+        (np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))), shape=(m, n)
+    ).tocsr()
     row_lower = np.zeros(m)
     row_upper = np.zeros(m)
     lower = np.zeros(n)
@@ -93,8 +107,8 @@ def program(net, need=None, up=None, level_range=30.0, shortfall=True):
     upper[at['supply']] = net['pmax']
     lower[at['carried']], upper[at['carried']] = -net['cap'] * up, net['cap'] * up
     if shortfall:
-        row_lower[P + R:] = need
-        row_upper[P + R:] = INF
+        row_lower[P + R :] = need
+        row_upper[P + R :] = INF
     else:
         upper[at['use']] = need
     return A, row_lower, row_upper, lower, upper, at

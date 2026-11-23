@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from scratch.rewrite.audit import port_benchmark as bench
+from tools.bench import port_benchmark as bench
 
 
 @pytest.mark.parametrize('row', ['held-pipes', 'component-tanks', 'sparse-compartment-tanks'])
@@ -27,7 +27,7 @@ def test_calibration_uses_both_engines_and_keeps_one_repeat_count(tmp_path, monk
             worker_script=Path(bench.__file__),
             mode='timing',
             revision=['B=B', 'F=F'],
-            harness=Path(bench.__file__).resolve().parents[3],
+            harness=Path(bench.__file__).resolve().parents[2],
         )
     )
     schedule = bench.read(tmp_path / 'final' / f'{row}.schedule.json')

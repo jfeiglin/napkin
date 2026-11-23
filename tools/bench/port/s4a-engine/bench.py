@@ -1,7 +1,7 @@
 """The benchmark of S4a-E: places, each with an event that a clock starts every few hours and whose
 occurrence owns a flow from its place for an hour.
 
-    .venv/bin/python scratch/rewrite/b1/s4a-engine/bench.py PLACES HOURS PHASES
+    .venv/bin/python tools/bench/port/s4a-engine/bench.py PLACES HOURS PHASES
 
 Each place holds 100 L. Its clock (`when t >= phase`, `reset after period`) starts `ship`, whose
 occurrence owns `out: this.stock -> SINK` at 1 L/h and waits 1 h, so its flow joins at the start and
@@ -18,7 +18,21 @@ import time
 
 from napkin.engine import read
 from napkin.engine.timeline import Plan, Run
-from napkin.program.build import SINK, Builder, after, event, flow, input_, q, reset_after, start, t, this, value, when
+from napkin.program.build import (
+    SINK,
+    Builder,
+    after,
+    event,
+    flow,
+    input_,
+    q,
+    reset_after,
+    start,
+    t,
+    this,
+    value,
+    when,
+)
 from napkin.program.config import Configuration, Request
 
 
@@ -54,8 +68,10 @@ def main(places=30000, hours=48, phases=12):
     first = read(record, program, ['places.p000000.stock'], [float(hours)])[0].values[0]
     expected = 100 - len([k for k in range(10**6) if 3 * k <= hours - 1])  # phase 0: one litre a start
     assert first == expected, (first, expected)
-    print(f'{places} places, {phases} phases, {hours} h: build {built - begun:.9f} s, plan {planned - built:.9f} s, '
-          f'run+record {ran - planned:.9f} s; {starts} starts; p0 stock {first:g} L (by hand {expected} L)')
+    print(
+        f'{places} places, {phases} phases, {hours} h: build {built - begun:.9f} s, plan {planned - built:.9f} s, '
+        f'run+record {ran - planned:.9f} s; {starts} starts; p0 stock {first:g} L (by hand {expected} L)'
+    )
 
 
 if __name__ == '__main__':

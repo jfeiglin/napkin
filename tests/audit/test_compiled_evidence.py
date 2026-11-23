@@ -1,4 +1,5 @@
 """A cited change to a member's field belongs in the compiled artifact's side table."""
+
 from napkin.engine.report import report
 from napkin.engine.timeline import run
 from napkin.model.compile import compile_text
@@ -6,7 +7,7 @@ from napkin.program.artifact import loads
 
 
 def test_member_field_citation_survives_in_compiled_artifact():
-    source = '''scenario "Meters"
+    source = """scenario "Meters"
     horizon 1 h
 Cell:
     input reading: L = 0 L
@@ -17,7 +18,7 @@ south: Cell
 total = formula(sum(Cell.instances.reading))
 record meter_north: source "Northern meter reading."
 record meter_south: source "Southern meter reading."
-'''
+"""
     units = {'h': {'time': 1}, 'L': {'volume': 1}}
     model = compile_text(source, units)
     record = run(model.program, model.configuration)

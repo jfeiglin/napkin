@@ -2,17 +2,16 @@
 
 Tested the remote branch `claude/blissful-heisenberg-5me2hn` at `5d9409bcacf3da6381cd7bdc23c1a934dc583091`. The comparison revision was `8e422da`. The tests run small authored models through the compiler, runner, artifact loader, evidence gate or CLI. Each assertion describes the expected public behavior. Several parameterizations are passing controls.
 
-Extract this directory outside your checkout. From the root of a Napkin checkout with its normal development dependencies installed, run the following, substituting the directory you extracted.
+Run them from the root of the checkout:
 
 ```sh
-PYTHONPATH="$PWD" NAPKIN_STORE=off PYTHONDONTWRITEBYTECODE=1 \
-    .venv/bin/python -B -m pytest -q -p no:cacheprovider /path/to/repros
+.venv/bin/python -B -m pytest -q tests/audit
 ```
 
 The smallest hard-cap example is also a standalone scenario in `valve/`:
 
 ```sh
-.venv/bin/napkin run /path/to/repros/valve --at 1h,2h \
+.venv/bin/napkin run tests/audit/valve --at 1h,2h \
     --value plant.tap.request,plant.tap.capacity,plant.tap.actual_rate,plant.water
 ```
 

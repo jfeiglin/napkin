@@ -270,7 +270,7 @@ def worker(args):
     if module.parent != root / 'napkin':
         raise RuntimeError(f'loaded {module} instead of {root}/napkin')
     name, argv = workload(args.row, args.phase)
-    path = Path(args.harness) / 'scratch/rewrite/b1' / name
+    path = Path(args.harness) / 'tools/bench/port' / name
     sys.argv = [str(path), *argv]
     if args.row.endswith('tanks'):
         sys.argv.extend(['--repeat', str(args.repeat)])
@@ -390,7 +390,7 @@ def read(path):
 
 
 def take(path, args, row, tag, root, sha, repeat, diagnostic=False):
-    source = Path(args.harness) / 'scratch/rewrite/b1' / workload(row, args.phase)[0]
+    source = Path(args.harness) / 'tools/bench/port' / workload(row, args.phase)[0]
     if path.exists():
         existing = read(path)
         if (
@@ -490,7 +490,7 @@ def campaign(args):
                     'alternating_order': names,
                     'driver_sha256': file_digest(Path(__file__)),
                     'source_sha256': file_digest(
-                        Path(args.harness) / 'scratch/rewrite/b1' / workload(row, args.phase)[0]
+                        Path(args.harness) / 'tools/bench/port' / workload(row, args.phase)[0]
                     ),
                     'host': platform.node(),
                     'python': sys.version,
@@ -674,7 +674,7 @@ def main():
         cmd = actions.add_parser(action)
         cmd.add_argument('--phase', choices=PHASES, required=True)
         if action != 'summary':
-            cmd.add_argument('--harness', default=str(Path(__file__).resolve().parents[3]))
+            cmd.add_argument('--harness', default=str(Path(__file__).resolve().parents[2]))
         if action == 'worker':
             cmd.add_argument('--root', required=True)
             cmd.add_argument('--sha', required=True)

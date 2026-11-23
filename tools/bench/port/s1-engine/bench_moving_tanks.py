@@ -31,7 +31,9 @@ def main():
     args.add_argument('--tanks', type=int, default=12)
     args.add_argument('--hours', type=float, default=12)
     args.add_argument('--method', choices=('component', 'sparse'), required=True)
-    args.add_argument('--compartment', action='store_true', help='fill each tank from an exponentially draining supply')
+    args.add_argument(
+        '--compartment', action='store_true', help='fill each tank from an exponentially draining supply'
+    )
     args.add_argument('--repeat', type=int, default=1, help='fresh runs with identical inputs')
     options = args.parse_args()
     if options.tanks < 1 or options.hours <= 0 or options.repeat < 1:
@@ -52,9 +54,16 @@ def main():
             for i, row in enumerate(read(record, model, paths, times)):
                 for t, observed in zip(times, row.values):
                     expected = -(100 + i) * math.expm1(-t / (4 + i))
-                    assert math.isclose(observed, expected, rel_tol=1e-8, abs_tol=1e-10), (i, t, observed, expected)
-    print(f'{options.method}: {options.tanks} tanks, {options.hours:g} h, {options.repeat} runs, '
-          f'run+record {elapsed:.9f} s, mean {elapsed/options.repeat:.9f} s')
+                    assert math.isclose(observed, expected, rel_tol=1e-8, abs_tol=1e-10), (
+                        i,
+                        t,
+                        observed,
+                        expected,
+                    )
+    print(
+        f'{options.method}: {options.tanks} tanks, {options.hours:g} h, {options.repeat} runs, '
+        f'run+record {elapsed:.9f} s, mean {elapsed / options.repeat:.9f} s'
+    )
 
 
 if __name__ == '__main__':
