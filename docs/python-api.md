@@ -1,892 +1,499 @@
 # The Python API
 
-`import napkin` gives the public core of the engine. With it, a program builds the models of a
-package and runs their studies. It samples their distributions, plays a run one decision at a time,
-and analyses the dynamics of a run. These names are the public API:
+The public Python API is the list of names in `_EXPORTS` of `napkin/__init__.py`. Each name loads
+its module when a script first uses it, so `import napkin` loads no compiler, no engine, and no
+numpy or scipy. Every other name of the package is internal and can change in a minor version. The
+words **model**, **package**, **variant**, **input**, **run**, **named run**, **configuration**,
+**record**, **reading**, **path**, **edit**, **breakpoint**, **checkpoint** and **study** have the
+meanings of [the terms](language/README.md#terms).
 
-| Name | What it does |
+| Name | Module | What it gives |
+| --- | --- | --- |
+| [`load_scenario`](#load_scenario) | `napkin.model.compile` | The compiled model of a package, of a variant or of a model file |
+| [`load_package`](#load_package) | `napkin.package` | The compiled model of each variant of a package |
+| [`run`](#run) | `napkin.engine.timeline` | The record of one run, or a checkpoint |
+| [`read`](#read) | `napkin.engine.timeline.record` | The values of paths at times, from a record |
+| [`report`](#report-and-lag) | `napkin.engine.report` | The values of paths at times, with units, labels, lags, evidence trails and near-ties |
+| [`Lag`](#report-and-lag) | `napkin.engine.report` | A reporting lag |
+| [`Session`](#session) | `napkin.session` | One run, stopped at breakpoints, edited, saved and resumed |
+| [`study`](#study) | `napkin.engine.study` | The records of the named runs of a model |
+| [`monte_carlo`](#monte_carlo) | `napkin.engine.uncertainty` | A Monte Carlo study of one run of a program |
+| [`spread`](#spread) | `napkin.spread` | The module of the Monte Carlo study of one run of a model |
+| [`instances`](#instances) | `napkin.model.views` | The members of a template, with their links |
+| [`dynamics`](#dynamics) | `napkin.dynamics` | The module of the field, the equilibria, the branches, the thresholds and the sensitivity of a run |
+
+`napkin.__version__` is the version of the package. `napkin.SCHEMA_VERSION` (`"0.0.1"`) is the
+version of the edit document.
+
+The examples on this page ran in a folder that holds the `examples/` folder of this repository. Each
+example shows the output that it printed.
+
+## load_scenario
+
+```text
+napkin.load_scenario(path, *, run=None, edits=None)
+```
+
+`path` is a package folder, its `model.scn`, the folder or the `model.scn` of a variant, or another
+model file. `run` names a named run, and `edits` is an edit document
+([cli.md](cli.md#the-edit-document)). The result is a `Compiled`
+([compiler.md](compiler.md#the-two-entry-points)):
+
+| Field or function | What it gives |
 | --- | --- |
-| `load_scenario(path, …)` | Builds, checks and proves the model of one model file ([Build a model](#build-a-model)). |
-| `load_package(path, …)` | Builds each model of a package: its own model, or the model of each variant. |
-| `evaluate_study(model, …)` | Checks an edit document and simulates the runs ([Studies](#studies)). |
-| `sample_result(study, …)` | Gives the report of a study. |
-| `monte_carlo(program, configuration, paths, times, settings)` | Samples one run and summarizes the requested readings ([Uncertainty](#uncertainty)). |
-| `Session(model, run, …)` | Plays one run, one decision at a time ([Session](#session)). |
-| `actors(model)`, `instances(model, template)` | List the actors with their choices, and the instances of a template ([Views](#views)). |
-| `napkin.dynamics` | Finds rest states, branches of rest states and thresholds, and ranks the inputs ([Dynamics](#dynamics)). |
+| `declared` | The declared model: its scenario line, entities, members, values, options, named runs and records |
+| `program` | The program that the engine runs |
+| `configuration` | The configuration of the run that `run` and `edits` chose: the default run when both are None |
+| `reports` | The warnings, each a `Problem` that refuses nothing |
+| `model_hash` | The model hash, which an edit document names |
+| `table` | The side table: the place, the label, the evidence and the title of each part |
+| `configure(run=None, edits=None, options=None)` | The configuration of another run of this model |
+| `artifact()` | The program with its side table, as a file keeps it |
 
-Everything else is internal and may change in a minor version. This page also names the classes that
-these functions take or raise: `ModelError` (`napkin.model`), `SamplingSettings` (`napkin.engine`) and
-`OtherContext` (`napkin.session`). A program uses them as this page shows. `napkin.__version__` is the
-version of the package, and `napkin.SCHEMA_VERSION` is the version of the documents that the engine
-reads and writes (`0.0.1`).
-
-`import napkin` loads no other module. Each name loads its module when a program uses it first. The
-examples on this page run from the root of a checkout, because the wheel does not ship `examples/` or
-`scenarios/`. A program that uses this API simulates each run that it asks for: the run store is for
-the `napkin` command ([engine.md](engine.md#the-run-store)). The command line is in
-[cli.md](cli.md), and the language of the model files is in [language.md](language.md). The steps of
-the compiler that builds a model are in [compiler.md](compiler.md).
-
-## Build a model
-
-`load_scenario(path, library=None, *, admission_runs=None)` reads one model file, builds its model,
-checks it and proves it. `path` is a `model.scn`: the main file of a package, or the file of a
-variant. The model of a variant also holds its package's main file and the modules that they use
-([language.md §2.12](language.md#212-packages-variants-and-modules)).
+A file that does not exist raises `FileNotFoundError`. A model that does not compile raises
+`napkin.model.LanguageError`, whose `problems` hold each problem with its code and its place.
 
 ```python
 import napkin
 
-model = napkin.load_scenario('examples/piano_tuners/model.scn')
-print(list(model.runs))
-print(list(model.inputs))
-staff = model.inputs['tuners.staff']
-print(staff['unit'], staff['value'], staff['range'], staff['doc'])
-print(dict(model.outputs))
+model = napkin.load_scenario('examples/incident_response_tempo')
+print(model.declared.scenario.title, [item.name for item in model.declared.runs][:2])
+print(model.configure('rapid_response').inputs[1])
 ```
 
-```
-['base']
-['tuners.rate', 'tuners.staff', 'tuners.need']
-tuner 3 (1, 10) Tuners in the town
-{'tunings_done': 'tunings_done'}
+```text
+Attack tempo and incident response ['standard', 'rapid_response']
+InputValue(member='response', name='containment_delay', value=Quantity(number=2, unit='h'))
 ```
 
-A model that is built is valid. The build checks each of these once:
+## load_package
 
-- the files: the form of each line, the modules and their uses, and the names that two files declare;
-- the rules of the language: names, units, ranges, bools, named values, options and runs;
-- the library, and each record that a line cites;
-- one flat structure for each set of start-state options that a run uses, with the compiler's checks
-  and proofs of its bounds and domains; and each whole structure, so a part that every run leaves out
-  is still checked ([The parts that cannot act](#the-parts-that-cannot-act));
-- the start, when the model has one: one thing has the event `start`, with no `after` and one
-  outcome, and it fires first, at t = 0, in every run;
-- the values of every run, with the blocking checks of the inputs, so each run of the model as its
-  files write it resolves;
-- the options that no run names: their values, and each of them with the other options of each run.
-
-The build does not check any other combination of options. A caller asks for one with
-`model.combination` ([The model](#the-model)).
-
-The library of a model is the prelude's units (`napkin/std/units.json`), the library that the main
-file's `library "PATH"` line names, and the units and evidence of the package's folder and of the
-variant's folder. Leave `library` out: then the build reads all of these. A library that a caller
-gives is the whole library, the prelude included.
-
-A model that fails raises `ModelError`. Its `diagnostics` are a list of dicts, each with its `code`,
-`path`, `message` and `severity`, and with the `file`, `line` and `column` of the part that it is
-about. A diagnostic of a name that names nothing ends with the closest names of the model, when one
-is close. A JSON file of the model that writes a key twice, or a number that is not finite, raises
-`SourceError` (`napkin.model`). A model file that is not UTF-8 text raises Python's
-`UnicodeDecodeError`.
-
-```python
-import shutil
-import tempfile
-from pathlib import Path
-
-import napkin
-from napkin.model import ModelError
-
-folder = Path(tempfile.mkdtemp()) / 'piano_tuners'
-shutil.copytree('examples/piano_tuners', folder)
-entry = folder / 'model.scn'
-entry.write_text(entry.read_text().replace('to 10 tuner', 'to 10 tunr'))
-try:
-    napkin.load_scenario(entry)
-except ModelError as error:
-    for item in error.diagnostics:
-        print(item)
+```text
+napkin.load_package(path)
 ```
 
-```
-{'code': 'build', 'path': 'tuners/staff/max:', 'message': "Unregistered unit 'tunr'", 'severity': 'error', 'line': 14, 'column': 5, 'file': '/tmp/tmp4ljt288d/piano_tuners/model.scn'}
-```
+`path` is a package folder or its `model.scn`. The result is `{name: Compiled}`: `{package: model}`
+for a package with no variants, else `{package:variant: model}` for each variant, in name order. One
+`LanguageError` holds the problems of every model that fails. A problem of the main file shows once.
 
-`load_package(path, library=None, *, admission_runs=None)` builds each model of a package, as
-`load_scenario` builds it. `path` is the package's folder or its main file. It gives `{name: model}`:
-`{package: model}` for a package without variants, else `{package:variant: model}` for each variant,
-in name order. When models fail, it raises one `ModelError` with the diagnostics of each, and each
-diagnostic names its model (`model`).
+The package `demo` comes from `napkin new demo --variants east,west` ([cli.md](cli.md#napkin-new)):
 
 ```python
 import napkin
 
-models = napkin.load_package('examples/reservoir')
-print({name: model.scenario.title for name, model in models.items()})
+for name, model in napkin.load_package('demo').items():
+    record = napkin.run(model.program, model.configuration)
+    (served,) = napkin.read(record, model.program, ['people_served'], [720])
+    print(name, served.values, served.unit)
 ```
 
+```text
+demo:east (600.0,) people
+demo:west (900.0,) people
 ```
-{'reservoir': 'A reservoir in a storm'}
+
+## run
+
+```text
+napkin.run(program, configuration, breakpoints=())
 ```
 
-### Admission scope
+The function runs a program under a configuration to the horizon of its request, and gives the
+`Record` of the run (`napkin/program/record.py`). A run that fails gives the record up to the time at
+which it stopped, with its failure. A run that one of `breakpoints` stops gives a `Checkpoint`
+(`napkin/program/checkpoint.py`); [`Session`](#session) is the simple way to use breakpoints.
 
-`admission_runs` is a collection of the names of runs. With it, the build keeps every check of the
-files, the evidence, the units, the tables and the structures. It resolves and proves the values of
-the named runs only, and it skips the options that no run names. So a model of a large package builds
-faster. `napkin run --run` and `napkin play` build the model for their run only, and `napkin sample
---run` for the run and the runs that it is compared with. `napkin compile` checks every run.
+The engine refuses a part that it does not run with `napkin.engine.timeline.Outside`, and a
+configuration that the program cannot take with `napkin.program.config.ConfigurationError`.
 
-`model.admission_runs` is None for a full build, or the tuple of the admitted runs. The model hash does
-not change with the scope. A model with a scope runs only the admitted runs, and a study of it must
-name its runs:
+A `Record` has its `manifest`, its `histories`, its `trace` and its `failure`. `record.entries(kind)`
+gives the entries of the trace, and `record.near_ties()` gives the decisions within the tolerance of
+their boundary.
 
 ```python
 import napkin
 
-model = napkin.load_scenario('examples/reservoir/model.scn', admission_runs=['base'])
-print(model.admission_runs)
-print(napkin.evaluate_study(model).diagnostics)
-print(napkin.evaluate_study(model, runs=['base']).admissible)
+model = napkin.load_scenario('examples/reservoir')
+record = napkin.run(model.program, model.configuration)
+print(record.manifest.horizon, record.failure)
+print([(entry.t, entry.kind, entry.part) for entry in record.entries('commit')])
 ```
 
+```text
+120.0 None
+[(40.0, 'commit', 'operator.decide.step[0]')]
 ```
-('base',)
-[{'code': 'admission_scope', 'severity': 'error', 'message': 'A scoped model requires an explicit selection of admitted runs'}]
-True
+
+## read
+
+```text
+napkin.read(record, program, paths, times)
 ```
 
-A model with a scope is not a model that passed every check. Do not show it as one.
+The function gives one `Reading` for each path, in order. A `Reading` has its `path`, its `key`, its
+`unit` (the declared unit) and its `values`, one for each time, in order. Times are in hours.
 
-### The model
+A value comes only from what the record holds. Any other value is `Unavailable` with its reason: a
+time before the run, after its horizon or after its stop, a value that the record does not hold, or
+a value of an occurrence before its start. A path that names no value of the program raises
+`KeyError`.
 
-`Model` is a frozen dataclass. Its mappings are read-only. A program may read these fields, and the
-others are internal:
+```python
+import napkin
+
+model = napkin.load_scenario('examples/piano_tuners')
+record = napkin.run(model.program, model.configuration)
+for reading in napkin.read(record, model.program, ['tunings_done', 'tuners.due'], [0, 4380, 8760]):
+    print(reading.path, reading.unit, reading.values)
+```
+
+```text
+tunings_done tunings (0.0, 1461.768743696291, 2923.537487392582)
+tuners.due tunings (5000.0, 3538.231256303709, 2076.462512607418)
+```
+
+## report and Lag
+
+```text
+napkin.report(record, program, configuration, paths, times, lags=None, model=None, options=(), *, table=None)
+napkin.Lag(shortest, longest)
+```
+
+`report` reads the values of `paths` at `times` from one record, as `napkin run` shows them
+([cli.md](cli.md#napkin-run)). Give the side table in `table` (`Compiled.table`) for the labels, the
+titles and the evidence. `lags` maps a path to its `Lag`. `options` names the options of the run,
+whose settings the evidence trails cite. A time outside the run raises `ValueError`.
+
+`Lag(shortest, longest)` is a uniform reporting lag, in hours. The value at a time t is the mean of
+its history from t − `longest` to t − `shortest`. Equal ends are a fixed delay. A lag is valid only
+for a number that a proof says never falls over the run. Without that proof, the value keeps its
+plain read, and its `note` gives the reason. A window that starts before 0 h is `Unavailable`.
+
+The result is a `Report`:
 
 | Field | What it holds |
 | --- | --- |
-| `origin` | The path of the model file. |
-| `scenario` | The model as the file writes it. Its `title`, `summary` and `scope` are the texts of the scenario line (a variant's title follows its package's). |
-| `menu` | The options: `{group: {option: its text}}`, in the order of the file. |
-| `runs` | `{run: {options, name, comparison_of, starts}}`: the options of the run in the order written; the name that a report shows (its text, or its options joined by " · "); the run that its `versus` names, or None; and its start-state options. |
-| `start_options` | The options that set a start state: a named state, or the start value of a stock, tally or number state, in the order of the menu. |
-| `inputs` | `{input: …}` for each input and fixed value, with its `entity`, `field`, `doc`, `type` (`number`, `bool` or `names`, with its `values`), `unit`, `value`, `distribution` (the record of its distribution, or None), `fixed`, `range`, `basis` (the record of its value), `options` (the value that each option gives it) and `groups`. The `value` of an input with a distribution is its central value. |
-| `outputs` | `{output in the file: its outcome in a report}` ([Names](#names)). |
-| `events` | `{event in the file: its event in the structure}`, for each event and each of its outcomes. |
-| `time` | `{horizon}` in hours, with `timescales` and `resolution` when the file gives them. |
-| `initiation` | The start, `{rule, effect, entity, basis}`, or None for a model without one. |
-| `structures` | `{starts: structure}`: one flat structure for each set of start-state options that a run uses, as a `Structure` of typed records ([The structure](#the-structure)). |
-| `left_out`, `whole` | For each structure, the parts that it leaves out and why, and the structure before it leaves out a part, which is a `Structure` too ([The parts that cannot act](#the-parts-that-cannot-act)). |
-| `admission_runs` | None, or the admitted runs ([Admission scope](#admission-scope)). |
-| `model_hash` | The SHA-256 of the meaning of the model, of the units that it uses, of the records that it reaches and of the language's version. It covers no name or path: not the names of the package and the variant, nor the folder of the library. It covers no unit or record that the model does not reach, not the list of variants and not the package's version. So a rename keeps it, a new variant does not change its siblings' hashes, and a unit that a later prelude adds changes no hash. An edit document and a play log name it. |
-| `implementation_hash` | The digest of the code of the engine, of the model and of the expressions, and of the compiler's schemas, comments included. A report and a play log keep it; an edit document does not. |
-| `library_hash` | The digest of the units that the model uses and of the records that it reaches. |
-
-`combination(run, options)` gives the model of one run with other options. Its one run is `run`, with
-each of `options` in place of the run's option of its group, or added when the run names none of
-that group. The build does not check a combination that no run makes, so this call checks it as the
-build checks a run: its values, the blocking checks of its inputs and the proofs of its structure.
-The derived model keeps the model's identity, its structures and its evidence. Its run keeps its name,
-so an edit document of the model applies to it as to the run.
+| `times` | The times of the report |
+| `values` | One `Reported` for each path: its `path`, `unit`, `label`, `title`, `values`, `lag`, `note` and evidence `trail` |
+| `near_ties` | Each decision within the tolerance of its boundary (`NearTie`) |
+| `end`, `stopped` | The time to which the record reaches, and why it stopped there (None for a run to its horizon) |
+| `records` | Each evidence record that a trail cites: its name, its kind and its text |
 
 ```python
 import napkin
-from napkin.model import ModelError
-
-model = napkin.load_scenario('scenarios/water_controls_wipe/variants/juneau/model.scn')
-print({group: list(options) for group, options in model.menu.items()})
-print(list(model.runs))
-print(dict(model.runs['early_kept']))
-derived = model.combination('early_kept', ['Delayed response'])
-print(dict(derived.runs['early_kept']))
-try:
-    model.combination('early_kept', ['Late response'])
-except ModelError as error:
-    print(error.diagnostics)
-```
-
-```
-{'Response': ['Early response', 'Standard response', 'Delayed response'], 'Access': ['No hidden access', 'Keeps hidden access'], 'Attacker': ['AI agent', 'Human team'], 'Reach': ['Every system of the place']}
-['early_kept', 'standard_kept', 'delayed_kept', 'delayed_none', 'delayed_kept_human']
-{'options': ('Early response', 'Keeps hidden access'), 'name': 'Early response · Keeps hidden access', 'comparison_of': None, 'starts': ('Keeps hidden access',)}
-{'options': ('Delayed response', 'Keeps hidden access'), 'name': 'Delayed response · Keeps hidden access', 'comparison_of': None, 'starts': ('Keeps hidden access',)}
-[{'code': 'reference', 'path': 'options/Late response', 'message': 'Late response is not an option; did you mean Early response, Delayed response or Standard response?', 'severity': 'error'}]
-```
-
-An option that is not in the menu is a diagnostic (`reference`), and so are two options of one group
-(`combination`). The combination runs in the structure of its start-state options. When no run of the
-model starts from them, it is a diagnostic too (`combination`).
-
-### The structure
-
-The engine runs a flat structure: the model with its templates, copies and files made into one set of
-named parts. `model.structures` holds one for each set of start-state options that a run uses. The key
-is the sorted tuple of those options, `()` for runs that have none, and `model.structure_of(run)`
-gives the structure of a run. [engine.md](engine.md#what-the-engine-reads) lists its sections and what
-the engine does with each one.
-
-A structure is a `Structure` (`napkin.model.structure`): a frozen record of typed parts. A program
-reads a part as an attribute, such as `structure.flows[name].rate`, and never as a key of a nested
-mapping. These rules hold for each record:
-
-- **Sections.** Each section is a read-only mapping from the name of a part to its record, in the
-  compiled order: `structure.quantities`, `structure.flows`, `structure.rules`.
-- **Fields.** [engine.md](engine.md) names the fields of each part. The ends of a flow and of a move
-  are `source` and `target`, not `from` and `to`. The bounds of a quantity are `minimum` and
-  `maximum`, not `min` and `max`. Those four short words are words of Python.
-- **No value.** A field that a part does not have is None. A flow from outside the model has the
-  `source` None, and a rule with no window has the `each` None.
-- **Lists.** Each list is a tuple, and no record can change.
-- **Expressions.** An expression is its typed node (`napkin.core.expr`), or the number or the yes/no
-  that it is. `str(node)` is the text of the expression, and `napkin.core.expr.names(node)` gives the
-  names that it reads.
-- **Records.** The evidence of a part (`basis`) and its `metadata` are plain read-only data.
-
-`model.whole[starts]` is a `Structure` too. `model.resolve(run, values)` gives a `Resolved`: a
-`Structure` with the values of one run ([engine.md](engine.md)). The `resolved` of each run of a study
-is a `Resolved` ([Studies](#studies)). A resolved run shares the parts of its structure, which cannot
-change: `model.resolve(run).flows` is the `flows` of the structure of the run, the same object.
-
-```python
-import napkin
-
-model = napkin.load_scenario('examples/reservoir/model.scn')
-structure = model.structure_of('base')
-print(list(model.structures), structure is model.structures[()])
-spill = structure.flows['reservoir.spill']
-print(spill.source, spill.target, spill.rate)
-print(structure.flows['reservoir.storm'].source)
-water = structure.quantities['reservoir.water']
-print(water.kind, water.initial, water.minimum, water.maximum)
-rule = structure.rules['operator.decide']
-print(rule.trigger.kind, rule.trigger.var, rule.trigger.op, rule.trigger.value)
-print([outcome.name for outcome in rule.outcomes], rule.each)
-
-resolved = model.resolve('base', {'reservoir.inflow': 0.04})
-print(type(resolved).__name__, resolved.run, resolved.parameter_values['reservoir.inflow'])
-study = napkin.evaluate_study(model)
-print(type(study.runs['base']['resolved']).__name__)
-```
-
-```
-[()] True
-reservoir.water reservoir.spilled reservoir.spillway if reservoir.gate == 'open' else 0
-None
-stock q(0.6, 'fraction') 0 None
-crossing reservoir.water >= operator.level
-['open', 'wait'] None
-Resolved base 0.04
-Resolved
-```
-
-These rules hold for every section:
-
-- **Names.** Each part has the name of [Names](#names).
-- **Paths.** Each part has its `path`: the place of its line in the file, such as `reservoir/spill`
-  for a flow and `operator/decide/open` for an outcome. A report and a diagnostic name a part by it.
-  A part of an instance that its template writes has the template's place.
-- **Owners.** A stock, tally, flow and share belongs to the entity that declares it.
-- **Copies.** The entity record of a copy has `origin`, its set, and `copy`, its number.
-- **Actors.** An entity has `sees`: the facts that the actor sees, or None for a thing of the world. A
-  played run shows them at each decision ([engine.md](engine.md#play)).
-- **Links** are keyed by the part that they reach, under the entity that reaches it.
-- **Outputs** read zero for a stock or tally that the structure leaves out.
-
-Every structure has every input. So a run accepts an edit of any input, also of an input that only a
-part that the run leaves out reads.
-
-### The queries of a structure
-
-A `Structure` answers the questions that the engine, the reports and the pictures ask of a model.
-
-| Query | What it gives |
-| --- | --- |
-| `section(name)` | `{name: record}` of one kind of part, by the name of its section. |
-| `moment_order()` | The rules in the order in which one moment reads them: by `rank`. |
-| `flows_from(quantity)`, `flows_into(quantity)` | The names of the flows that drain a quantity, or fill it, in the order of the flows. |
-| `owner(name)` | The entity that a part belongs to, or None for a part of no entity, such as an output of the scenario. |
-| `names(source)` | The names that one expression reads itself. It reads nothing through a formula. |
-| `reads(rule, roles=None)` | The names that a rule reads itself: in all its expressions, or in those of the `roles` that the caller names. |
-| `writes(rule)` | What a rule can change: each value that an outcome sets, and the two ends of each move. |
-| `expanded(source, labels=False, keep=False)` | The names that an expression reads through the formulas. With `labels`, it also reads through the statuses. With `keep`, the result has the names of the formulas on the way. |
-| `left(section)` | `{name: why}` of the parts of one section that the structure leaves out ([The parts that cannot act](#the-parts-that-cannot-act)). |
-
-A rule answers three more questions. `rule.sources()` gives each expression that the rule reads, with
-its role: `when`, `delay`, `each`, `keep`, `extra`, `chance`, `available`, `set` or `amount`.
-`rule.events()` gives each event that the rule can make happen. `rule.steps()` gives what each outcome
-does.
-
-```python
-import napkin
-
-model = napkin.load_scenario('examples/reservoir/model.scn')
-structure = model.structure_of('base')
-rule = structure.rules['operator.decide']
-print(structure.flows_from('reservoir.water'), structure.flows_into('reservoir.water'))
-print(sorted(structure.reads(rule)), sorted(structure.writes(rule)))
-print(rule.sources())
-print(rule.events())
-print(structure.owner('reservoir.spill'), [item.id for item in structure.moment_order()])
-print(sorted(structure.expanded(structure.rates['reservoir.risk_time'].expr)))
-print(dict(structure.left('rules')))
-```
-
-```
-('reservoir.spill',) ('reservoir.storm',)
-['operator.level', 'reservoir.water'] ['reservoir.gate']
-(('when', 'reservoir.water >= operator.level'), ('chance', '1'))
-('operator.decide', 'operator.decide.open', 'operator.decide.wait')
-reservoir ['operator.decide']
-['reservoir.risk', 'reservoir.water']
-{}
-```
-
-### The parts that cannot act
-
-A structure leaves out the parts that cannot act in any of its runs, from its start values. The
-analysis follows what the runs can reach:
-
-- each named state takes its start value, and each value that an outcome that can happen gives it;
-- for two named states that a condition tests together, the values that they can take at once;
-- an event can happen only when a rule that emits it can fire;
-- a condition on a stock, a time or anything else counts as possible.
-
-A rule can fire where its `when` can hold, or where the step of an outcome that can happen names it.
-An outcome can happen where its chance can be above 0. A condition that the runs never reach makes it
-impossible; a number, an expression and `else` count as possible.
-
-The structure then leaves out:
-
-- each rule that cannot fire, and each event of those rules only;
-- a stock or tally that starts at zero and that no part that stays changes or reads: outputs and
-  checks read zero for it;
-- a named state that no part that stays changes or reads;
-- an entity none of whose parts can act and that no part of another entity reads, with its states,
-  stocks, flows, formulas, status and checks.
-
-Each part that stays keeps the parts that it names, so each name of a structure resolves:
-
-- a rule keeps what its `when`, `after`, `each`, `while`, its chances, its draws, its delayed values
-  and the conditions of its outcomes read, and what the step of each of its outcomes reads and
-  changes, also for an outcome that can never happen; it keeps the rules that its steps name;
-- a flow keeps its two ends and what its rate reads, also when its rate is zero in every state that
-  the runs reach;
-- a stock, tally or number state keeps what its start value, its bounds and its rate read;
-- a formula and a status keep what they read, and a share what its limit reads; its stock is an end
-  of its flows;
-- a sum check keeps its number states, and what its total and its tolerance read;
-- outputs and checks keep the named states, formulas and statuses that they read;
-- an actor keeps what it sees: a decision shows it.
-
-An event that a part that stays counts or times stays too. When the structure leaves out each rule
-that emits it, the event stays with no rule. It never happens in these runs, so its count stays 0:
-`count(x) == 0` holds, and `since(x)` never does.
-
-These parts always stay: each input, and each state, stock or tally that an option sets; a flow whose
-rate is zero in every state that the runs reach, unless its entity goes; and each rule that the step
-of an outcome that can happen names. `model.left_out[starts]` gives each part that a structure leaves
-out, with the reason: `{section: {part: why}}`. `model.whole[starts]` keeps every part. The build
-checks it, with the values of a run that starts from its start states, so a part that every run leaves
-out is still checked.
-
-A part that is left out never acts: it changes no number, event or status. Its evidence still shows in
-the run's evidence trail, as possible but not exercised ([engine.md](engine.md#the-evidence-trail)).
-
-## Studies
-
-`evaluate_study(model, edits=None, numerical_settings=None, *, runs=None, play=None)` checks one edit
-document as one transaction, then simulates the runs:
-
-- `edits` is an edit document ([engine.md](engine.md#the-edit-document)), or None for the model as
-  its files write it. It names `schema_version` (`napkin.SCHEMA_VERSION`) and the `model_hash` of the
-  model.
-- `numerical_settings` is a mapping of the solver's settings, such as `{'max_step': 0.5}`
-  ([engine.md](engine.md#between-moments-the-solver)), or None for the defaults.
-- `runs` names the runs to check and simulate. Without it, the study checks the edits on every run
-  of the model, and simulates every run. With it, the study resolves the named runs only: an edit that
-  holds in those runs is admitted. The checks of the document itself still apply.
-- `play` (`{run, control, picks}`) plays one run of the study ([engine.md](engine.md#play)).
-
-The result is a `StudyResult`. `admissible` is True when no diagnostic is an error, and `diagnostics`
-lists every diagnostic, the warnings too. `runs` holds the simulated runs; a rejected study holds
-none, and no run starts when one check fails. Each run is `{'resolved': …, 'trajectory': …}`: the
-`Resolved` record of the run ([The structure](#the-structure)) and its trajectory. `decision` is the
-decision that waits in a played run, or None. `model_hash`, `implementation_hash` and
-`effective_edits` name what the study ran.
-
-`sample_result(study, reporting_times=None)` gives the report of a study, as plain data
-(`napkin/schema/report.schema.json`). Each run gives its outcomes at `final`, the end of the run, and
-at each of the `reporting_times`, in hours. A report point is named by its number of hours, such as
-`'4380.0'`.
-
-```python
-import napkin
-
-model = napkin.load_scenario('examples/piano_tuners/model.scn')
-edits = {
-    'schema_version': napkin.SCHEMA_VERSION,
-    'model_hash': model.model_hash,
-    'set': {'tuners.staff': 4},
-}
-study = napkin.evaluate_study(model, edits)
-print(study.admissible, study.diagnostics)
-report = napkin.sample_result(study, reporting_times=[4380])
-for point, row in report['runs']['base']['reporting_points'].items():
-    print(point, row['values'], row['statuses'])
-
-bad = {**edits, 'set': {'tuners.staff': 40}}
-rejected = napkin.evaluate_study(model, bad)
-print(rejected.admissible, rejected.runs, rejected.diagnostics)
-print(napkin.sample_result(rejected)['status'])
-```
-
-```
-True []
-4380.0 {'tunings_done': 1949.0249915950546} {'tunings_done': 'estimated'}
-final {'tunings_done': 3898.0499831901093} {'tunings_done': 'estimated'}
-False {} [{'code': 'bounds', 'path': 'edits/set/tuners.staff', 'message': 'tuners.staff: 40 is outside [1, 10]', 'severity': 'error'}]
-rejected
-```
-
-The report has `model_hash`, `implementation_hash`, `library_hash`, `schema_version`,
-`engine_version`, `admissible`, `status` (`accepted`, `rejected` or `reporting_failure`), `scenario`
-and `variant` (the names of the model's folders), `title`, `effective_edits`, `diagnostics` and
-`runs`. Each run has:
-
-| Key | What it holds |
-| --- | --- |
-| `label`, `options`, `starts`, `horizon` | The run's name, its options, its start-state options and its end, in hours. |
-| `outcomes` | Each outcome's `label`, `unit`, `kind`, `status`, `scope` and `basis`. |
-| `effective_inputs`, `numerical_settings` | The input values of the run, in their own units, and the solver's settings. |
-| `reporting_points`, `samples` | Each outcome's value and status at each report point, by its name and by time. |
-| `trace` | Each step of the run ([engine.md](engine.md#the-trace)). |
-| `health` | The status of each entity at each report time. |
-| `evidence` | The evidence trail of each outcome ([engine.md](engine.md#the-evidence-trail)). |
-| `numerical_diagnostics`, `peaks` | The solver's diagnostics, and the largest value of each outcome. |
-
-The status of an outcome is `estimated`, `unestimated` or `not_applicable`. An outcome that is not
-estimated has no value (None), never zero. A numerical failure rejects the study: a report never
-gives an outcome of a run that failed. In the evidence of a run, a part that the run's structure
-leaves out shows as possible, not exercised ([The parts that cannot act](#the-parts-that-cannot-act)).
-
-A study of a combination of options is a study of the derived model of `model.combination`. An edit
-document is one transaction over the runs of the model. So `napkin run --option` and a `Session` with
-`options` check the document on the whole model first, then give the derived model only the edits that
-reach its run.
-
-```python
-import napkin
-
-model = napkin.load_scenario('scenarios/water_controls_wipe/variants/juneau/model.scn')
-derived = model.combination('early_kept', ['Delayed response'])
-report = napkin.sample_result(napkin.evaluate_study(derived))
-final = report['runs']['early_kept']['reporting_points']['final']
-print(final['values']['deaths'], final['statuses']['deaths'], final['values']['economic_loss'])
-```
-
-```
-None unestimated 0.003652344316725998
-```
-
-This model does not estimate deaths, so the report gives no value for them, never zero. Its economic
-loss is in billions of US dollars at 2025 prices (`USD2025_bn`).
-
-### A model with a table
-
-A model with a table ([language.md](language.md)) builds and runs as every model does:
-`load_scenario` writes each row out as a thing of its own. For a table of very many rows, the hybrid
-core of the model keeps each class of rows as one family, and the engine runs a family without
-writing its rows out ([engine.md](engine.md#tables-and-tiers)).
-
-```python
-from napkin.engine.timeline import reports
-from napkin.model import hybrid
-
-core = hybrid.compile('demo/model.scn')
-report = reports.study_of(core, runs=None, times=[30.0], rows=['cells_4'], settings=None)
-```
-
-- `hybrid.compile(path)` gives the hybrid core, a `Hybrid`. It raises `ModelError` as
-  `load_scenario` does. A diagnostic with the code `hybrid` names a model that the hybrid core does
-  not hold; such a model runs from `load_scenario` only.
-- `reports.study_of(core, runs, times, rows, settings)` runs the runs that `runs` names (default:
-  every run) and gives their report, as plain data. `times` are the reporting times in hours, `rows`
-  names rows of tables for their own detail, and `settings` is the numerical settings.
-- The report has the envelope of `sample_result`. Each run has the shape `table_run` of
-  `napkin/schema/report.schema.json`: the parts of the report of a run, with what the report says
-  of the rows of a table by group (`groups`, `events`, and the `groups` of each entry of `health`).
-  A group is one class of rows. `trace` has the steps of the things that no table makes and of the
-  rows that `rows` names.
-- A run that the engine stops rejects the report: `admissible` is False, `diagnostics` says why,
-  and `runs` is empty.
-- `study_of` takes no edit document and plays no run.
-
-## Uncertainty
-
-`napkin.monte_carlo` reads the requested values at the requested times in one median run and
-in independently seeded samples. Supply a compiled model’s program and configuration.
-`SamplingSettings(samples, seed)` accepts 1 through 100,000 samples and a seed from 0 through 2^63 − 1.
-
-```python
-import napkin
-from napkin.engine import SamplingSettings
 
 model = napkin.load_scenario('examples/piano_tuners')
-result = napkin.monte_carlo(model.program, model.configuration, ['tunings_done'], [8760],
-                            SamplingSettings(samples=200, seed=0), model=model.declared)
-if result.refused:
-    raise ValueError(result.refused)
-tunings = result.spread('tunings_done', 8760)
-print(tunings.unit, tunings.summary.mean.value)
+record = napkin.run(model.program, model.configuration)
+found = napkin.report(
+    record, model.program, model.configuration, ['tunings_done'], [0, 4380, 8760],
+    {'tunings_done': napkin.Lag(730, 1460)}, table=model.table,
+)
+(value,) = found.values
+print(value.label, value.unit, value.values[1:])
+print(value.note)
+print(value.values[0].reason)
 ```
 
-Each sample records its seed, the requested values, the executed draws and any early stop.
-A study that stops early records the reason in `refused`. A completed study reports the central
-value, mean with interval, percentiles, extremes and correlations with sampled draws.
-A value without a numerical summary has `summary.estimated == False` and a reason.
-
-### Estimators
-
-`napkin.engine.expectations.mean`, `quantile` and `exceedance` estimate a statistic from a
-sequence of sampled numbers. Each returns an estimate with its sample count, confidence and
-interval bounds. See [the engine](engine.md#estimators) for the interval assumptions.
+```text
+Tunings done in the year tunings (1096.3265577722182, 2558.0953014685088)
+what changes it adds to what it counts or moves within it: tuners.tune of tuners
+the lag of tunings_done at 0 h reads it from -1460 h, before the run starts at 0 h: the record holds no value then
+```
 
 ## Session
 
-`Session(model, run, *, control, options=(), edits=None, picks=(), settings=None, resolver=None)`
-plays one run of a model. The decisions of the actors that `control` names wait for a pick, and the
-model takes every other decision ([engine.md](engine.md#play)). `napkin play` uses a session.
+```text
+napkin.Session(program, configuration, breakpoints=(), *, table=None, log=None)
+napkin.Session.load(path, program, *, configuration=None, table=None)
+```
 
-- `control`: who picks the decisions of each actor or choice, `{THING: 'reader' | 'agent' |
-  'chance'}`. A key is an actor, a set of copies or one choice, `actor.event`.
-- `options`: options in place of the run's own of their groups. The session plays the model of that
-  combination (`model.combination`). It checks the edit document on the whole model first, then keeps
-  what reaches the run.
-- `edits`: an edit document, or None.
-- `picks`: a log to go on from, `[{event, outcome, t, by, reason}]`.
-- `settings`: the solver's settings, as for `evaluate_study`.
-- `resolver`: a function `resolver(decision) -> (outcome, reason)`, which answers each decision while
-  the run is simulated, or gives None to stop the run there.
+A session plays one run and stops at its breakpoints. A breakpoint is a
+`napkin.program.checkpoint.Breakpoint(at, owner='')`. `at` is the origin of an event, a stage or a
+statement (`operator.decide.step[0].do[1]`), and `owner` limits it to one member or one occurrence.
+`Compiled.table.executable()` lists the locations of a model. `napkin play` is one client of a
+session ([cli.md](cli.md#napkin-play)).
 
-A session has `base` (the model as given), `model` (the model of the run), `run`, `options`,
-`control`, `edits`, `settings`, `picks` (the log), `decision` (the decision that waits, or None),
-`trajectory` (the simulated run of the last `advance()`) and `warnings` (the diagnostics of the last
-`advance()` that are not errors).
+| Call or field | What it does |
+| --- | --- |
+| `advance()` | Go on to the next stop and give its checkpoint, or None at the end of the run |
+| `view(paths=None)` | The stop as a `View`: the stop, its place in the source, what runs next, the values (each a `Shown`: `path`, `value`, `unit`, `label`, `editable`, `choices`), the edits and the draws of the stage before the stop |
+| `edit(path, value)` | Give a live stored value a new value at the stop, in its declared unit. The engine checks the type and the bounds |
+| `save(path)` | Write the checkpoint, with its edits, to a file |
+| `Session.load(path, program, ...)` | Go on from a saved checkpoint, in this process or a fresh one |
+| `checkpoint`, `record`, `stops`, `log` | The present checkpoint, the record at the end, the stops so far, and the log of the session |
 
-- `advance()` simulates the run from t = 0 with the log, to the first decision that neither the log
-  nor the resolver answers, or to the end of the run. It gives that decision (also `decision`), or None
-  when the run is finished.
-- `pick(outcome, reason=None)` answers the decision that waits. The log takes the pick, and the next
-  `advance()` goes on from it.
-- `result(times=None)` gives the report of the finished run, as `sample_result(evaluate_study(model,
-  edits, settings, runs=[run], play=…), reporting_times=times)` gives it.
-- `log()` gives the play log: `schema_version`, `kind` (`play`), the context of the play, `scenario`,
-  `variant` and `picks`. The context is `model_hash`, `implementation_hash`, `run`, `options`,
-  `control`, `edits` and `numerical_settings`.
-- `save(path)` writes the log as JSON. It replaces the file whole or not at all.
-- `Session.load(path, model, run, *, control, options=(), edits=None, settings=None, resolver=None)`
-  gives the session that goes on from a saved log. The log must have the same context.
+A session refuses an unknown location and a location in the body of a trigger with
+`napkin.program.checkpoint.CheckpointError`. It refuses a checkpoint of another program, another
+engine or another configuration by name.
 
-Step by step, each pick simulates the run again from t = 0. The engine keeps no paused run, so the
-same log gives the same run, bit for bit:
+```python
+import napkin
+from napkin.program.checkpoint import Breakpoint
+
+model = napkin.load_scenario('examples/reservoir')
+stop = Breakpoint('operator.decide.step[0].do[1]')
+session = napkin.Session(model.program, model.configuration, [stop], table=model.table)
+session.advance()
+for shown in session.view(['reservoir.water', 'operator.decide#0.order']).values:
+    print(shown.path, shown.value, shown.choices)
+session.edit('operator.decide#0.order', 'WAIT')
+session.save('stop.checkpoint')
+while session.advance() is not None:
+    pass
+print(napkin.read(session.record, model.program, ['reservoir.gate'], [120])[0].values)
+```
+
+```text
+reservoir.water 0.7 None
+operator.decide#0.order OPEN ('OPEN', 'WAIT')
+('CLOSED',)
+```
+
+## study
+
+```text
+napkin.study(model, runs=None, edits=None, *, jobs=1, progress=None, cancel=None)
+```
+
+`model` is a `Compiled`. The result is `{name: record}` for each named run of `runs`, or for each
+named run of the model, or `{None: record}` of the default run when the model has none. The study
+checks the edit document whole, in every run, before any run starts. Each run goes through the run
+store when a store is active ([cli.md](cli.md#the-run-store)).
+
+- `jobs` above 1 runs the runs on that many new processes. The results come in the order of the runs.
+- `progress(done, total)` is called as runs finish.
+- `cancel`, an event such as a `threading.Event`, stops the study between runs with
+  `napkin.engine.study.Cancelled`.
+
+`napkin.engine.study.edits_for(model, edits)` gives an edit document for the model's revision: the
+schema version and the model hash, with the keys `set`, `options`, `runs` and `reason` of `edits`.
+
+```python
+import napkin
+from napkin.engine.study import edits_for
+
+model = napkin.load_scenario('examples/incident_response_tempo')
+for name, record in napkin.study(model, ['standard', 'rapid_response']).items():
+    print(name, napkin.read(record, model.program, ['attack.blocked'], [24])[0].values)
+edits = edits_for(model, {'set': {'response.detection_delay': '5 h'}})
+slower = napkin.study(model, ['rapid_response'], edits)
+print(napkin.read(slower['rapid_response'], model.program, ['attack.blocked'], [24])[0].values)
+```
+
+```text
+standard (4.0,)
+rapid_response (6.0,)
+(5.0,)
+```
+
+## monte_carlo
+
+```text
+napkin.monte_carlo(program, configuration, paths, times, settings=None, *, model=None,
+                   confidence=0.95, with_scales=False, jobs=1, progress=None, cancel=None)
+```
+
+The function reads the values of `paths` at `times` in a central run and in each sample of a run.
+
+1. The central run is the configuration in `median` mode. It gives each value's unit, label and
+   central value. A central run that stops refuses the study before any sample runs.
+2. Each sample is the configuration in `sampled` mode, with its own seed.
+   `napkin.engine.sampling.SamplingSettings(samples=200, seed=0)` gives the number of samples and
+   the seed of the study.
+3. A sample that stops before its horizon refuses the study. `refused` names each such sample, and
+   the study has no summary.
+
+Give the side table in `model` (`Compiled.table`) for the labels. A path that the program does not
+have raises `KeyError`. A time outside the run raises `ValueError`. The result is a `MonteCarlo`:
+
+| Field or function | What it holds |
+| --- | --- |
+| `settings`, `paths`, `times` | The settings and the selection of the study |
+| `central` | The report of the central run |
+| `samples` | Each `Sample`: its seed, its values, its draws, its number of near-ties and why it stopped |
+| `spread(path, t)` | The `Spread` of a path at a time: its `unit`, its `label`, its `summary` and its `drivers` |
+| `refused` | Why the study has no summary, or None |
+
+A `summary` has `central`, `mean` (an estimate with `value`, `low` and `high`), `sd`, `sem`, `least`,
+`greatest` and `percentiles`. A value that is no number in every sample has no summary, and
+`reason` says why. The `drivers` are the draws in the order of their rank correlation with the value.
+
+```python
+import napkin
+from napkin.engine.sampling import SamplingSettings
+
+model = napkin.load_scenario('examples/piano_tuners')
+study = napkin.monte_carlo(
+    model.program, model.configuration, ['tunings_done'], [8760],
+    SamplingSettings(samples=50, seed=1), model=model.table,
+)
+found = study.spread('tunings_done', 8760)
+print(found.unit, found.summary.central, round(found.summary.mean.value, 1))
+print(found.drivers)
+```
+
+```text
+tunings 2923.537487392582 2900.9
+(('tuners.rate.draw[0]', 'tuners', 0.9999999999999999),)
+```
+
+## spread
+
+```text
+napkin.spread.spread(model, paths, times=None, *, run=None, edits=None, samples=200, seed=0,
+                     with_scales=False, jobs=1, progress=None, cancel=None)
+```
+
+`napkin.spread` is a module. Its function `spread` is the Monte Carlo study of one run of a model, as
+`napkin sample` asks for it ([cli.md](cli.md#napkin-sample)).
+
+- `model` is a path that `load_scenario` reads, or a `Compiled`.
+- `run` names a named run, and `edits` is an edit document. The function checks the document first,
+  and a problem raises `LanguageError` before any run starts.
+- `times` are in hours. Without them, the study reads at the horizon of the run.
+- `samples` and `seed` are the settings of the study. `jobs` is the number of processes.
+
+The result is a `MonteCarlo` ([monte_carlo](#monte_carlo)). A pool starts its processes with `spawn`,
+and each process imports the main module of the script. So a script with `jobs` above 1 calls
+`spread` under `if __name__ == '__main__':`.
+
+```python
+from napkin.spread import spread
+
+
+def main():
+    found = spread('examples/piano_tuners', ['tunings_done'], samples=100, seed=0, jobs=2)
+    if found.refused is None:
+        mean = found.spread('tunings_done', 8760).summary.mean
+        print(round(mean.value, 1), round(mean.low, 1), round(mean.high, 1))
+
+
+if __name__ == '__main__':
+    main()
+```
+
+```text
+2918.0 2853.5 2982.4
+```
+
+## instances
+
+```text
+napkin.instances(compiled, template)
+```
+
+The function gives `[{name, links}]` for each member of a template, in the order of creation. `links`
+maps each link to the id of the member that it names.
+
+The package `pumps` holds this model and a table `tanks.csv` with the rows `north,100` and
+`south,20` under the header `id,water: L @guess`. Its `units.json` gives the unit `L`.
+
+```scn
+scenario "Pumps between tanks"
+    horizon 1 day
+
+Tank:
+    "A tank."
+    water: L = 100 L in [0 L,] scale 100 L @guess
+        "Water in the tank"
+
+Pump:
+    "A pump that moves water from one tank to another."
+    origin: Tank
+    destination: Tank
+    input rate: L/h = 2 L/h in [0 L/h, 10 L/h] @guess
+        "Water that the pump moves in an hour"
+    flow pump: this.origin.water -> this.destination.water @guess
+        request = formula(this.rate)
+
+tanks: Tank from "tanks.csv"
+
+lift: Pump
+    origin = tanks.north
+    destination = tanks.south
+
+record guess: assumption "An example value."
+```
 
 ```python
 import napkin
 
-model = napkin.load_scenario('examples/reservoir/model.scn', admission_runs=['base'])
-session = napkin.Session(model, 'base', control={'operator': 'reader'})
-decision = session.advance()
-print(decision['t'], decision['event'], decision['view'], decision['units'])
-print([(item['name'], item['available']) for item in decision['outcomes']])
-try:
-    session.result()
-except ValueError as error:
-    print(error)
-try:
-    session.pick('close')
-except ValueError as error:
-    print(error)
-session.pick('wait', 'The storm ends soon.')
-print(session.advance())
-final = session.result()['runs']['base']['reporting_points']['final']
-print(final['values'])
-print(session.picks)
+model = napkin.load_scenario('pumps')
+print(napkin.instances(model, 'Tank'))
+print(napkin.instances(model, 'Pump'))
 ```
 
-```
-40.00000000000081 operator.decide {'reservoir.water': 0.7} {'reservoir.water': 'fraction'}
-[('open', True), ('wait', True)]
-The log has no pick for operator.decide at t = 40 h: the run is not finished
-'close' is not an outcome of operator.decide that can happen now: pick one of open, wait
-None
-{'reservoir.spilled.output': 0.0, 'reservoir.risk_time.output': 40.00000000328194}
-[{'event': 'operator.decide', 'outcome': 'wait', 't': 40.00000000000081, 'by': 'reader', 'reason': 'The storm ends soon.'}]
+```text
+[{'name': 'tanks.north', 'links': {}}, {'name': 'tanks.south', 'links': {}}]
+[{'name': 'lift', 'links': {'origin': 'tanks.north', 'destination': 'tanks.south'}}]
 ```
 
-Live, a resolver answers each decision while the run is simulated, in one simulation. The session
-logs each answer before the engine takes it. `save` and `load` keep the log with its context:
+## dynamics
 
-```python
-import tempfile
-from pathlib import Path
+`napkin.dynamics` is a module. It reads the engine's own field of a run, so it analyses the equations
+that the engine runs. It gives data, and it changes no program and no record.
 
-import napkin
-from napkin.session import OtherContext
-
-
-def operator(decision):
-    """The reader's rule: wait while the water is below 80% of the capacity."""
-    if decision['view']['reservoir.water'] < 0.8:
-        return 'wait', 'The water is below the risk level.'
-    return 'open', 'The water is at the risk level.'
-
-
-model = napkin.load_scenario('examples/reservoir/model.scn', admission_runs=['base'])
-live = napkin.Session(model, 'base', control={'operator': 'reader'}, resolver=operator)
-print(live.advance())
-print([(item['outcome'], item['reason']) for item in live.picks])
-
-log = Path(tempfile.mkdtemp()) / 'play.json'
-live.save(log)
-again = napkin.Session.load(log, model, 'base', control={'operator': 'reader'})
-print(again.advance(), again.result() == live.result())
-try:
-    napkin.Session.load(log, model, 'base', control={'operator': 'agent'})
-except OtherContext as error:
-    print(error.fields)
+```text
+napkin.dynamics.vector_field(program, configuration, values=None)
 ```
 
+`vector_field` gives the `VectorField` of a run at its start. `values` gives inputs other values:
+`{path of an input: value}`, a number in the input's declared unit, a yes/no, the name of an enum
+member, a text or a distribution.
+
+- The state is the stocks of the connected sets whose rates move (`names`), in canonical units.
+- `field(x, t=0.0)` gives the rates of those stocks, per hour, at the state `x` and the time `t`.
+- `field.start` is the state at the start, and `field.values(x)` gives each stock in its own unit.
+- The values that do not move between moments keep their values at the start. No stage runs, and no
+  trigger fires.
+
+| Function | What it gives |
+| --- | --- |
+| `equilibria(field, *, t=0.0, starts=32, seed=0, box=None, tol=1e-10, include=())` | Each distinct equilibrium (`Equilibrium`: `state`, `eigenvalues`, `stability`, `value(name)`) |
+| `equilibrium_at(field, x, t=0.0)` | The equilibrium at `x`, with its derivative and its stability |
+| `continue_equilibrium(program, configuration, parameter, span, ...)` | A branch of equilibria as an input or the time `t` moves, with its folds and Hopf points |
+| `fold_curve(program, configuration, parameter, span, second, grid, ...)` | The folds of the branch for each value of a second input |
+| `input_threshold(program, configuration, name, low, high, classify, *, tol)` | The value of an input where the class of the run's end changes |
+| `state_threshold(program, configuration, path, low, high, classify, *, tol)` | The start value of a stored value where the class of the run's end changes |
+| `input_factors(program, configuration, names)`, `run_function(program, configuration, path, *, time=None)` | The ranges of inputs, and a function of their values: the value of a path at a time |
+| `morris(f, factors, ...)`, `sobol(f, factors, *, samples, ...)` | Morris screening and Sobol indices of such a function |
+
+The model `room` is a waiting room. People come at a fixed rate, and a share of them leaves each hour:
+
+```scn
+scenario "A waiting room"
+    horizon 2 days
+
+room:
+    "A waiting room that people enter and leave."
+    input arrivals: people/h = 4 people/h in [0 people/h, 10 people/h] @guess
+        "People who come in an hour"
+    input leave: fraction/h = 0.1 fraction/h in [0.01 fraction/h, 1 fraction/h] @guess
+        "Share of the people who leave in an hour"
+    waiting: people = 10 people in [0 people,] scale 100 people @guess
+        "People who wait"
+    flow come: SOURCE -> this.waiting @guess
+        request = formula(this.arrivals)
+    flow go: this.waiting -> SINK @guess
+        request = formula(this.leave * this.waiting)
+
+record guess: assumption "An example value."
 ```
-None
-[('wait', 'The water is below the risk level.')]
-None True
-('control',)
-```
-
-A session refuses what a study refuses, with the same diagnostics:
-
-| Call | Refuses | With |
-| --- | --- | --- |
-| `Session(…)` | Numerical settings that are not valid; options that the model does not have or cannot combine; with options, an edit document that fails on the whole model. | `ModelError` |
-| `advance()` | An edit document that fails; a run that is not in the model or not admitted (`run`, `admission_scope`); a `control` that names no actor or choice of the run, or a log that is not a list of picks (`play`); a pick that does not answer its decision (`pick`); a blocking check of the inputs; a run that fails. | `ModelError` |
-| `advance()` with a resolver | An answer that is not `(outcome, reason)` or None, or an outcome that cannot happen now. An exception of the resolver goes up as it is, and the log keeps each pick before it. | `ValueError` |
-| `pick(…)` | A pick when no decision waits, or an outcome that cannot happen now. | `ValueError` |
-| `result()` | A log that leaves a decision without a pick. | `ValueError` |
-| `Session.load(…)` | A file that is not a play log of schema `0.0.1`, or whose picks are not a list of objects; a log of another context. | `ValueError`; `OtherContext` names each field that differs (`fields`) |
-
-So a log replays only with the same model, engine, run, options, control, edits and numerical
-settings. A log of another version of the engine has another `implementation_hash`, and `load`
-refuses it.
-
-## Names
-
-The structure uses the names of the file. A name in an expression is an identifier, so a copy of a
-set has a name of its own. The examples are from `examples/reservoir`, `examples/piano_tuners` and the
-catalogue's `iv_fluid_shortage` and `water_controls_wipe:juneau`.
-
-| Part | Name | Example |
-| --- | --- | --- |
-| Entity (a thing of the file) | its name in the file | `reservoir` |
-| Copy k of a set, from 1 | `set_k`: the file writes `set.k` | `pumps_2`, for `pumps.2` of a set `pumps: Pump * 3` |
-| Input, fixed value, stock, tally, number state, named state, formula | `entity.value` | `reservoir.inflow`, `reservoir.water`, `reservoir.gate` |
-| Status of an entity | `entity.health` | `juneau.health` |
-| Rule of an event, and the event of its trigger | `entity.event`; `set_k.event` for an event of a copy | `operator.decide` |
-| The start | `entity.start`: the rule of the event `start`, which fires first at t = 0 | `attacker.start` |
-| Outcome of an event | `entity.event.outcome`; an event whose lines are under it directly has the one outcome `done` | `operator.decide.open`, `manufacturer.stops_shipping.done` |
-| Flow | `entity.flow`, of the entity that declares it | `reservoir.spill` |
-| Pair k of a flow of several pairs | `entity.flow.k`, from 0; the pairs' coupling group is `entity.flow` | `juneau.repair.0` |
-| Share | `entity.share_<stock>`: the group of the flows that take from the stock | `parts.share_spares` |
-| Check of an entity (`assert`) | `Name.i`: its position among the checks of its template, or of the entity made without one, from 0; `Name.i.entity` when the template has more than one entity | `parts.0`, `Hospitals.0`, `CrewPool.0.controls_crew` |
-| Check of the top level | `simulate.i` | `simulate.0` |
-| Output of a value | `entity.value`; `entity.value.output` when the value is also a stock, tally or number state, because the run holds that value as `entity.value` | `manufacturer.output_loss`, `reservoir.spilled.output` |
-| Top-level output | its name | `tunings_done` |
-| Link | the part that it reaches, under the entity that reaches it | `links['attacker']['platform.access']` |
-| Run | as written | `base`, `early_kept` |
-
-An edit document names an input as `entity.value`. A copy's input can also be written
-`set.k.value`.
-
-## Views
-
-The views give what a program needs to show the actors and the instances of a model, so that it
-never retypes the model's names. `napkin compile` and `napkin play` list the actors with `actors`,
-and `napkin draw` reads both views.
-
-- `actors(model)` gives each thing that sees, in the order of the file: `{name, title, role,
-  template, copy, sees, choices}`. `sees` lists its facts as the file writes them. Each choice, an
-  event marked `choice` ([language.md §2.7](language.md#27-actors)), is `{event, label, outcomes:
-  [{name, label}]}`, and `event` is the event of the structure (`entity.event`).
-- `instances(model, template)` gives each instance of a template, copies included, in the order of the
-  file: `{name, title, copy, links}`. Each link maps to the entity, or the list of entities, that the
-  instance binds.
 
 ```python
 import napkin
 
-model = napkin.load_scenario('examples/reservoir/model.scn')
-(operator,) = napkin.actors(model)
-print({key: value for key, value in operator.items() if key != 'choices'})
-(choice,) = operator['choices']
-print(choice['event'], [item['name'] for item in choice['outcomes']])
-
-juneau = napkin.load_scenario('scenarios/water_controls_wipe/variants/juneau/model.scn')
-for item in napkin.instances(juneau, 'CrewPool'):
-    print(item)
+model = napkin.load_scenario('room')
+field = napkin.dynamics.vector_field(model.program, model.configuration, {'room.arrivals': 5})
+print(field.names, field(field.start))
+for found in napkin.dynamics.equilibria(field):
+    print(round(found.value('room.waiting'), 6), found.stability, found.eigenvalues)
 ```
 
-```
-{'name': 'operator', 'title': 'Operator', 'role': 'operator', 'template': None, 'copy': None, 'sees': ['reservoir.water']}
-operator.decide ['open', 'wait']
-{'name': 'controls_crew', 'title': 'Controls crew', 'copy': None, 'links': {'utilities': ['juneau']}}
-{'name': 'field_crew', 'title': 'Field crew', 'copy': None, 'links': {'utilities': ['juneau']}}
+```text
+('room.waiting',) [4.]
+50.0 stable [-0.1+0.j]
 ```
 
-## Dynamics
-
-`napkin.dynamics` analyses the continuous dynamics of one run: where its quantities come to rest,
-whether they stay there, how the rest states move as an input or the time changes, from which states
-a run reaches each one, and which inputs move a result most. It reads the engine's own field, so it
-analyses the equations that the engine runs. It gives data only. It changes no model and no result.
-
-### The field
-
-`vector_field(model, run, values=None, *, state=None, store=None)` gives the field of a run at its
-start: the rates of its active quantities, in execution units per hour. `values` gives inputs other
-values, in their own units. `state` gives the quantities other start values, and `store` the
-discrete values, in execution units.
-
-- The active quantities (`names`) are those that a flow or a tally changes and that a rate, a flow
-  rate or a capacity reads. The others that change, such as a tally that counts, are `passive`: no
-  rate reads them, so they have no rest state.
-- The named states, event counts and times, and the number states that only rules set, keep their
-  values. No rule fires.
-- The field is the field inside the bounds: no bound acts. The capacities of shares and the couplings
-  still apply. `at_bound(x)` names each quantity within its tolerance of a bound.
-- `field(x, t)` gives the rates at the active values `x` and the time `t`, in hours. `jacobian(x, t)`
-  gives the derivative by central differences. `one_sided(x, t)` gives the forward and the backward
-  derivatives, with the columns where the field has a kink. A state where a rate is negative or not
-  finite raises `OutsideDomain`.
-
-### Equilibria and stability
-
-`equilibria(field, *, t=0, starts=32, seed=0, box=None)` looks for rest states from the run's start
-and from `starts` points that it draws with the seed. It gives each distinct `Equilibrium` once, with
-its `state`, its `eigenvalues` and its class. `newton(field, x0)` is the search from one point, and
-`equilibrium_at(field, x)` classifies one state.
-
-- **The search.** Newton's method comes first, with a line search. Where it stalls, at a kink of
-  `min()` or `max()` or at a local minimum of the residual, implicit steps of the flow follow its path
-  (pseudo-transient continuation; Kelley and Keyes, 1998). These steps lead to the stable equilibria,
-  so the search finds a saddle or an unstable equilibrium mainly from starts where Newton's method
-  converges.
-- **Stability.** The eigenvalues of the derivative, per hour, give the class: `stable` when every real
-  part is below zero, `unstable` when every one is above zero, and `saddle` for both. A real part
-  within 1e-7 of the largest eigenvalue's size makes it `nonhyperbolic`: the linear part does not
-  decide.
-- **Neutral modes.** Where the rest states make a line or a surface, as where the field fixes only a
-  total of some quantities, each direction along it is a neutral mode (`neutral`, `neutral_modes`).
-  The class comes from the other directions (`transverse`).
-- **Kinks.** At a kink of `min()` or `max()`, `sides` holds the forward and the backward side, each with
-  its eigenvalues and its class. The equilibrium takes the class of its least stable side. Across a
-  kink the linear part is a guide only, and a run of the engine decides ([Basins](#basins)).
-
-A rate per year is 8,760 times a rate per hour.
-
-### Branches, folds and Hopf points
-
-`continue_equilibrium(model, run, parameter, span, *, start=None)` follows one branch of rest states
-as `parameter` moves from `span[0]` to `span[1]`. The parameter is an input, in its own unit, or
-`'t'`, the time at which the field is read. The method is pseudo-arclength continuation, so the
-branch goes through a fold and turns back. The `Branch` has its `points`, each with its state, its
-eigenvalues and its class, its `folds`, its `hopf` points, and `end`, the reason that it stops.
-
-- **A fold** is where the branch turns back in the parameter. On one side two rest states exist; on the
-  other side none. Where a stable branch ends at a fold, a run that follows it jumps to another rest
-  state: a threshold that comes from the dynamics.
-- **A Hopf point** is where a pair of complex eigenvalues crosses zero: the rest state gives its
-  stability to an oscillation, of `frequency` per hour.
-- **A corner** is a kink of the field where no direction moves the parameter. The branch steps over it
-  in the parameter alone, and it looks for no fold or Hopf point across it.
-- **The end** is one of `span`, `bound` (a quantity reaches a bound), `inadmissible` (the model rejects
-  a value), `step`, `points` or `kink`.
-
-`fold_curve(model, run, parameter, span, second, grid)` follows a branch for each value of a second
-input. The folds of each row are the edges of the region where the run has several rest states.
-
-### Basins
-
-`threshold(evaluate, classify, low, high, *, tol)` finds, by bisection, the value at which the class
-of a result changes. `input_threshold(model, run, name, low, high, classify, *, tol)` changes an
-input of a run, and `classify` reads the completed run of a study, `{resolved, trajectory}`.
-`state_threshold(model, run, quantity, low, high, classify, *, tol)` changes the start value of a
-quantity, and `classify` reads the trajectory. Each evaluation is a real run of the engine, with
-every check of a study. So a threshold rests on the dynamics as they run, not on the linear part at a
-rest state.
-
-```python
-from napkin import dynamics, load_scenario
-
-model = load_scenario('examples/reservoir/model.scn')
-field = dynamics.vector_field(model, 'base')
-print(field.names, field.passive, field.start, field(field.start))
-print(dynamics.equilibria(field, starts=8, seed=0))
-
-
-def at_risk(run):
-    """Whether the water was above the risk level at some time of the run."""
-    trajectory = run['trajectory']
-    return trajectory.env_at(trajectory.horizon)['reservoir.risk_time'] > 0
-
-
-found = dynamics.input_threshold(model, 'base', 'operator.level', 0.5, 1, at_risk, tol=1e-4)
-print(round(found.value, 4), found.below, found.above, found.evaluations)
-```
-
-```
-('reservoir.water',) ('reservoir.spilled', 'reservoir.risk_time') [0.6] [0.0025]
-[]
-0.8 False True 15
-```
-
-The storm fills the reservoir at a constant rate, 0.06 of its capacity in a day (0.0025 in an hour),
-so the water has no rest state. An operator who opens the spillway below 0.8 of the capacity keeps the
-water below the risk level. From 0.8, the valley is at risk.
-
-### Global sensitivity
-
-`morris(f, factors, *, trajectories=20, levels=4, seed=0)` and `sobol(f, factors, *, samples, seed=0,
-bootstrap=1000)` take any function `f({input: value}) -> number`. `model_function(model, run, output,
-*, time=None)` makes one from an output of a run, at the end of the run by default.
-`factors_from_model(model, names)` gives each input its range in the model.
-
-- **Morris screening** moves one input at a time along random paths through a grid of the ranges.
-  `mu_star`, the mean of the absolute effects, ranks the inputs (`ranking()`). `sigma`, their spread,
-  shows effects that change along the ranges: curvature or interactions.
-- **Sobol indices** split the variance of the result over the ranges. The `first` index of an input
-  is the share that it causes alone (Saltelli et al., 2010). Its `total` index adds each interaction
-  that it takes part in (Jansen, 1999). They cost N (k + 2) evaluations for k inputs and N rows. The
-  intervals (`first_interval`, `total_interval`) and the standard errors come from a bootstrap over
-  the rows.
-- **The draws.** Each input draws from a stream of its own, named by the input and seeded by the seed.
-  So one seed gives one result, and an extra input changes no index of the others.
-
-```python
-from napkin import dynamics, load_scenario
-
-model = load_scenario('examples/piano_tuners/model.scn')
-f = dynamics.model_function(model, 'base', 'tunings_done')
-factors = dynamics.factors_from_model(model, ['tuners.rate', 'tuners.staff', 'tuners.need'])
-screen = dynamics.morris(f, factors, trajectories=10, levels=4, seed=0)
-print(screen.ranking(), screen.mu_star.round(), screen.evaluations)
-indices = dynamics.sobol(f, factors, samples=256, seed=0, bootstrap=200)
-for name, total, (low, high) in zip(indices.names, indices.total, indices.total_interval):
-    print(f'{name}: total {total:.2f} ({low:.2f} to {high:.2f})')
-print(indices.evaluations)
-```
-
-```
-['tuners.staff', 'tuners.rate', 'tuners.need'] [4500. 6850. 4225.] 40
-tuners.rate: total 0.23 (0.18 to 0.30)
-tuners.staff: total 0.53 (0.42 to 0.65)
-tuners.need: total 0.37 (0.27 to 0.50)
-1280
-```
-
-The total indices add up to more than 1, because the tunings that the tuners do are the smaller of
-the need and of what they can do: the inputs interact. The ranges are uniform, and a range that a
-reader can explore is not a measured interval. So the indices say how a result depends on the ranges
-that the model assumes, not how likely a result is. A study that rejects a sample raises an error: no
-sample is left out.
+With 5 people in each hour and a share of 0.1 that leaves each hour, the room holds 50 people at
+rest. The eigenvalue −0.1 per hour makes the rest state stable.

@@ -1,742 +1,522 @@
 # The napkin command
 
-`napkin COMMAND [ARGS] [TARGET]` compiles, runs, plays, samples, draws, starts and
-formats models in `.scn` files. `python -m napkin` is the same command. `napkin --help` lists the commands,
-`napkin COMMAND --help` gives the flags and an example of each command, and `napkin --version`
-gives the version:
+`napkin` compiles, runs, samples, plays, formats and draws models. Each command is a module of
+`napkin/commands/`. `napkin COMMAND --help` gives the arguments and an example of each command. The
+words **model**, **package**, **variant**, **input**, **run**, **named run**, **edit**,
+**breakpoint**, **checkpoint**, **record** and **path** have the meanings of
+[the terms](language/README.md#terms).
 
-```
-$ napkin --version
-0.0.1
+```text
+napkin [-h] [--version] COMMAND ...
 ```
 
 | Command | What it does |
 | --- | --- |
-| [`compile`](#napkin-compile) | Reads, checks and proves a scenario and each of its variants, and lists what it offers |
-| [`run`](#napkin-run) | Runs the runs of a scenario and prints their outcomes |
-| [`play`](#napkin-play) | Runs one run step by step; you, or a program with `--json`, pick the decisions |
-| [`sample`](#napkin-sample) | Runs one run many times with drawn inputs, and prints the spread of each outcome |
-| [`draw`](#napkin-draw) | Draws a static picture of the model as SVG |
-| [`new`](#napkin-new) | Starts a scenario that compiles and runs as written |
-| [`fmt`](#napkin-fmt) | Formats `.scn` files |
+| [`compile`](#napkin-compile) | Compile a model. Print its diagnostics, or a summary of its program |
+| [`run`](#napkin-run) | Run a model. Print the values of named paths at chosen times |
+| [`sample`](#napkin-sample) | Run one run many times with drawn inputs. Print the spread of named values |
+| [`play`](#napkin-play) | Run one run. Stop at breakpoints to show and edit its values |
+| [`fmt`](#napkin-fmt) | Format `.scn` files |
+| [`draw`](#napkin-draw) | Draw a static picture of the model as SVG |
+| [`new`](#napkin-new) | Write a new package that compiles and runs as written |
 
-The examples on this page run from the root of a checkout, which holds `examples/` and `scenarios/`.
+MODEL is a package folder, or its `model.scn`. A variant is the folder of the variant, or its
+`model.scn`: `napkin run demo/variants/east`. A MODEL that does not exist, a folder with no
+`model.scn` and a file that is not a `.scn` file are usage errors.
 
-## Exit codes
+The examples on this page ran in a folder that holds the `examples/` folder of this repository.
 
-| Code | When |
+## Contents
+
+1. [Diagnostics and exit codes](#diagnostics-and-exit-codes)
+2. [napkin compile](#napkin-compile)
+3. [napkin run](#napkin-run)
+4. [napkin sample](#napkin-sample)
+5. [napkin play](#napkin-play)
+6. [napkin fmt](#napkin-fmt)
+7. [napkin draw](#napkin-draw)
+8. [napkin new](#napkin-new)
+9. [The edit document](#the-edit-document)
+10. [The run store](#the-run-store)
+
+## Diagnostics and exit codes
+
+A command writes each diagnostic on one line of the error stream:
+
+```text
+file:line:column: error: message [code]
+file:line: warning: message [code]
+```
+
+The code names the rule ([compiler.md](compiler.md#diagnostics)). The file is relative to the
+current folder when it is inside it. A warning refuses nothing.
+
+The warnings `no_record` say that a part rests on no evidence
+([compiler.md](compiler.md#the-evidence-gate)). `napkin compile` writes one line for each of them.
+Each other command writes one line that counts them:
+
+```text
+warning: 3 values have no record (napkin compile lists them) [no_record]
+```
+
+| Exit code | Meaning |
 | --- | --- |
-| 0 | The command did its work: every model compiles, the study is admitted, the play is finished, the files are formatted. |
-| 1 | Diagnostics: a model that does not compile, a stylesheet with a problem, a study or an edit document that the engine refuses, a play log of another play, or a file that `fmt --check` would change. |
-| 2 | The command line is wrong: an unknown flag, variant, run, option, unit of time or output of `--exceed`, a `--set` that is not `NAME=VALUE`, a path that is no TARGET, or a variant or a run that the command needs and the line does not name. |
-| 3 | `play` only: the input ends before the run does. |
+| 0 | The command did its work |
+| 1 | Diagnostics: the model does not compile, the run stops before its horizon, the edit document does not hold, or a file cannot be read or written |
+| 2 | Usage: the command line is wrong, for example a MODEL, a path, a run or a time that the model does not have |
+| 3 | `napkin play` only: the input ended, or `quit` came, before the end of the run |
 
-A usage error (exit 2) prints the command's usage line, then one line `napkin COMMAND: error: …`.
-A name that names nothing gets the closest names:
+A usage error prints the usage of the command and the message:
 
-```
-$ napkin run scenarios/water_controls_wipe --variant juneau --run early
-usage: napkin run [-h] [--variant NAME] [--run NAME] [--option [GROUP=]OPTION]
-                  [--set NAME=VALUE] [--at TIME,…] [--edits FILE] [--events]
-                  [--json [full]] [--no-store]
-                  [TARGET]
-napkin run: error: early is not a run of water_controls_wipe:juneau; did you mean early_kept?
+```text
+usage: napkin run [-h] [--run NAME] [--edits FILE] [--at TIMES]
+                  [--value PATHS] [--lag PATH=FROM..TO] [--json]
+                  MODEL
+napkin run: error: --value tunings_don: no named value of the model; did you mean tunings_done or tuners.done?
 ```
 
-Diagnostics (exit 1) go to the standard error, one line each, as a compiler writes them:
-`file:line:column: severity: message (path; run NAME)`. The parentheses name the place in the model
-and the run, when there are any. Here line 11 of a model from [`napkin new`](#napkin-new) has a
-wrong unit, `people/dya`:
-
-```
-$ napkin compile demo
-demo/model.scn:11:5: error: Unregistered unit 'people/dya' (service/rate)
-```
-
-## Targets and variants
-
-The TARGET of `compile`, `run`, `play`, `sample` and `draw` names one package or one variant:
-
-- a scenario folder, whose `model.scn` starts with `scenario`, or that `model.scn`;
-- a variant folder, `variants/NAME/` of a package, or its `model.scn`.
-
-Without a TARGET, the command takes the current folder, `.`. Another `.scn` file is a module of a
-package, not a TARGET, and the command refuses it (exit 2). So does a path that does not exist, or a
-folder without a `model.scn`.
-
-A package with variants runs as its variants. The main file is part of each variant, and each
-variant is a model of its own, `package:variant` ([language.md](language.md), §2.12). `--variant
-NAME` picks one. `compile` compiles every variant when `--variant` names none. `run`, `play`,
-`sample` and `draw` need one variant: without `--variant`, they list each variant with its title,
-and stop (exit 2):
-
-```
-$ napkin run scenarios/water_controls_wipe
-usage: napkin run [-h] [--variant NAME] [--run NAME] [--option [GROUP=]OPTION]
-                  [--set NAME=VALUE] [--at TIME,…] [--edits FILE] [--events]
-                  [--json [full]] [--no-store]
-                  [TARGET]
-napkin run: error: water_controls_wipe has 16 variants: pick one with --variant NAME
-  asheville      Asheville, North Carolina
-  auburn         Auburn, Washington
-  …
-  richmond       Richmond, Virginia
-  washington_dc  Washington, DC
-```
-
-An unknown variant gets the closest names (`junea is not a variant of water_controls_wipe; did you
-mean juneau?`). A variant folder as the TARGET and a `--variant` with another name is a usage error.
-
-## Runs
-
-`--run NAME` names a run of the model's `runs:` lines. Each command finds the runs in the files
-before the model compiles. So an unknown run is a usage error (exit 2) with the closest names, and
-the command compiles nothing. A model with no `runs:` and no options has one run, `base`.
-
-- `run` runs every run, or each run that a `--run` names (repeatable).
-- `play` takes one run: the run of `--run`, or the only run of the model. A model with
-  several runs and no `--run` lists each run with its label, and the command stops (exit 2).
-- `draw` draws the run of `--run`, or the only run. A model with several runs and no `--run` is
-  drawn with every run joined.
-
-For a spread, pass the variant folder as the model and select the response with
-`--run early` or `--run delayed_none`. With no `--run`, `sample` uses the model's default run.
-
-**Which runs the engine checks.** `compile` checks every run of each model. `run --run X`, `play`
-and `draw --run X` check the model for X only. `sample` checks the edit document and samples the
-selected configuration. `play` always checks its one run only. `run` and `draw` without `--run` check every run. The check
-of a run is the check of its inputs and the proofs of its structure.
+`napkin --help` and `napkin --version` load no compiler and no engine.
 
 ## napkin compile
 
-```
-usage: napkin compile [-h] [--variant NAME] [--inputs] [--outputs] [--json]
-                      [TARGET]
-```
-
-`compile` reads, checks and proves each model that the TARGET names, with every run checked. It also
-checks the files that only the tools read:
-
-- the stylesheet of each model: the variant's own `style.toml`, else its package's
-  ([draw.md](draw.md));
-- for a package with variants, compiled whole, the records of the package's folder that no variant
-  uses. Each is a diagnostic at the line of its `"id"` in its JSON file.
-
-Then it lists what the package offers: its variants, its runs, the options of each group with their
-real names, and each actor with its choices. The last line counts the values that rest on
-evidence. A value is a line of a file that cites records, counted once also when several variants
-read it. It is sourced when one of its records is a `source` or a `source_transfer`, and assumed
-when one of them is an `assumption`. Identities and conventions count as neither.
-
-```
-$ napkin compile examples/reservoir
-reservoir  A reservoir in a storm
-  runs:     base (1)
-  actors:   operator: operator.decide (open, wait)
-  compiled · evidence: 0 sourced values, 7 assumed
+```text
+napkin compile [-h] [--json] MODEL
 ```
 
 | Flag | What it does |
 | --- | --- |
-| `--variant NAME` | Compiles only this variant (default: every variant). |
-| `--inputs` | Also lists each input: its value or distribution, its range, the kinds of its records and its label. |
-| `--outputs` | Also lists each output: its unit, its kind, its label and its scope. |
-| `--json` | Prints all of it as one JSON document ([JSON documents](#json-documents)). |
+| `--json` | Print one JSON document |
 
-```
-$ napkin compile examples/piano_tuners --inputs --outputs
-piano_tuners  Piano tuners
-  runs:     base (1)
-  inputs (3):
-    tuners.rate    pert(600 tunings/tuner-year, 1000 tunings/tuner-year, 1200 tunings/tuner-year)   500 to 1500 tunings/tuner-year   assumption   Tunings that one tuner does in a year
-    tuners.staff   3 tuner                                                                          1 to 10 tuner                    assumption   Tuners in the town
-    tuners.need    5000 tunings                                                                     0 to 20000 tunings               assumption   Tunings that the pianos need in the year
-  outputs (1):
-    tunings_done   tunings   cumulative   Tunings done in the year   The pianos of one town.
-  compiled · evidence: 0 sourced values, 3 assumed
+The command compiles the model (`napkin.model.compile.load_scenario`). A model that does not compile
+prints each problem and exits 1. A model that compiles prints a summary of its program:
+
+- the default run: its mode, its horizon and its longest step;
+- the named runs;
+- the members (`entities`), each by its id;
+- the inputs, the stored values (`stores`), the formulas, the distributions, the links and the
+  collections, each by its path;
+- the flows, each with its ends. A route is `a <-> b`. Each leg of a flow with legs has its own path;
+- the units that the program spells;
+- the model hash, which an edit document names.
+
+The command also checks the stylesheet of the model: the `style.toml` of the variant, else of the
+package ([draw.md](draw.md#where-the-file-is)). A problem of the stylesheet prints after the summary,
+and the command exits 1.
+
+```text
+$ napkin compile examples/reservoir
+examples/reservoir/model.scn: A reservoir in a storm
+  run:           median, to 120 h, steps of at most 1 h
+  entities:      reservoir, operator
+  inputs:        reservoir.inflow, reservoir.spillway, reservoir.risk, operator.level
+  stores:        reservoir.water, reservoir.gate, reservoir.spilled, reservoir.risk_time
+  distributions: operator.forecast
+  flows:         reservoir.storm: SOURCE -> reservoir.water, reservoir.spill: reservoir.water -> reservoir.spilled, reservoir.at_risk: SOURCE -> reservoir.risk_time
+  units:         fraction, fraction/day, fraction/h, h, h/h
+  model hash:    d52b453a4543108aec99dffe45966e7c02404279423a3e1af400a22bc4800dfc
 ```
 
-Exit 0 when every model compiles and every check holds (a warning does not fail it), 1 for any
-error, 2 for a wrong command line. The listing goes to the standard output, and the diagnostics to
-the standard error.
+**`--json`** prints one document with the keys `model`, `title`, `horizon` (in hours), `runs`,
+`model_hash`, `entities`, `inputs`, `stores`, `formulas`, `distributions`, `links`, `collections`,
+`flows`, `units`, `diagnostics` and `warnings`. Each value has its `path` and its `unit`. Each flow
+has its `path`, its `kind` (`directed`, `reversible` or `legs`), its `source`, its `sink` and its
+`unit`; a flow with legs has its `legs` instead of its ends. Each diagnostic and each warning has
+its `code`, `message`, `file`, `line` and `column`.
 
 ## napkin run
 
+```text
+napkin run [-h] [--run NAME] [--edits FILE] [--at TIMES] [--value PATHS] [--lag PATH=FROM..TO] [--json] MODEL
 ```
-usage: napkin run [-h] [--variant NAME] [--run NAME] [--option [GROUP=]OPTION]
-                  [--set NAME=VALUE] [--at TIME,…] [--edits FILE] [--events]
-                  [--rows NAME,…] [--json [full]] [--no-store]
-                  [TARGET]
-```
-
-`run` compiles the model and runs one study: every run, or each `--run`. For each run, it prints the
-run's name and label, then each outcome with its value and unit at the end of the run. An outcome
-that the model does not estimate shows as `not estimated`, or `not applicable`, never as a number.
-The warnings of the study go to the standard error.
 
 | Flag | What it does |
 | --- | --- |
-| `--variant NAME` | The variant of the package. |
-| `--run NAME` | Runs only this run (repeatable; default: every run). The model is checked for these runs only. |
-| `--option [GROUP=]OPTION` | Puts this option into each run in place of the run's option of its group (repeatable; [The edit document](#the-edit-document)). |
-| `--set NAME=VALUE` | Gives an input a value in its own unit, for every run (repeatable). |
-| `--at TIME,…` | Also gives every outcome at these times, such as `--at 24h,7days`. |
-| `--edits FILE` | Applies an edit document. |
-| `--events` | Prints each event of each run with its time. |
-| `--rows NAME,…` | For a model with a table: the rows whose own events and health the report gives ([A model with a table](#a-model-with-a-table)). |
-| `--json [full]` | Prints the report as one line of JSON ([JSON documents](#json-documents)). |
-| `--no-store` | Neither reads nor writes the run store ([The run store](#the-run-store)). |
+| `--run NAME` | Run the named run NAME. Without it, the command runs the default run: a median run to the horizon of the scenario line |
+| `--edits FILE` | Apply the edit document FILE ([The edit document](#the-edit-document)) |
+| `--at TIMES` | Report at these times, each a number and a unit of time of the model: `--at 12h,2days`. Without it, the start and the horizon. Repeatable |
+| `--value PATHS` | Report these paths: `--value tank.water,clinic.delivery.actual_rate`. Without it, every named value. Repeatable |
+| `--lag PATH=FROM..TO` | Report PATH as the mean of its history from TO to FROM before each time: `--lag unserved_volume=2h..6h`, or one delay, `--lag x=3h`. Repeatable |
+| `--json` | Print one JSON document |
 
-Each time of `--at` is a number and a unit of time of the model (`h`, `day`, `days`, `week`,
-`month`, `year` and the others of the prelude). It lies from 0 to the end of the run:
+**What the table shows.** Without `--value`, the table has each named value in the order of the
+file. A flow shows its actual rate, its request and its capacity under its line. A route also shows
+its legs `forward` and `backward`. A flow with legs shows its `served_fraction` and then each leg.
+Each value is in its declared unit, and a row of a member with a title shows the title in brackets.
+A number has six significant figures. A number at most `atol_factor` times the largest magnitude of
+its history shows as `0`.
 
-```
-$ napkin run examples/reservoir --at 24h,3days
-base
-                                             at 24 h      at 72 h        at the end (120 h)
-  Water let out over the spillway            0 fraction   0.2 fraction   0.5 fraction
-  Time with the water above the risk level   0 h          0 h            0 h
-```
+A value of an occurrence, such as `tank.deliver#0.pipe.request`, is not in the default list.
+`--value` names it. Before the occurrence starts, its value is `unavailable`.
 
-A time without a unit, a unit that is not of time, and a time outside the run are usage errors:
-`--at 10days: the run goes from 0 h to 120 h`. `--events` lists each event that has an outcome,
-with its time, its text and its name:
+**Under the table**, in this order:
 
-```
-$ napkin run examples/reservoir --events
-base
-                                             at the end (120 h)
-  Water let out over the spillway            0.5 fraction
-  Time with the water above the risk level   0 h
-  events:
-    40 h  The operator opens the spillway.  (operator.decide.open)
-```
+1. each lag of `--lag`, with the proof that the value never falls. A value that can fall keeps its
+   plain read, and a warning gives the reason;
+2. the text of each case of a status display that the table shows;
+3. the reason of each value that is `unavailable`;
+4. the near-ties: the decisions of the run within the tolerance of their boundary. The table gives
+   the five most frequent sources. `--json` gives every entry.
 
-Exit 0 when the study is admitted. Exit 1 when the model does not compile or the engine rejects the
-study: the command prints `The study is rejected:` and the diagnostics.
-
-### A model with a table
-
-A thing of a model can make one instance for each row of a table (`cells: Cell from "cells.csv"`,
-[language.md](language.md)). A table can have very many rows. Thus the engine does not write each
-row out, and the report does not list each row
-([engine.md](engine.md#tables-and-tiers)).
-
-- The outcomes print as those of any model.
-- What the report says of the rows of a table is by **group**. A group is a class of rows that the
-  engine runs as one family: the rows that give the same columns of the table. A group has the name
-  of its first row. The command prints each group with its table and the number of its rows.
-- `--events` prints, for each group, each event with its outcome: how many times it happened, in how
-  many rows, and the first and the last time.
-- `--rows NAME,…` names rows, such as `--rows cells_4`. The events of these rows print one by one,
-  with those of the things that no table makes.
-
-```
-$ napkin run demo --events --rows cells_4 --at 30h
-base
-                                             at 30 h            at the end (240 h)
-  Water that all cells spill                 0.1875 fraction    2.6 fraction
-  Water that seeps from all cells            0.09368 fraction   0.6558 fraction
-  events:
-    20 h  The gate opens.  (cells_4.open.done)
-    68 h  cells_4.shut.done  (cells_4.shut.done)
-  groups of rows:
-    cells_1: 3 rows of cells
-      cells_1.open (done): 3 times in 3 rows, from 20 h to 120 h
-      cells_1.shut (done): 3 times in 3 rows, from 68 h to 168 h
-    cells_2: 3 rows of cells
-      cells_2.open (done): 3 times in 3 rows, from 20 h to 80 h
-      cells_2.shut (done): 3 times in 3 rows, from 68 h to 128 h
+```text
+$ napkin run examples/piano_tuners
+Piano tuners: a median run to 8760 h
+                          unit                 0 h        8760 h
+tuners.rate               tunings/tuner/year   974.512    974.512
+tuners.staff              tuner                3          3
+tuners.need               tunings              5000       5000
+tuners.due                tunings              5000       2076.46
+tuners.done               tunings              0          2923.54
+tuners.tune.actual_rate   tunings/h            0.333737   0.333737
+tuners.tune.request       tunings/h            0.333737   0.333737
+tuners.tune.capacity      tunings/h            0.333737   0.333737
+tunings_done              tunings              0          2923.54
 ```
 
-Limits of a model with a table:
+A lag needs the proof that its value never falls. Before the window reaches 0 h, the value is
+`unavailable`:
 
-- `--option`, `--set` and `--edits` are not for the groups of a table yet. With one of them, the
-  command runs the model as it runs every model, with each row written out, and its first line says
-  so: `note: this model runs with each row of its table written out: --set is not for the groups of
-  a table yet`. This is for a small table: each row then costs as much as a thing of its own. An
-  edit names an input of a row as `cells.1.leak`. `napkin sample` and `napkin play` run such a
-  model in the same way.
-- The run store keeps no run of the groups of a table.
-- The engine does not run every table by group. A template that reads a list over its own table is
-  one such model. The command then runs the model with each row written out, with the same note
-  and its reason.
-- `--rows` is a usage error when the model runs with each row written out, and for a model with no
-  table.
-- With `--json`, the note goes to the standard error: the standard output is the document only.
-
-## napkin play
-
-```
-usage: napkin play [-h] [--variant NAME] [--run NAME] --control THING
-                   [--option [GROUP=]OPTION] [--set NAME=VALUE] [--edits FILE]
-                   [--picks FILE] [--save FILE] [--json]
-                   [TARGET]
+```text
+$ napkin run examples/piano_tuners --value tunings_done --lag tunings_done=1month..2months --at 0h,6months,1year
+Piano tuners: a median run to 8760 h
+                                   unit      0 h           6 months   1 year
+tunings_done (lag 730 h..1460 h)   tunings   unavailable   1096.33    2558.1
+tunings_done (lag 730 h..1460 h): the mean of its history from 1460 h to 730 h before each time; it never falls: what changes it adds to what it counts or moves within it: tuners.tune of tuners
+tunings_done at 0 h: unavailable: the lag of tunings_done at 0 h reads it from -1460 h, before the run starts at 0 h: the record holds no value then
 ```
 
-`play` runs one run and stops at each decision of a controlled actor, for your pick. The model takes
-every other decision. The model is checked for that run only. Each pick goes into the log before
-the engine takes it, and the run is one simulation.
+A run that stops before its horizon prints the values up to the time at which it stopped, then why,
+and exits 1.
 
-| Flag | What it does |
-| --- | --- |
-| `--run NAME` | The run to play (default: the only run). |
-| `--control THING` | An actor, or one choice of an actor (`actor.event`), whose decisions you pick (repeatable, at least one). |
-| `--option`, `--set`, `--edits` | As for `run`. |
-| `--save FILE` | Writes the play log ([The play log](#the-play-log)). |
-| `--picks FILE` | Continues a play log. |
-| `--json` | JSON lines in place of prompts ([The play protocol](#the-play-protocol)). |
-
-At the terminal, the command shows the time, the thing that decides and its question, what it sees,
-and the outcomes. It numbers each outcome that can happen now, and marks the others `(cannot happen
-now)`. Type the number or the name of an outcome, then a reason, or nothing:
-
-```
-$ napkin play examples/reservoir --control operator
-note: checked for run base only; `napkin compile` checks every run
-
-At 40 h, operator decides (operator.decide).
-  The water reaches the level at which the operator opens the spillway.
-  It sees:
-    reservoir.water = 0.7 fraction
-  It can pick:
-    1.  open: The operator opens the spillway.
-    2.  wait: The operator waits, and the spillway stays closed.
-Pick 1-2 or a name: 2
-Why (optional): I want to see what happens
-  operator picks wait.
-
-The run base ends at 120 h.
-  Water let out over the spillway           0 fraction
-  Time with the water above the risk level  40 h
-1 pick.
-```
-
-The engine refuses a `--control` that names no actor and no choice (exit 1). A note then names the
-actors and their choices:
-
-```
-$ napkin play examples/reservoir --control nobody
-note: checked for run base only; `napkin compile` checks every run
-error: nobody is not an actor of this run, nor a choice of an actor (run base)
-note: the actors that --control can name, with their choices: operator (operator.decide)
-```
-
-When the input ends at a decision, the run stops there, and the command exits 3. With `--save`, the
-log keeps the picks so far.
+**`--json`** prints one document with the keys `model`, `title`, `run`, `edits`, `mode`, `horizon`,
+`times` (in hours), `values`, `records`, `near_ties`, `stopped`, `violations`, `attempts`,
+`placements`, `diagnostics` and `warnings`. Each entry of `values` has the `unit`, the `label`, the
+member's `title`, the `values` at the times, the `lag`, the `note` and the evidence `trail`. A value
+with no reading is `{"unavailable": reason}`. A status display is `{"rating", "text", "case"}`.
 
 ## napkin sample
 
-```sh
-napkin sample MODEL [--run NAME] [--edits FILE] [--value PATHS] [--at TIME] \
-  [--samples N] [--seed N] [--jobs N] [--exceed PATH=VALUE] [--json]
+```text
+napkin sample [-h] [--run NAME] [--edits FILE] [--value PATHS] [--at TIME] [--samples N] [--seed N] [--jobs N] [--exceed PATH=VALUE] [--json] MODEL
 ```
 
-The command runs one selected configuration through its horizon. A central run uses the median of
-each numeric draw. Each sample then draws at the sites the model executes, including initializers
-and event actions. The default study uses 200 samples and seed 0. Two invocations with the same
-seed and model share a draw when the same member executes the same draw site. The worker count
-does not affect those values.
+| Flag | What it does |
+| --- | --- |
+| `--run NAME` | Sample the named run NAME. Without it, the default run |
+| `--edits FILE` | Apply the edit document FILE. An edit can give a distribution-valued input a distribution |
+| `--value PATHS` | Report these paths. Without it, every named number. Repeatable |
+| `--at TIME` | Report at this time. Without it, the horizon |
+| `--samples N` | Run N samples (200 by default) |
+| `--seed N` | The seed of the study (0 by default) |
+| `--jobs N` | Run the samples on N processes. Without it, one process for each processor, and never more than the samples |
+| `--exceed PATH=VALUE` | Also print the share of the samples in which PATH is above VALUE, in its unit. Repeatable |
+| `--json` | Print one JSON document, with every sample |
 
-`--value` selects one or more comma-separated paths. The default selects the model's named
-numbers. `--at` sets the time to read the paths, defaulting to the horizon. The report gives the
-central reading, the sample mean, the middle 50% and 90%, and the strongest rank correlations with
-executed draws. For at least 1,000 samples it includes the 99th percentile, and for at least 2,000
-it includes the 99.5th. `--exceed PATH=VALUE` reports the fraction of the samples above a threshold.
-`--json` includes the seeds, realized draws and readings for each sample. A failed central run or
-sample refuses the study. A study that executes no draws reports the absence of a spread.
+The command runs a central run in `median` mode first. Then it runs the samples in `sampled` mode,
+each with its own seed. A sample gives the same values alone, in a batch or in another process,
+within the stated tolerances. For each value, the command prints:
 
-An edit follows the declared input type. A numeric input accepts a number or a compatible
-quantity. A distribution-valued input accepts an expression such as `"pert(20 h, 40 h, 80 h)"`.
-The scenario calls `.draw()` where it consumes that distribution.
+- the central value and the mean of the samples;
+- the middle 50% (p25 to p75) and the middle 90% (p5 to p95);
+- from 1000 samples the 1-in-100 value (p99), and from 2000 samples the 1-in-200 value (p99.5);
+- the three draws that move the value most, by rank correlation;
+- for each `--exceed`, the share P(X > V) = k / n, with its 95% Clopper-Pearson interval.
 
-The Washington, DC water recovery spread turns on four draws at initialization. This command
-samples crew availability under the Delayed response. Repeat it with `--run early` to compare
-the response options under the same seed.
+```text
+$ napkin sample examples/piano_tuners --value tunings_done --samples 100 --exceed tunings_done=3000
+Piano tuners: the default run, 100 samples from the seed 0, at 8760 h
+               unit      central   mean      p5        p25       p50       p75       p95
+tunings_done   tunings   2923.54   2917.96   2356.71   2708.13   2924.74   3186.46   3394.27
+tunings_done: moved most by tuners.rate.draw[0] of tuners (1.00)
+P(tunings_done > 3000) = 41/100 = 0.41 (95% from 0.31262 to 0.512856)
+```
 
-```sh
-napkin sample scenarios/water_controls_wipe/variants/washington_dc \
-  --run delayed_none --edits scenarios/water_controls_wipe/variants/washington_dc/spreads/uncertainty.json \
-  --samples 2 --jobs 2 --value controls_crew.working_capacity,field_crew.working_capacity
+A run whose samples draw nothing has no spread. The command says so and exits 0. A sample that stops
+before the horizon refuses the whole study: the command exits 1, and no sample is left out.
+
+**`--json`** prints one document with the keys `model`, `title`, `run`, `edits`, `samples`, `seed`,
+`at`, `drawn`, `values`, `exceed`, `draws` and `warnings`. Each entry of `values` has the `unit`,
+the `label`, the `central` value, `estimated`, `reason`, `mean`, `sd`, `sem`, `least`, `greatest`,
+`percentiles`, `tails` and `drivers`. Each entry of `draws` is one sample: its `seed`, its `values`
+and its `draws`, each with its `site`, `owner` and `value` (a number in canonical units).
+
+## napkin play
+
+```text
+napkin play [-h] [--run NAME] [--edits FILE] [--break AT[@OWNER]] [--value PATHS] [--from FILE] MODEL
+```
+
+| Flag | What it does |
+| --- | --- |
+| `--run NAME` | Play the named run NAME. Without it, the default run |
+| `--edits FILE` | Apply the edit document FILE before the run |
+| `--break AT[@OWNER]` | Stop before this location. Repeatable |
+| `--value PATHS` | Show these paths at each stop and at the end. Without it, a stop shows the values of its member and of its occurrence, and the end shows every named value |
+| `--from FILE` | Go on from a checkpoint that `save FILE` wrote |
+
+The command plays one run with a `napkin.session.Session` ([python-api.md](python-api.md#session)).
+Give `--break` or `--from`. The two together are a usage error, because a checkpoint keeps its own
+breakpoints.
+
+**A location** is the origin of a part of the compiled program:
+
+| Location | Example | The run stops |
+| --- | --- | --- |
+| An event | `operator.decide` | Before the first step of each occurrence |
+| A stage | `operator.decide.step[0]` | Before the stage |
+| A statement | `operator.decide.step[0].do[1]` | Before the statement, inside its stage |
+| A statement of the setup | `setup[0]` | Before the statement |
+
+`AT@OWNER` stops for one member (`@operator`) or one occurrence (`@operator.decide#0`) only. A
+location that the model does not have is a usage error, with the closest names. A breakpoint in the
+body of a trigger is a usage error too.
+
+**At a stop**, the command prints the number of the stop, its time, the location with its kind and
+its place in the file, the occurrence, and what runs next. Then it shows each value, with what an
+edit can give it and its label. Then it reads lines after the prompt `> `:
+
+| Line | What it does |
+| --- | --- |
+| `PATH = VALUE` | Edit a live stored value: a number in the value's declared unit, an enum member, `true` or `false`, or a text. The engine checks the edit. A refused edit prints its reason |
+| `save FILE` | Write the stop, with its edits, to the checkpoint FILE |
+| `go` | Go on to the next stop, or to the end |
+| `quit` | Stop here. The command exits 3 |
+
+When the input ends before the run, the command stops there and exits 3. At the end of the run, the
+command prints the values at the start and at the horizon, as `napkin run` does. Then it prints each
+edit that the run took.
+
+```text
+$ printf 'operator.decide#0.order = WAIT\nsave stop.checkpoint\ngo\n' | napkin play examples/reservoir --break 'operator.decide.step[0].do[1]' --value reservoir.water,reservoir.gate,operator.decide#0.order
+A reservoir in a storm: a median run to 120 h
+
+Stop 1 at 40 h: before operator.decide.step[0].do[1] (switch at examples/reservoir/model.scn:55), in operator.decide#0 of operator.
+Next: operator.decide.step[0] of operator.decide#0, from its start.
+Drawn in this stage before the stop: operator.decide.step[0].do[0].draw[0] = OPEN.
+  reservoir.water           0.7 fraction   edit: a number         Water in the reservoir
+  reservoir.gate            CLOSED         edit: CLOSED or OPEN   Spillway
+  operator.decide#0.order   OPEN           edit: OPEN or WAIT
+Edit with PATH = VALUE, or: save FILE, go, quit.
+> operator.decide#0.order = WAIT
+  operator.decide#0.order: OPEN -> WAIT
+> save stop.checkpoint
+  saved; go on with: napkin play examples/reservoir --from stop.checkpoint
+> go
+
+The run ends at 120 h.
+                          unit       0 h           120 h
+reservoir.water           fraction   0.6           0.9
+reservoir.gate                       CLOSED        CLOSED
+operator.decide#0.order              unavailable   WAIT
+operator.decide#0.order at 0 h: unavailable: operator.decide#0 has not started at 0 h
+edit at 40 h, before operator.decide.step[0].do[1]: operator.decide#0.order OPEN -> WAIT
+```
+
+The edit to `WAIT` keeps the spillway closed, so the water rises to 0.9. `--from` goes on from the
+saved checkpoint, in this process or a fresh one. A checkpoint of another program, engine or run is
+refused by name. Here the input ends with `quit`, so the command exits 3:
+
+```text
+$ printf 'reservoir.water = 0.65\nquit\n' | napkin play examples/reservoir --from stop.checkpoint --value reservoir.water
+A reservoir in a storm: a median run to 120 h
+
+Stop 1 at 40 h: before operator.decide.step[0].do[1] (switch at examples/reservoir/model.scn:55), in operator.decide#0 of operator.
+Next: operator.decide.step[0] of operator.decide#0, from its start.
+Drawn in this stage before the stop: operator.decide.step[0].do[0].draw[0] = OPEN.
+  reservoir.water   0.7 fraction   edit: a number   Water in the reservoir
+  edited here: operator.decide#0.order = WAIT
+Edit with PATH = VALUE, or: save FILE, go, quit.
+> reservoir.water = 0.65
+  reservoir.water: 0.7 fraction -> 0.65 fraction
+> quit
+The run stops at its stop 1, before its end.
+```
+
+## napkin fmt
+
+```text
+napkin fmt [-h] [--check] FILE [FILE ...]
+```
+
+| Flag | What it does |
+| --- | --- |
+| `--check` | Write nothing. List the files that would change, and exit 1 if any |
+
+Each FILE is a `.scn` file, or a folder. The command finds the `.scn` files below a folder, outside
+the folders and files whose names start with a dot. The formatter is the language's own
+([compiler.md](compiler.md#lex-parse-and-format)). It writes each line again from its parsed form, so
+a formatted file does not change. The command writes only the files that change, and lists them.
+A file that the parser cannot read prints its problem, and the command exits 1.
+
+```text
+$ napkin fmt --check examples/piano_tuners
+1 file checked, all formatted
 ```
 
 ## napkin draw
 
+```text
+napkin draw [-h] [--run NAME] [--style FILE] [-o FILE] [--latex FILE] MODEL
 ```
-usage: napkin draw [-h] [--variant NAME] [--run NAME] [--style FILE] [-o FILE]
-                   [--latex FILE]
-                   [TARGET]
-```
-
-`draw` writes a static picture of the model as SVG. Each thing is a box with its stocks and flows.
-Each var with named states is a small state machine. Arrows show what each thing reads, changes and
-moves of the others. The stylesheet places, groups, hides and labels things, and sets their icons:
-the variant's `style.toml`, else the package's, or the file of `--style`. Everything else lays itself
-out, the same way each time. [draw.md](draw.md) gives the picture and the stylesheet.
 
 | Flag | What it does |
 | --- | --- |
-| `--run NAME` | Draws that run: it leaves out the parts that cannot act in it. The model is checked for that run only. |
-| `--style FILE` | The stylesheet to use in place of `style.toml`. |
-| `-o FILE` | The SVG to write. The default is `<package>[.<variant>][.<run>].svg` in the current folder. |
-| `--latex FILE` | Also writes the equations, the symbols and the references of the picture to this file, as a LaTeX fragment. |
+| `--run NAME` | Draw the named run NAME. Leave out the events that cannot start in it, with their lines and arrows |
+| `--style FILE` | Use FILE in place of `style.toml` |
+| `-o FILE` | Write the SVG to FILE. Without it, `<package>[.<variant>][.<run>].svg` in the current folder |
+| `--latex FILE` | Also write the equations, symbols and references of `[equations]` as a LaTeX fragment (amsmath, longtable, hyperref) |
 
+Without `--run`, a model with one named run is drawn as that run. A model with several named runs is
+drawn with its runs joined. [draw.md](draw.md) describes the picture and `style.toml`.
+
+```text
+$ napkin draw examples/piano_tuners -o tuners.svg
+tuners.svg: 1 thing, 0 arrows
 ```
-$ napkin draw scenarios/water_controls_wipe --variant juneau --run delayed_kept_human
-note: checked for run delayed_kept_human only; `napkin compile` checks every run
-water_controls_wipe.juneau.delayed_kept_human.svg: 10 things, 27 arrows
-```
 
-A stylesheet with a problem gives its diagnostics, with its file and line (exit 1).
-
-The LaTeX fragment of `--latex` holds the things that `[equations] things` names in the stylesheet
-([draw.md](draw.md)). It has one `align*` for each block of equations, a `longtable` of the symbols
-and an `enumerate` of the references. Its first lines are comments that name the packages that it
-needs, in the order to load them: `amsmath`, `longtable` and `hyperref`. Without `[equations]
-things`, the file holds only comments, and a note says so (exit 0).
-
-The fragment can break across pages. Each `align*` is in a group with `\allowdisplaybreaks[1]`, so a
-page can break between the lines of a long block. Outside the group, your document keeps its own
-setting. The table repeats its header row on each page. LaTeX can need a second run to give the
-table the same column widths on each page. In a link, `%` and `#` are written `\%` and `\#`. A `$`,
-`^`, `{`, `}` or `\` is written as %XX: `$` as %24, which a server reads as `$`. `&`, `_` and `~`
-stay as they are, because hyperref reads them as they are.
+A stylesheet with a problem prints its diagnostics, and the command writes no file (exit 1). A
+picture taller than a PDF page holds prints a note.
 
 ## napkin new
 
-```
-usage: napkin new [-h] [--title TEXT] [--variants NAME,…] DIR
-```
-
-`new` writes `DIR/model.scn`: a model that compiles and runs as written. It holds one thing with a
-stock and a flow, one output, and one assumption record that each value cites. It uses only the
-prelude's units and names no library, so it compiles in any folder. Then it prints what to replace
-next.
-
-```
-$ napkin new demo
-Wrote demo/model.scn.
-It compiles and runs as written: napkin run demo
-
-Replace next, in demo/model.scn:
-  - the title, "A new scenario", and the lines summary, horizon and scope under it;
-  - the inputs, each with its value, its range and its text: service.rate;
-  - the records, which each value cites: guess. Give each value a record of its own.
-After each change, `napkin compile demo` checks the model (docs/language.md gives each line).
-$ napkin run demo
-base
-                  at the end (720 h)
-  People served   300 people
+```text
+napkin new [-h] [--title TEXT] [--variants NAME,…] DIR
 ```
 
 | Flag | What it does |
 | --- | --- |
-| `--title TEXT` | The title of the scenario (default: "A new scenario"). A title cannot hold `"`. |
-| `--variants NAME,…` | Also writes `variants/NAME/model.scn` for each NAME: a variant that gives the rate a value of its own. A NAME is a lowercase letter, then lowercase letters, digits and `_`. |
+| `--title TEXT` | The title of the scenario. Without it, "A new scenario" |
+| `--variants NAME,…` | Also write `variants/NAME/model.scn` for each NAME. A name is a small letter, then small letters, digits and `_` |
 
-The command writes no file when one of its files is there already, or when the title or a variant
-name is wrong (exit 2).
+The command writes `DIR/model.scn` and `DIR/style.toml`. The model has one entity with an input, two
+stocks and a flow between them, one formula at the top level, and one `record` line that each value
+cites. It uses
+the prelude's units only. The stylesheet gives the entity its role in the picture (`[role]`), because
+the model has no role. Each variant changes the input to its own value. The command writes no file
+when one of its files is there already (exit 2).
 
-## napkin fmt
+```text
+$ napkin new demo --title "A clinic queue" --variants east,west
+Wrote demo/model.scn and its picture, demo/style.toml, and the variants east and west in demo/variants/.
+It compiles and runs as written: napkin run demo; napkin run demo/variants/east; napkin run demo/variants/west
 
-```
-usage: napkin fmt [-h] [--check] [PATH ...]
-```
-
-`fmt` formats `.scn` files in place with the language's own formatter. The formatter writes each
-line again from its tokens, so a file that it formatted stays the same. Each PATH is a `.scn` file,
-or a folder. For a folder, the command takes the `.scn` files below it. It skips the folders and
-files whose names start with a dot. Without a PATH, it formats the package that holds the current folder. The command
-writes only the files that change, and lists them. A summary goes to the standard error.
-
-```
-$ napkin fmt --check demo
-demo/model.scn
-1 of 1 file would change
-$ napkin fmt demo
-demo/model.scn
-formatted 1 of 1 file
-```
-
-`--check` writes no file: it lists the files that the formatter would change. The command exits 0
-when every file is formatted. It exits 1 when `--check` finds a file to change, or when a file does
-not read (with its file, line and column). It exits 2 for a PATH that is not a `.scn` file or a
-folder. To check every package of
-the catalogue and the examples, name their folders, so that the shell gives no other file:
-
-```
-$ napkin fmt --check examples/*/ scenarios/*/
-23 files checked, all formatted
+Replace next, in demo/model.scn:
+  - the title, "A clinic queue", and the lines summary, horizon and scope under it;
+  - the inputs, each with its value, its range and its text: service.rate (each variant changes its value);
+  - the records, which each value cites: guess. Give each value a record of its own.
+After each change, `napkin compile demo` checks the model (docs/language/README.md describes each line).
 ```
 
 ## The edit document
 
-An edit document changes the values of a model's declared inputs. For example, the
-Washington, DC water recovery model accepts these settings along with the document's
-`schema_version` and `model_hash`:
+An edit document is one JSON object. `--edits FILE` reads it for `run`, `sample` and `play`. The
+schema is `napkin/schema/edits.schema.json`. `napkin/model/runs.py` applies it, and
+`napkin/commands/common.py`, `edits_of`, reads the file.
+
+| Key | Value |
+| --- | --- |
+| `schema_version` | `"0.0.1"`, the version of the edit document (`napkin.SCHEMA_VERSION`). Required by the schema; `--edits` adds it when the file has none |
+| `model_hash` | The model hash that `napkin compile` prints. Required by the schema; `--edits` adds the hash of the model when the file has none |
+| `reason` | A text: why the edits are made |
+| `set` | The edits of every run: `{input path: value}` |
+| `options` | The edits of the runs that take an option: `{option name: {input path: value}}` |
+| `runs` | The edits of one named run: `{run name: {input path: value}}` |
+
+No other key is allowed. A document made for another revision of the model keeps its `model_hash`,
+and the command refuses it.
+
+**An input path** names one input:
+
+- `member.input`: an input of an entity, of a member written by hand, or of a row of a table by its
+  id (`sites.clinic.level`);
+- `Template.instances.input`: the input of every member of a template;
+- `input`: an input of the top level.
+
+**A value** follows the declared type of the input:
+
+| Type of the input | JSON value | Example |
+| --- | --- | --- |
+| A number | A number, in the input's own unit | `3` |
+| A number | A text: a number and a unit of the same dimension | `"0.5 days"` |
+| A yes/no | `true` or `false` | `true` |
+| An enum | A text: a member of the enum | `"BUSY"` |
+| A text | A text | `"The human team"` |
+| A distribution | A text: a distribution as a model writes it | `"pert(48 h, 96 h, 200 h)"` |
+
+A number must be in the range of the input when the bounds are numbers. The command reads JSON
+numbers exactly, and refuses a key that comes twice and a number that is not finite.
+
+**Precedence.** The first of these that gives an input its value wins:
+
+1. an edit of the run (`runs`);
+2. an edit of one of the run's options (`options`);
+3. an edit of every run (`set`);
+4. an option of the run;
+5. the model: a `change`, then a member's own line, then the template.
+
+At each of the first four levels, an edit of one member wins over an edit of every member of its
+template. Two options of one run that set one input are an error. Two edits under `options` that meet
+in one run and set one input are an error too, also when they are equal. An edit of an option that no
+run takes changes no run.
+
+**One transaction.** The command checks the document whole, in every run of the model, before any run
+takes its values. Each problem names its place in the document:
+
+| Code | Problem |
+| --- | --- |
+| `schema` | The document does not follow the schema |
+| `model_hash` | The document is for another revision of the model |
+| `reference` | An option or a run that the model does not have |
+| `input` | A path that names no input. A stored value, a formula and a link are no inputs |
+| `value`, `bool`, `unit`, `range` | A value of the wrong type, of an unknown unit or outside the range |
+| `meeting` | Two edits of the options of one run set one input |
+
+This document edits the incident example at three levels:
 
 ```json
 {
-  "schema_version": "0.0.1",
-  "model_hash": "<the model's hash>",
-  "set": {"uncertainty.enabled": true},
-  "options": {"Delayed response": {"controls_crew.capacity": "40 work_h/h"}},
-  "runs": {"early": {"uncertainty.manual_share": "pert(0.3, 0.6, 0.9)"}}
+  "reason": "Slower detection in every run; a longer containment with the rapid response",
+  "set": {"response.detection_delay": "5 h"},
+  "options": {"Rapid response": {"response.containment_delay": 3}},
+  "runs": {"rapid_response": {"attack.work_per_attempt": "0.5 days"}}
 }
 ```
 
-- A key names an input. Its value must match that input's type. Quantities may have compatible
-  units, and a distribution-valued input accepts another distribution with compatible parameters.
-- `set` edits every run, `options` each run that names the option, and `runs` one run. The narrower
-  edit wins: the run, then the option, then every run. Each edit wins over the value that an option
-  gives, and that value wins over the input's own value.
-- `reason` is optional, and no result reads it.
-
-[engine.md](engine.md) gives the rules of the document in full.
-
-### --edits and --set
-
-`--edits FILE` reads a document. `--set NAME=VALUE` gives one input a value for every run: an entry
-of `set`, which takes the place of the file's entry of the same name. VALUE is strict JSON (no NaN,
-no infinity, no key twice). A bare word, a letter followed by letters, digits, `_` and `-`, is text,
-for a named input: `--set NAME=fast` gives the name `"fast"`. `--set tuners.staff=4` gives the
-number 4, and `--set NAME=true` gives the JSON value `true`.
-
-The command adds `schema_version` and `model_hash` from the model when the document has none. A
-document that names another `model_hash` keeps it, and the engine refuses it. So a document for
-another revision of the model never applies:
-
-```
-$ napkin run examples/piano_tuners --edits old.json
-The study is rejected:
-error: The edits are for a different model revision (edits)
+```text
+$ napkin run examples/incident_response_tempo --run rapid_response --edits edits.json --value attack.admitted,attack.blocked,queue.completed,response.phase --at 0h,6h,12h,24h
+Attack tempo and incident response: the run rapid_response, a median run to 24 h, with the edits of edits.json
+                  unit   0 h          6 h          12 h        24 h
+attack.admitted          1            2            2           2
+attack.blocked           0            0            2           5
+queue.completed   h      0            1            7           19
+response.phase           UNDETECTED   RESPONDING   CONTAINED   CONTAINED
+Near-ties (1 total, from 0 h to 0 h)
+source                            kind   count   first   last
+response.first_incident.when[0]   fire   1       0 h     0 h
+See near_ties in napkin run --json for every entry.
 ```
 
-The engine checks each name and each value, and names the closest input of a wrong name:
+A document with problems prints each one and exits 1:
 
-```
-$ napkin run examples/piano_tuners --set tuners.staf=2
-The study is rejected:
-error: tuners.staf is not an input; did you mean tuners.staff, tuners.rate or tuners.need? (edits/set/tuners.staf)
-$ napkin run examples/piano_tuners --set tuners.staff=20
-The study is rejected:
-error: tuners.staff: 20 is outside [1, 10] (edits/set/tuners.staff)
-```
-
-### --option
-
-`--option [GROUP=]OPTION` puts an option into the run in place of the run's option of the same
-group. Give the option's name as the model's menu gives it (`compile` lists them). `GROUP=` names
-the group, as in `--option "Attacker=Human team"`; an option that two groups hold needs it. Each
-group takes one option. The
-model's runs need not make the combination: `model.combination(run, options)` checks it when you ask
-for it, as the build checks a run. The run keeps its name, and its label names the new options:
-
-```
-$ napkin run scenarios/water_controls_wipe --variant juneau --run delayed_none --option "Attacker=Human team"
-note: checked for run delayed_none only; `napkin compile` checks every run
-delayed_none: Delayed response · No hidden access · Human team
-                                                                at the end (2160 h)
-  Replacement controllers in stock                              1050 parts
-  Person-days without normal water service                      19510 person-days
-…
+```text
+$ napkin run examples/incident_response_tempo --edits bad.json
+bad.json: error: the edits are for another revision of the model [model_hash]
+bad.json: error: options/Rapid: is no option of the model [reference]
+bad.json: error: set/response.detection: response.detection names no input of the model [input]
+bad.json: error: set/attack.admitted: attack.admitted is a state value: an edit sets an input [input]
+bad.json: error: options/Rapid/response.containment_delay: containment_delay is h: it takes no true or false [value]
 ```
 
-Without `--run`, `run --option` makes the combination of each run.
-
-### What the engine checks
-
-An edit document is one transaction over the runs of the model.
-
-- The engine checks the document itself, whatever runs the command names: its shape, its model
-  revision, its names, each value against its input, and the edits of one level that meet.
-- It resolves each run that the model admits under the document, with the checks of its inputs and
-  the proofs of its structure. One failure rejects the whole study, and no run starts. Without
-  `--run`, the model admits every run. With `--run X`, the document is checked on X only (for
-  `sample`, on X and its compared runs; [Runs](#runs)).
-- With `--option`, the engine first checks the whole document on the model, in each run that it
-  admits. Then each combined run takes only the part of the document that reaches it: `set`, the
-  edits of its options and the edits of its run.
-
-Here `false` is a value of the bool input `juneau.reached`, but a check of the model refuses the
-run:
-
-```
-$ napkin run scenarios/water_controls_wipe --variant juneau --run delayed_kept --set juneau.reached=false
-note: checked for run delayed_kept only; `napkin compile` checks every run
-The study is rejected:
-error: The attack reaches at least one system of the place. (assert:/1; run delayed_kept)
-```
-
-## JSON documents
-
-Each JSON document carries `"schema_version": "0.0.1"`, the version of napkin's documents
-(`napkin.SCHEMA_VERSION`). Each document is one line of compact JSON on the standard output. A
-number in it is always finite.
-
-### napkin run --json
-
-`--json` prints the compact document: the report of the study (`sample_result`), with its own names.
-
-- The envelope of the report: `schema_version`, `engine_version`, `model_hash`,
-  `implementation_hash`, `library_hash`, `scenario`, `variant`, `title`, `admissible`, `status`,
-  `effective_edits` and `diagnostics`.
-- `runs`: for each run, its `label`, `options`, `horizon` and `outcomes` (each with its label, unit,
-  kind, status, scope and basis); `reporting_points`, each with its `t`, `values` and `statuses`;
-  and `events`, each event with an outcome, as `{t, thing, event, outcome, text}`, with `picked`
-  when a pick decided it.
-- `admitted_runs`: the runs that the model was checked for, or `null` for every run.
-
-`--json full` adds each run's `trace` and `evidence`, and the model's evidence `index`. Exit 1 when
-the study is not admitted, as without `--json`.
-
-For a [model with a table](#a-model-with-a-table), each run has two more parts, and its `events` are
-those of the things that no table makes and of the rows that `--rows` names:
-
-- `groups`: each group, as `{group, set, rows, inputs}`: its name, its table, the number of its
-  rows, and the `least` and the `greatest` value of each input over its rows.
-- `group_events`: for each group, each event and each outcome, as
-  `{group, event, outcome, count, rows, first, last}`. An event that starts to wait has the outcome
-  `null`.
-
-`--json full` adds each run's `trace`, `evidence`, `peaks` and `health`. The `health` has, at each
-time, the number of rows of each group in each status and in each value of each named state
-(`groups`), and the health of each thing that no table makes and of each named row (`entities`).
-A peak of an output that can fall, in a large table, can be read at fewer times than its
-candidates: it then has `candidates: {read, of}` ([engine.md](engine.md), "Tables and tiers").
-The document has no `index`.
-
-```
-$ napkin run examples/piano_tuners --json
-{"model_hash":"f1953a24…","implementation_hash":"76e8a149…","schema_version":"0.0.1","engine_version":"0.0.1","admissible":true,"status":"accepted","library_hash":"bf98600a…","scenario":"piano_tuners","variant":null,"title":"Piano tuners","effective_edits":{},"diagnostics":[],"runs":{"base":{"label":"base","options":[],"horizon":8760.0,"outcomes":{"tunings_done":{"label":"Tunings done in the year","unit":"tunings","kind":"cumulative","status":"estimated","scope":"The pianos of one town.","basis":{"kind":"identity","explanation":"The tunings that the tuners do, each counted once."},"nonnegative":true,"expr":"tuners.done"}},"reporting_points":{"final":{"t":8760.0,"values":{"tunings_done":2923.537487392582},"statuses":{"tunings_done":"estimated"}}},"events":[]}},"admitted_runs":null}
-```
-
-### napkin compile --json
-
-One document: `schema_version`, `package`, `title`, `models`, `diagnostics` (the records that no
-variant uses) and `evidence` (`{sourced, assumed}`). Each model of `models` has `admissible`,
-`title` and `diagnostics`, and, when it compiles, its `runs` (`{label, options, versus}`), its
-`options` (`{group: {option: text}}`) and its `actors`. `--inputs` and `--outputs` add `inputs` and
-`outputs`.
-
-### napkin sample --json
-
-The document identifies the model, run, edit file, sample count, seed and reading
-time. `drawn` indicates whether any sample executed a draw. The `values` map gives the unit,
-label, central value and distribution summary for each selected path. `exceed` holds the
-threshold estimates. Each entry of `draws` gives the sample seed, its path readings, and each
-executed draw's site, owner and realized value. A path whose summary is unavailable carries its
-reason.
-
-### The play protocol
-
-`napkin play --json` writes and reads JSON lines, one object on each line, so that a program in any
-language can play. Notes go to the standard error. The lines below come from this play, which picks
-`wait`:
-
-```
-$ echo '{"pick": "wait", "reason": "test the risk"}' | napkin play examples/reservoir --control operator --json
-```
-
-1. The command writes a decision:
-
-   ```json
-   {"type":"decision","schema_version":"0.0.1","t":40.00000000000081,"thing":"operator","event":"operator.decide","text":"The water reaches the level at which the operator opens the spillway.","outcomes":[{"name":"open","text":"The operator opens the spillway.","available":true},{"name":"wait","text":"The operator waits, and the spillway stays closed.","available":true}],"view":{"reservoir.water":0.7},"units":{"reservoir.water":"fraction"},"seen":[],"pick":0,"by":"reader"}
-   ```
-
-   `view` holds what the actor sees (`units` gives the unit of each value), `seen` the times of the
-   events that it sees, and `pick` the number of picks before this one. An outcome can happen now
-   when it is `available` ([engine.md](engine.md#play)).
-2. The program writes its answer: `{"pick": OUTCOME, "reason": TEXT}`. The reason can be left out
-   or `null`. A blank line is skipped.
-3. A line that is not strict JSON, not such an object, or whose outcome cannot happen now gets an
-   error, then the same decision again. This is the error for the line `{"pick": "close"}`:
-
-   ```json
-   {"type":"error","schema_version":"0.0.1","message":"close cannot be picked now: pick one of open, wait"}
-   ```
-
-4. The last line is the result. When the run is finished, `report` is the compact document of
-   `napkin run --json`, and `picks` is the log:
-
-   ```json
-   {"type":"result","schema_version":"0.0.1","finished":true,"report":{…},"picks":[{"event":"operator.decide","outcome":"wait","t":40.00000000000081,"by":"reader","reason":"test the risk"}]}
-   ```
-
-   When the input ends first, `finished` is `false`, `report` is `null`, the result adds the
-   `decision` that waits, and the command exits 3. When the engine refuses the play, the command
-   writes `{"type":"error",…,"diagnostics":[…]}`, then a result with `finished` `false`, and exits
-   1.
-
-## The play log
-
-`--save FILE` writes the log of a play. The command writes it before each decision and at the end,
-so the log keeps every pick also when the input ends. The log holds the context that it replays in:
-the model and implementation hashes, the run, the options, the control, the edit document and the
-numerical settings. Then each pick, with its event, outcome, time, who picked it and the reason:
-
-```json
-{
-  "schema_version": "0.0.1",
-  "kind": "play",
-  "model_hash": "ab929f70…",
-  "implementation_hash": "76e8a149…",
-  "scenario": "reservoir",
-  "variant": null,
-  "run": "base",
-  "options": [],
-  "control": {
-    "operator": "reader"
-  },
-  "edits": null,
-  "numerical_settings": {
-    "rtol": 1e-09,
-    "atol_factor": 1e-10,
-    "max_step": 1.0,
-    "max_evaluations": 2000000,
-    "max_events": 10000,
-    "max_steps": 1000
-  },
-  "picks": [
-    {
-      "event": "operator.decide",
-      "outcome": "open",
-      "t": 40.00000000000081,
-      "by": "reader",
-      "reason": "The level is reached"
-    }
-  ]
-}
-```
-
-`--picks FILE` continues a log: each decision takes the next pick of the log, in order, and the
-first decision after the last pick waits for you. Give `--save` with the same FILE to keep the new
-picks. The same log gives the same run, bit for bit. The command refuses a log of another context,
-and names what differs (exit 1):
-
-```
-$ napkin play examples/reservoir --control operator --picks play.json --set operator.level=0.8
-note: checked for run base only; `napkin compile` checks every run
-error: play.json is the log of another play: it differs in edits, so it cannot continue this one
-```
+In Python, `napkin.engine.study.edits_for(model, edits)` adds the version and the hash to a
+document, and `Compiled.configure(run, edits)` applies it ([python-api.md](python-api.md)).
 
 ## The run store
 
-The run store keeps each simulated run on disk, so that no command simulates the same run twice.
-`run`, `play` and `sample` use it. The store keys each run by the resolved run, its units, the
-numerical settings, the exact request, the engine's code and the computer. The request includes the
-horizon, the selected values and the budget of pieces. Reordering the keys reuses the record. A change to any of them simulates the run
-again ([engine.md](engine.md#the-run-store)). A store serves only the computer that wrote it. When a
-study needs several runs that the store does not hold, helper processes simulate them beside the
-command.
+`napkin run` and `napkin sample` keep the record of each run in the run store (`napkin/store.py`).
+A run that the store holds is read, not run again. The key of a run is a digest of the program's
+canonical bytes, the configuration and its request, the engine code, and the Python, numpy and
+scipy versions and the machine. A label is in no key, so a new label reads the stored run.
 
-- The store is in `.cache/runs` of a source checkout, when `napkin` runs from it. For an installed
-  package, it is in `~/.cache/napkin/runs`, or in `napkin/runs` under `XDG_CACHE_HOME`.
-- `NAPKIN_STORE=DIR` puts the store in DIR. `NAPKIN_STORE=off` turns it off.
-- `napkin run --no-store` neither reads nor writes the store.
-- When the store passes `NAPKIN_STORE_LIMIT` gigabytes (4 by default), the runs used least recently
-  go.
-- To clear the store, delete its folder.
-
-The store keeps only the simulations. Every check of a study still runs. A record that ends with a failure,
-including a budget stop, is stored under its request.
+| Variable | What it does |
+| --- | --- |
+| `NAPKIN_STORE` | The folder of the store, or `off` to turn the store off. Without it, `.cache/runs` in a source checkout, else `~/.cache/napkin/runs` (or under `XDG_CACHE_HOME`) |
+| `NAPKIN_STORE_LIMIT` | The size limit of the store in gigabytes (4 by default). Above it, the least recently used runs go |

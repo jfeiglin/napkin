@@ -1,135 +1,260 @@
-# The catalogue's conventions
+# The conventions of the catalogue
 
-Each case of the catalogue follows one attack from its first move, through the defenders' response,
-to its consequences. The [modelling guide](../../docs/modeling-guide.md) says how to model with napkin
-on any subject. This page adds the conventions that the catalogue's models follow for the attacker
-and the defenders. The compiler reads none of them. The authors and the reviewers check them, and
-the pages read some of them ([catalogue.md](catalogue.md)). [AI operations](ai-operations.md) says
-how the AI's own behaviour runs, and how each case compares it with a human team.
+This page gives the conventions that the models of the catalogue obey. The
+[language reference](../../docs/language/README.md) gives the rules of each line, and the
+[modelling guide](../../docs/modeling-guide.md) says how to write a model on any subject. This page
+uses the terms of the language reference ([Terms](../../docs/language/README.md#terms)).
+
+The compiler reads none of these conventions. Some of them are rules of the tools of the catalogue
+([catalogue.md](catalogue.md)): `tools.check`, the publisher and the tests of the catalogue refuse a
+package that breaks them. The authors and the reviewers check the other conventions.
 
 ## Start a package
 
-1. Run `python -B -m tools.new PACKAGE --title "…"`. It makes the folder `scenarios/PACKAGE/` with
-   each file of a package in its shape and no content, and prints the list of what to write, in
-   order.
-2. Write the model part by part. After each part, run `napkin run scenarios/PACKAGE`: it gives the
-   file, line and column of each diagnostic, or each run's outcomes at the end (`--run NAME` for one
-   run, `--events` for its events, `--set NAME=VALUE` for an edit). The run store keeps each run, so
-   only the runs that a change touches run again.
-3. When the model runs, write the summaries with
-   `python -B -m tools.publish --write --scenario PACKAGE`.
-4. Run `python -B -m tools.check --scenario PACKAGE` until it passes.
+1. Run `python -B -m tools.new PACKAGE --title "Title"`. It makes the folder `scenarios/PACKAGE/`
+   with 11 files, each in its shape and with no content, and it prints the list of what to write.
+2. Write the model part by part.
+3. After each part, run `napkin compile scenarios/PACKAGE`. It gives the file, the line and the
+   column of each diagnostic.
+4. Run `napkin run scenarios/PACKAGE`. It gives the values of the default run at 0 h and at the
+   horizon. Add `--run NAME` for a named run, and `--edits FILE` for an edit document.
+5. Write `roles.toml` ([Who plays each part](#who-plays-each-part)). `tools.new` does not make it.
+6. Write the pages with `python -B -m tools.publish --write --scenario PACKAGE`.
+7. Run `python -B -m tools.check --scenario PACKAGE`, and correct the package until the check
+   passes.
 
-Write each text that a reader sees to the writing style
-([CONTRIBUTING.md](../../CONTRIBUTING.md#writing-style)). That includes each text of a thing, a
-template, an event, an outcome, a flow or an output, and each label of a value. It also includes the
-status lines, the menu lines of the options and the texts of the runs.
+The run store keeps each run. Thus, after a change, only the runs that the change touches run again.
+The commands are in [cli.md](../../docs/cli.md).
 
-## One attack on several places
+Write each text that a reader sees in simple, clear sentences: the text of each entity, template,
+value, event, option and named run.
 
-When one attack reaches several places that share most of their model, make them one package with a
-variant for each place (the guide, section 11).
+## Names
 
-- Put what the places share in the main file and its modules: the templates, the attacker, the
-  response, the outputs, the options and their records.
-- Give each place its variant, `scenarios/<package>/variants/<place>/model.scn`, with the summary
-  and the scope of that place, its things and their records.
-- In the module, put the defenders' things before the attacker's, so that their events go first at
-  one moment. A variant's lines come after its main file's, so keep the main file free of things
-  when the order of the lines matters.
+| Name | Rule | Example |
+| --- | --- | --- |
+| A package | Its folder: a lowercase letter, then lowercase letters, digits and `_` | `iv_fluid_shortage` |
+| A variant | Its folder, with the same rule. The tools write `<package>:<name>`. | `water_controls_wipe:lumberton` |
+| An entity, a value, an event, a flow | A small letter first, then letters, digits and `_` | `quality_review.received` |
+| A template | A capital letter first | `Utility`, `Households` |
+| A member of an enum | Capital letters | `FIXED`, `AFTER_REVIEW` |
+| A named run | Lowercase letters, digits and `_`, with a letter first | `followup_quality_review` |
+| An option and its group | A text in quotes. The name of an option occurs in one group only. | `"Fixed notice interval"` in `"Quality documentation"` |
+| A `record` declaration | Lowercase letters, digits and `_`. It names what it supports. | `lumberton_storage` |
+| A claim or an assumption of the evidence | An opaque ID in capital letters and hyphens. Do not change it. | `E-SC43-LUMBERTON-CITY-STORAGE`, `A-SC43-REACH` |
+| A sweep or a spread of `brief.toml` | Lowercase letters, digits and `_`, with a letter first | `inspection_spacing` |
 
-`water_controls_wipe` is such a package: its module `water.scn` holds the mechanism, and each of its
-16 variants holds the water systems, the homes and the hospitals of one place.
+- Name a named run for the difference that it shows, not for its order: `expedited_quality_review`,
+  not `run_2`.
+- Name a value for what it holds. Add the unit to the name when the name alone is not clear:
+  `shortage_days`, `loss_bn`.
 
-## The attacker
+## Units
 
-- The attacker is the one thing with `role adversary`. The pages show it as the AI operation, and
-  they reject a second thing with that role.
-- The attacker's first move is its event `start`, `event start when t >= 0 h:`. Its records cite the
-  incidents and the techniques, and the premise `START` of the notes states the limits of what they
-  show ([capabilities.md](capabilities.md)).
-- What the attacker still holds is a state, not a thing of its own. `iv_fluid_shortage` gives the
-  attacker `var access: "none" | "kept" = "none"`. `water_controls_wipe` gives it to the system that
-  holds the credential: `platform.access`.
-- Each event of the attacker reads only what the attacker could know, and the record on its line
-  says how it knows: for example, the attacker sees moves start through the data records that it is
-  inside.
-- The attacker's reaction time slows only its reactions to the defenders' steps.
-- When the defenders remove the attacker's access, each event of the attacker that still waits
-  ends as `stopped` (the access is gone) or `skipped` (the step is moot), not as `done`.
+- Write each number with its unit: `240 h`, `0.42 USD2025_m/person/year`. A bare number takes the
+  declared unit of its place.
+- Write a compound unit with `*` and `/`: `work_h/h`, `people/day`, `USD2025/h`.
+- Write a currency with its price year: `USD2025`, not `USD`.
+- The prelude of the language gives the units of time and of people: `h`, `day`, `year`, `people`,
+  `fraction`, `ratio` and their plurals.
+- The shared library `scenarios/library/vocabulary.json` gives the other common units of the
+  catalogue, for example `L`, `Mgal/day` and `USD2025`.
+- Put a unit that only one package uses in the `units.json` of that package. A unit name occurs in
+  one place only: the prelude, the library or one `units.json`.
 
-## The defenders
+Each unit of `units.json` gives its `dimensions` and its `scale` in the base units. It can also give
+a `kind`, a `label` and a `description`.
 
-- Each defender's event reacts to a consequence that its thing can see, not to the attack. The crews
-  react to the outage, not to the attacker's command.
-- A defender's clock starts when someone finds the problem, not at the attack. Defenders cannot start
-  to remove an attacker that no one has found.
-- A defender's event or flow that reads the attacker's hidden state is a fault of the model. Fix it:
-  the event or the flow reacts to what its thing can see.
-- The defenders' things come before the attacker in the file. So at one moment their events fire
-  first, and exact ties go to the defender. A comment says why.
+```json
+{
+  "staff_years": {
+    "kind": "quantity",
+    "dimensions": {
+      "people": 1,
+      "time": 1
+    },
+    "scale": 8760,
+    "description": "Baseline-equivalent work completed by one full-time expert in one 365-day year."
+  }
+}
+```
 
-## Options and runs
+## Scales
 
-- The options differ in what the world holds at the start, in input values and in texts, not in how
-  the defenders work.
-- The group "Response" holds the defenders' tiers. Every run names one of them, and they set inputs
-  only. The line `choice_group = "Response"` of `brief.toml` tells the pages that its options are the
-  responses ([catalogue.md](catalogue.md)).
-- An option with no lines means "the defaults". Where a run names no option of a group, the pages
-  show the group's first option that has no lines.
-- Name each other group for what its options are, because the pages name the options by their group:
-  Access, Attacker and Reach in `water_controls_wipe`, "AI conduct and protection" in
-  `heat_wave_blackout`.
-- The matched comparison of an AI run says `versus` the AI run. The human team's run is the same run
-  with the option "Human team": in `water_controls_wipe`, `delayed_kept_human` says
-  `versus delayed_kept`. `cyber_learning_loop` compares its AI runs with `no_ai`, which keeps every
-  driver at its value today.
-- A run's text names the defender response, then the attack, joined by " · ": "Delayed response ·
-  Human team keeps hidden access".
-- `featured` in `brief.toml` names a run and its matched comparison. The pages reject
-  `featured = ["r", "c"]` unless `c` says `versus r`.
+Give each stock and each tally a `scale` near the largest value that it can reach in a run.
 
-## Outputs and the brief
+```scn
+    waiting: work_h = 0 work_h in [0,] scale 100 work_h @support_exercise
+```
 
-- Each output says whom it covers: the catalogue's check requires a scope ([catalogue.md](catalogue.md)).
-- The headline outputs have the categories `deaths`, `casualties` and `loss`, or `unestimated` with
-  the reason. Each output of the category `casualties` cites the convention `HAZUS-SEVERITY` of the
-  library.
-- The brief compares the two featured runs first on two measures: the first two outputs of `show`
-  that have no category and that count a total over the run. Then it compares them on the harms. So
-  list the measures of the AI's edge first among those outputs.
-- Name the inputs that the story turns on in `drivers` (`brief.toml`).
+- A scale is not a bound. The range `in [lo, hi]` is the bound.
+- A scale sets the comparison band of the value and the accuracy of the integration
+  ([numerics.md](../../docs/language/numerics.md)). It can also choose among answers of a solver that
+  are equally good ([change 33](../../docs/design/decisions.md#change-33)).
+- A value without a `scale` compares with the size of one of its units.
+- The pages show a value within 10⁻⁶ of its own comparison scale as 0. A scale that is too large can
+  thus hide a small value on the pages. A scale that is too small makes the integration work harder.
+- A number that you write in the model is exact. It adds no comparison band of its own.
 
-## The parts of the files
+## Titles and texts
 
-| Part | Use it for |
-| --- | --- |
-| `notes:` | What the authors and the reviewers concluded: the premises, the limitations, the verification, the reachability, the benchmark, and the two optional texts of the brief (`counterfactual`, `decisive`), with the keys that [catalogue.md](catalogue.md) gives. The calculation never reads them |
-| `brief.toml` | What the briefs show first (`show`, `drivers`, `featured`), the name of the attack (`attack`), the group of responses (`choice_group`), the sweeps of the run table and the spreads. The calculation never reads it |
-| `style.toml` | How `napkin draw` pictures the model ([draw.md](../../docs/draw.md)). The calculation never reads it |
-| `evidence/` | The sources, the claims and the assumptions. Only `tools.evidence.integrate` writes the claims and the sources ([evidence/README.md](evidence/README.md)) |
+- Give each entity and each template a text on the row under its line. The text is its description.
+- Give each value that a page shows a text. The text is its label.
+- Give a member a `title` when its name is not clear to a reader. Reports and playback show the title.
+  No hash covers it.
+- In a variant, put the name of the place in the title of each member of the place.
+
+```scn
+lumberton_homes: Households
+    "The people that Lumberton serves."
+    title "Lumberton: homes"
+    utility = lumberton
+    population = 24460 people @lumberton_homes_population
+```
+
+The title of a variant is the title of its package, a colon and the title of the `variant` line:
+"Water service recovery after a controls outage: Lumberton, North Carolina".
+
+## Who plays each part
+
+A model does not say who plays a part. The compiler refuses such a line, and it says where the
+information goes ([change 23](../../docs/design/decisions.md#change-23)). Two files of the package
+hold it:
+
+| File | What it holds | Who reads it |
+| --- | --- | --- |
+| `roles.toml` | `[entities]`: an entity or a template, and who plays it. `[events]`: an event (`"entity.event"`), and who plays it. | The wrapper of the scenario: a publisher or a user interface. No current tool reads it. |
+| `style.toml`, `[role]` | Each role, and the entities and templates that play it | `napkin draw`: the icon of a card when `[icon]` gives none, the words "who acts", and the group |
+
+```toml
+[entities]
+"deliveries" = "operator"
+"high_risk_patients" = "community"
+"hospitals" = "responder"
+"manufacturer" = "operator"
+
+[events]
+"manufacturer.stops_shipping" = "environment"
+```
+
+```toml
+[role]
+environment = ["heat_wave", "Buildings", "supply", "devices", "incident", "extra"]
+community = ["AgeBand", "moves", "Customers", "Residents", "DeviceUsers", "Confined"]
+utility = ["crews", "utility"]
+```
+
+- A role is one of `adversary`, `responder`, `operator`, `environment`, `community` and `clinician`,
+  or the name of a card of the picture: an entity, a member written by hand or a table. The test `tests/evidence/test_catalogue.py` checks the
+  roles of both files.
+- An entity or a template plays one role at most.
+- Give the same role to a part in both files.
+
+## Evidence
+
+Each choice of a model shows its support: a `record` declaration. The evidence rule
+([evidence/README.md](evidence/README.md#the-evidence-rule)) gives the parts that need one. A
+package of the catalogue has no warning of the evidence rule.
+
+- Cite a `record` declaration by its name after the line: `@name`. A line can cite more than one.
+
+  ```scn
+      input removal_time = 240 h in [1 h, 720 h] @response_basis @removal_basis
+  ```
+
+- Write a `record` declaration at the top level, after the parts of the model. Give it a kind:
+  `source`, `source_transfer`, `assumption`, `identity` or `convention`.
+- Under a `record` declaration, name the claims (`claims:`) and the assumption or the convention of
+  the evidence (`assumption ID`, `convention ID`).
+- When a value is the number that a claim states, tie it to that datum with `datum: key`. The
+  compiler then checks that the value is that number.
+
+  ```scn
+  record lumberton_storage: source "Finished water storage capacity reported in the 2025 plan, 7.5 Mgal (the 16
+      Mgal of off-stream raw water storage is not counted)."
+      claims:
+          E-SC43-LUMBERTON-CITY-STORAGE
+              datum: finished_storage
+  ```
+
+- Put the `record` declaration that supports a whole entity on the line of the entity
+  (`incident: @service_incident`). A Boolean of the entity without a record of its own rests on it.
+- A number or a Boolean that an option or a `change` sets needs a `record` declaration of its own.
+  Without one, the model does not compile.
+- Sources and claims come only through `tools.evidence.integrate`. A record of another package comes
+  through `tools.evidence.adopt`.
+
+## Options and named runs
+
+- Put the options in groups. Name each group for what its options change: `"Cooling response"`,
+  `"Stop order"`, `"Quality documentation"`.
+- Give each option a text on the row under its name. The text is its menu line.
+- An option sets inputs only, each by its full path. Each number or Boolean that it sets cites a
+  `record` declaration.
+- An option with a text and no setting keeps the values of the model. Name it for what it keeps:
+  `"Usual protection"`.
+- Make the options of one group differ in input values only, not in how the model works. Put a change
+  of how the model works in the model, and let an input select it.
+- A named run takes one option of a group at most, with `+` between the options. Two options of one
+  run must not set the same input.
+- Give each named run a text on the row under it. The text says what the run shows.
+
+```scn
+options "Stop order":
+    "Await independent containment":
+        "Reports may still arrive after the stop order until the response team contains the incident."
+    "Acknowledge the stop order":
+        incident.acknowledge_stop = true @inspection_exercise
+```
+
+```scn
+    subpar_persistent = "Standard response" + "Additional records" + "Review needed"
+        "Standard response with records and product review"
+    subpar_persistent_human = "Standard response" + "Additional records" + "Clear"
+        "Standard response with records review and a clear first lot"
+```
+
+- Put the response tiers of the defenders in one group. Name that group in `choice_group` of
+  `brief.toml`. The publisher checks that the group exists.
+- A model without named runs has one default run. A package of the catalogue declares its named runs.
+
+## State a comparison in `brief.toml`
+
+A comparison of two policies is two named runs and one table `[[comparison]]`
+([catalogue.md](catalogue.md#named-comparisons)). The model holds no comparison. The engine runs each
+named run separately, and the brief page compares the two records.
+
+1. Write the baseline as a named run.
+2. Write the second named run with the same options as the baseline, except the options that the
+   comparison studies.
+3. Add a table `[[comparison]]` to `brief.toml`. Write the second run in `run` and the baseline in
+   `against`.
+4. To show the pair first on the brief page, write `featured = ["baseline", "run"]`. The baseline
+   comes first.
+5. List in `show` the values that the comparison is about, the most important first.
+6. Run `python -B -m tools.publish --write --scenario PACKAGE`, and read `results/brief.md`.
+
+```toml
+featured = ["subpar_persistent", "subpar_persistent_human"]
+choice_group = "Response"
+
+[[comparison]]
+run = "subpar_persistent_human"
+against = "subpar_persistent"
+```
+
+The brief page gives the change "run − baseline" for each value. Thus the comparison shows what the
+options of `run` add to the baseline. A comparison of two runs that differ in more options does not
+show which option causes the change.
 
 ## Change a model of the catalogue
 
-`python -B -m tools.compare` does steps 1 and 3 of the guide's section 14. It records the results of
-the base revision and of the working tree for each scenario, and prints every difference bit for bit
-([CONTRIBUTING.md](../../CONTRIBUTING.md#testing)).
+`python -B -m tools.compare BASE OTHER` compares two runs by their names, their values and their
+traces. A side is a model, which the tool runs now, or a capture that `--write FILE` keeps. Do these
+steps:
 
-## The audit checklist
-
-Every new or rewritten case answers the guide's checklist (its section 15) and these questions. Answer
-each one with yes, or change the model.
-
-1. Does each defender's event react to a consequence that its thing can see, and not to the attack
-   itself?
-2. Does each defender's clock start when someone finds the problem, and not at the attack?
-3. Does each defender's event and flow read only what the defenders can see, and never the
-   attacker's hidden state?
-4. Do the defenders' things come before the attacker in the file?
-5. Do the options differ only in start states, input values and texts, and not in how the defenders
-   work?
-6. Does every run name one option of the group "Response"?
-7. Does each run of the human team say `versus` the AI run that it matches?
-8. Does the attacker's reaction time slow only its reactions to the defenders' steps?
-9. Does removing the attacker's access stop every event of the attacker that still waits?
+1. Before the change, keep a capture: `python -B -m tools.compare scenarios/PACKAGE --write before.json --run NAME`.
+2. Make the change.
+3. Compare: `python -B -m tools.compare before.json scenarios/PACKAGE --run NAME`.
+4. Make sure that each difference is one that the change must make.
+5. Write the pages again, and run `python -B -m tools.check --scenario PACKAGE`.
