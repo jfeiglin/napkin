@@ -1,4 +1,4 @@
-"""The state of a run as data, and the run made again from it (PLAN, change 15).
+"""The state of a run as data, and the run made again from it (docs/design/decisions.md, change 15).
 
 A checkpoint (`napkin/program/checkpoint.py`) holds, beside the logical state that a caller reads,
 the state of the engine at the stop (`save`). A fresh process makes the run again from it

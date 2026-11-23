@@ -1,4 +1,4 @@
-"""Stages read the rates of the last sharing at their time (PLAN, change 27).
+"""Stages read the rates of the last sharing at their time (docs/design/decisions.md, change 27).
 
 Each small model copies one rate in the changing stage, a later stage of the round, after zero
 hours and one hour later. The answers come from the requests and limits below. A second pipe

@@ -1,8 +1,8 @@
-"""A test for each ruling that prototype A2 proposed (`scratch/rewrite/a2/FINDINGS.md`), on its own
+"""A test for each ruling that prototype A2 proposed (`scratch/rewrite/a2/FINDINGS.md` at ARCHIVE_SHA), on its own
 example. Gate G0 settled them all, so each test now asserts the settled rule; where G0 overturned
 the proposal (R-A2-06, 07, 13, 14, 20, 22) or changed its numbers (R-A2-04, 23), the test asserts
 the decision of G0 and names it. R-A2-17 has more: each owner of a draw that it names. R-A2-09 has
-none: change 12 after G0 (PLAN.md) made it moot."""
+none: change 12 (docs/design/decisions.md) made it moot."""
 
 import hashlib
 from fractions import Fraction as F
@@ -265,7 +265,7 @@ def shift(order='WAIT', stops=True):
 
 
 def test_14_pause():
-    """G0 had a prompt pause one atomic stage; since item 15 of the plan's changes after G0 a
+    """G0 had a prompt pause one atomic stage; since docs/design/decisions.md, change 15 a
     breakpoint does. Nothing of the stage is visible while the run is stopped, but the queued start
     is kept; resuming commits the stage once, with one child."""
     r = shift()

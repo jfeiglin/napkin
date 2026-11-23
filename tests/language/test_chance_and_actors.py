@@ -2,7 +2,7 @@
 tests of the old compiler (`tests/model/test_distribution_contracts.py`, `test_named_arguments.py`,
 `test_views.py`, `test_state_assignment.py`). Their rules changed at G0: a distribution's parameters
 are numbers written in place, in the order of today's constructors (no argument by name); an enum is
-its members; and the views read the compiled model. At item 15 of the plan's changes after G0,
+its members; and the views read the compiled model. At docs/design/decisions.md, change 15,
 `choose(...)` and `sees` left the language: a decision is a field that a branch reads, which a caller
 edits at a breakpoint (the acceptance example, `PUMP_DISPATCH`)."""
 
@@ -291,7 +291,7 @@ def test_a_state_refuses_a_value_it_cannot_hold(line):
     assert codes(DESK.format(line=line)) in (['type'], ['enum_member'])
 
 
-# ---- the acceptance example of item 15 of the plan's changes after G0 ---------------------------------
+# ---- the acceptance example of docs/design/decisions.md, change 15 ---------------------------------
 
 # The forecast drawn into the occurrence's field `order`, a `switch` on it, and the eligibility of
 # SEND as its case's guard: a caller that wants another order stops before the switch and edits it.

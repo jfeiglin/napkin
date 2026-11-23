@@ -1,4 +1,4 @@
-"""The bugs that the audit after G2 found in the engine and the report (PLAN, "Changes after G0", 19),
+"""The bugs that the audit after G2 found in the engine and the report (docs/design/decisions.md, change 19),
 each on a small program built by hand, with its expected values worked by hand.
 
 1. A move whose two ends name one store moves nothing: the equal debit and credit cancel.

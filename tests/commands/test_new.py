@@ -177,12 +177,12 @@ def test_a_starter_with_a_wrong_line_fails_with_its_file_line_and_column(tmp_pat
     assert f'{path}:{len(text.splitlines()) + 1}:' in found.err
 
 
-def test_new_points_to_the_rewrite_guide(tmp_path, capsys):
+def test_new_points_to_the_language_reference(tmp_path, capsys):
     result = napkin(capsys, 'new', tmp_path)
     assert result.code == 0
     for text in (result.out, (tmp_path / paths.ENTRY).read_text()):
-        assert 'scratch/rewrite/spec.md' in text
-        assert 'docs/language.md' not in text
+        assert 'docs/language/README.md' in text
+        assert 'scratch/' not in text
 
 
 def test_new_round_trips_backslashes_in_titles(tmp_path, capsys):

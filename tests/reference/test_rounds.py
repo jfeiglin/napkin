@@ -1,7 +1,7 @@
 """Rounds at one time (decision D5). Stages due together commit one after another, the
 earliest-started occurrence first, and a later stage sees what an earlier one committed. Each
 affected solve settles once per round. Reads in stages, also through a formula, give the values
-of the previous settlement at the moment's time (PLAN, change 27)."""
+of the previous settlement at the moment's time (docs/design/decisions.md, change 27)."""
 
 from fractions import Fraction as F
 

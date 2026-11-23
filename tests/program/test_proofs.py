@@ -413,7 +413,7 @@ def test_endpoint_settings_are_read_by_the_flows_that_meet_them():
     )
 
 
-# ---- what the agent of units left to the proofs (scratch/rewrite/b1/audit2-d/STATE.md, "For C") -----
+# ---- what the agent of units left to the proofs (scratch/rewrite/b1/audit2-d/STATE.md at ARCHIVE_SHA, "For C") -----
 
 
 def spans(given=None):

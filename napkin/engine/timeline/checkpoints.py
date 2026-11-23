@@ -1,4 +1,4 @@
-"""Breakpoints, checkpoints and exact resume (PLAN, change 15; `napkin/program/checkpoint.py`).
+"""Breakpoints, checkpoints and exact resume (docs/design/decisions.md, change 15; `napkin/program/checkpoint.py`).
 
 **Breakpoints.** A run with breakpoints (`Run(plan, breakpoints)`) counts each hit: a stage that comes
 due whose step a breakpoint names, or whose event when it is the occurrence's first step, before its

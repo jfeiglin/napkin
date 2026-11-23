@@ -470,7 +470,7 @@ def test_a_view_gives_each_value_in_its_declared_unit_with_its_label_and_an_edit
 
 
 def test_a_view_gives_the_title_of_the_member_that_it_names():
-    """A member's title (PLAN, change 19) comes from the side table: the stop's member's, and each
+    """A member's title (docs/design/decisions.md, change 19) comes from the side table: the stop's member's, and each
     value's member's, an occurrence's being its receiver's; the root's values have none."""
     model = compile_text(BATTERY.replace('\nbattery:\n', '\nbattery:\n    title "Main battery"\n'), UNITS)
     session = Session(model.program, model.configuration, [Breakpoint(RECHARGE)], table=model.table)

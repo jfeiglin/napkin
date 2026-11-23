@@ -3,7 +3,7 @@ file and the key, and that the model and its runs never read it.
 
 The model of the test writes its own things and templates, and each expectation follows from them and
 from the rule of the reader that it names. Who plays each of its parts is the stylesheet's `[role]`
-(`ROLES`, PLAN.md change 23 after G0): a model has no role.
+(`ROLES`, docs/design/decisions.md, change 23): a model has no role.
 """
 
 from __future__ import annotations

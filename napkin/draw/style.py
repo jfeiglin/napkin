@@ -36,7 +36,7 @@ table, whose rows share one card) or a template, which stands for each of its me
 setting wins over its template's, and for an icon, the template's wins over the role's. A thing plays
 one role at most, by its own name or by its template's.
 
-The model has no role (PLAN.md, change 23 after G0): who plays a part belongs to the scenario's
+The model has no role (docs/design/decisions.md, change 23): who plays a part belongs to the scenario's
 wrapper (`roles.toml`, which the publisher and the UI read) and, for the pictures, to `[role]`. A role
 of `[role]` names things and templates of the model, drawn or not, since who plays a part is no part
 of the picture.

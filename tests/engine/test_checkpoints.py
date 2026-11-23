@@ -1,4 +1,4 @@
-"""Breakpoints, checkpoints and exact resume (PLAN, change 15; `timeline/checkpoints.py`).
+"""Breakpoints, checkpoints and exact resume (docs/design/decisions.md, change 15; `timeline/checkpoints.py`).
 
 A breakpoint at a stage or a statement stops a run with a checkpoint, and the run resumed from it
 gives the same recorded values, draws, event times and event order as the run straight through. Each
@@ -414,7 +414,7 @@ def bounds_of(made):
 
 
 def test_a_component_that_rests_on_its_bound_at_a_stop_is_restored_on_it(tmp_path):
-    """Exact resume (PLAN, change 15): the run made again from a checkpoint holds the state that the
+    """Exact resume (docs/design/decisions.md, change 15): the run made again from a checkpoint holds the state that the
     run held at the stop. The tank of `emptying` rests on its bound at the stop at ln 2 h, which the
     component found when the first stage read the drain: restored in this process from the
     checkpoint's bytes, it holds that bound, and finds none again (`ComponentWay._settle`). The

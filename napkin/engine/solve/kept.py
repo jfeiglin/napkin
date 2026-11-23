@@ -18,7 +18,7 @@ row rests on its lower side and at most zero on its upper side.
 A kept instance can fail where a fresh one holding the same program does not. HiGHS scales a program
 when it first solves it and extends those factors as columns and rows join, and it keeps its
 factorization of the basis from run to run, updating it at each iteration (up to 5,000 updates by
-default). Two failures at 30,000 places (`scratch/rewrite/b1/solve/bench.py`) came from that state:
+default). Two failures at 30,000 places (`scratch/rewrite/b1/solve/bench.py` at ARCHIVE_SHA) came from that state:
 
 - need x1.45: the 678th program of the run, a fair-sharing program at the tightest primal tolerance,
   reached an optimal basis of the scaled program; on the program itself a bound then missed by

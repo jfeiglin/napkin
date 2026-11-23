@@ -189,7 +189,7 @@ def test_the_capacity_of_a_store_with_one_flow_caps_that_flow(limit, rate):
 BOOKS = 'assert service.waiting + service.served in [service.users - 0.001 person, service.users + 0.001 person]\n'
 # The spec writes a sum that must hold as such an assertion ("Assertions and their timing"). The serve
 # moves the users on a curve; the engine certifies the first contact of the sum step by step
-# (`PLAN.md`, change 20), also where its total rises and falls.
+# (docs/design/decisions.md, change 20), also where its total rises and falls.
 
 
 def test_an_assertion_of_a_sum_holds_while_the_flows_keep_their_stores():

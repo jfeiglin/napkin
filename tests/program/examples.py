@@ -440,7 +440,7 @@ def two_junctions_solver():
 
 @example
 def two_junctions_upstream_solver():
-    """The owner's rule after G2 (PLAN.md, change 19): a solver decides only the rates that it
+    """The owner's rule after G2 (docs/design/decisions.md, change 19): a solver decides only the rates that it
     names, and a flow that it does not name keeps its endpoints' local sharing. A solver that names
     only the upstream feed of the junctions leaves 1/2, 1/4 and 1/4. Worked by hand: the feed is the
     solver's, with no request and no claim of its own; the four pipes are not, and their claims keep
@@ -1444,7 +1444,7 @@ class Stop:
 
 
 def pump_dispatch(spares=1):
-    """Item 15 of the plan's changes after G0, the acceptance example: a depot asks for a pump at
+    """docs/design/decisions.md, change 15, the acceptance example: a depot asks for a pump at
     0 h. The dispatcher's forecast, which never sends (SEND 0, WAIT 1), is drawn into the
     occurrence's field `order`, and a `switch` on it sends a spare pump, which needs a spare (the
     eligibility of SEND is its case's guard), or counts a wait. Unattended it waits once."""

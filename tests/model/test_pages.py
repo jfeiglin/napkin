@@ -3,8 +3,8 @@ words, and the first text under each declaration, which supplies the label of a 
 description of an entity, the card of an event and of a case of a switch, the menu line of an option,
 the message of a check and the name of a named run. A member's value is labelled by its template's
 text, as a report gives it. The publisher, which makes the pages from these, is ported in stage M with
-`tests/publish/` (PLAN, change 13); the outcome cards, a run's comparison (`versus`, D9) and the
-texts that fill braces went with the old language. Who plays each part is no line of a model (PLAN,
+`tests/publish/` (docs/design/decisions.md, change 13); the outcome cards, a run's comparison (`versus`, D9) and the
+texts that fill braces went with the old language. Who plays each part is no line of a model (docs/design/decisions.md,
 change 23): it is the wrapper's (`roles.toml`) and the stylesheet's `[role]`; the catalogue's are
 checked in `tests/evidence/test_catalogue.py`, which waits for M.
 """

@@ -139,7 +139,7 @@ def test_play_with_the_order_changed_to_send_sends_the_spare_and_counts_no_wait(
 
 def test_play_gives_the_title_of_each_member_that_a_line_names(tmp_path, capsys, monkeypatch):
     """A member's title follows its name, in brackets, in the stop's line, in the rows of the values,
-    and in the lines of an edit (PLAN, change 19)."""
+    and in the lines of an edit (docs/design/decisions.md, change 19)."""
     titled = DISPATCH.replace('depot:\n', 'depot:\n    title "North depot"\n')
     model = package(tmp_path / 'dispatch', titled)
     found = played(capsys, monkeypatch, model, '--break', SWITCH, typed=f'{ORDER} = SEND\ngo\n')

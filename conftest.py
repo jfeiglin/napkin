@@ -15,7 +15,7 @@ from tools import catalogue
 ROOT = Path(__file__).resolve().parent
 
 # Every property test draws the same examples on every run, as a run of napkin gives the same result
-# (PLAN, changes after G0, items 10 and 11): a seed from the test itself, and no database of the
+# (docs/design/decisions.md, changes 10 and 11): a seed from the test itself, and no database of the
 # examples of earlier runs, which held examples of other code and made a test's examples depend on
 # what ran before it on this machine. A test's own `@settings` adds to this profile.
 settings.register_profile('napkin', derandomize=True, database=None)

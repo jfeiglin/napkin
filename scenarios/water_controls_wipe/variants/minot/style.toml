@@ -28,7 +28,7 @@ box      = ["parts"]
 house    = ["Households"]
 hospital = ["Hospitals"]
 
-# Who plays each thing: the old model's `role` lines (PLAN.md, change 23 after G0).
+# Who plays each thing: the old model's `role` lines (docs/design/decisions.md, change 23).
 [role]
 operator = ["incident", "Utility", "Tie"]
 

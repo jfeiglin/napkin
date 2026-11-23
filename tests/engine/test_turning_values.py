@@ -1,4 +1,4 @@
-"""Triggers on values that turn (PLAN, change 20; `timeline/triggers.py`, `continuous/dense.py`).
+"""Triggers on values that turn (docs/design/decisions.md, change 20; `timeline/triggers.py`, `continuous/dense.py`).
 
 A value that rises and falls between moments is certified step by step from the form of its segment:
 a step of Radau's dense output, or the closed form of compartments. The cases:

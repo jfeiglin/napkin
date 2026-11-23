@@ -17,7 +17,7 @@ The rules, each from the spec:
   connections that can carry flow, which a setup and a stage can change. So the run stops by name
   where the flows settle with the ring there: after the setup, or at the moment it forms. So too where
   no rates hold just after a moment: held at its bound, a store's sharing moves it off, and free, back
-  past it (PLAN, change 10: a run that cannot answer stops by name, never with a quietly different
+  past it (docs/design/decisions.md, change 10: a run that cannot answer stops by name, never with a quietly different
   answer).
 - **Every endpoint exists for the whole run.** "A stored quantity gains an `outflow` scope when it
   supplies a flow and an `inflow` scope when it receives one", with a request that "defaults to zero"
@@ -606,7 +606,7 @@ def test_the_way_of_a_set_follows_a_request_that_a_stage_sets_on_an_endpoint():
 
 @pytest.mark.parametrize('seed', range(60))
 def test_a_solver_whose_answer_holds_at_no_state_just_after_a_moment_stops_by_name(seed):
-    """PLAN, change 10: a run that cannot answer stops with a named failure. Where a declared solver's
+    """docs/design/decisions.md, change 10: a run that cannot answer stops with a named failure. Where a declared solver's
     answer moves a store held on a bound off it, and its answer with the store free moves it back
     past it, no answer holds just after the moment: the run stops there, naming the store and the
     solver, in the engine and the oracle alike, as local sharing does (seed 40 with routes: the

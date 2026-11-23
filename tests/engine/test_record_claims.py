@@ -1,5 +1,5 @@
 """What a record holds, and what a report claims from it (the re-audit of `0f78c65`, part C of
-`scratch/rewrite/briefs/audit2.md`): each cause by the rule that would have caught every instance, on
+`scratch/rewrite/briefs/audit2.md` at ARCHIVE_SHA): each cause by the rule that would have caught every instance, on
 many random programs, then the re-audit's rows as plain tests. No expected value comes from the
 oracle: each is a rule of the spec, a number worked by hand, or the same run read two ways.
 

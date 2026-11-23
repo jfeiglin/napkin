@@ -8,7 +8,7 @@ declared model (`napkin/model/semantic.py`) and the program.
   name, `places`; `members` are its rows). A template has no card of its own: its members stand for
   it. The top level has no card: its values are on no card, and nothing points to them. The cards
   stand in the order of the model's lines; a table stands at its own line. A card has no role: the
-  model has none (PLAN.md change 23 after G0), and who plays a thing is the stylesheet's `[role]`
+  model has none (docs/design/decisions.md, change 23), and who plays a thing is the stylesheet's `[role]`
   (`style.roles_of`).
 - **Kinds by use** (`kind`, change 14 of the plan). A stored number at an end of a flow, a leg, a
   route or a `move` is a `stock`, and a `tally` when nothing takes from it: it is the source of no

@@ -2,7 +2,7 @@
 "Solver and execution contract"), on lines.
 
 A declared solver determines the rates of the flows that its `solve_for` names, the stored numbers
-that it names and its own unknowns, and nothing else (the owner's rule after G2, PLAN.md change 19;
+that it names and its own unknowns, and nothing else (the owner's rule after G2, docs/design/decisions.md, change 19;
 spec, "Solver and execution contract": "Flows that no solver determines follow their own
 endpoints"). A flow that shares a store with one of its flows is in the same calculation
 (`plan.connect`), so that the books of the store still balance: the solver sees it through its
@@ -1004,7 +1004,7 @@ class DeclaredWay(Way):
         just after t, whatever moments other sets have, as the oracle's (`tests/reference/network.py`,
         `solve`); it matters where a claim's level reads the bound (`network.supply_depths`). Where the
         answer with a released store free moves it back past its bound, no answer holds just after t,
-        and the run stops by name (PLAN, change 10: a run that cannot answer stops with a named
+        and the run stops by name (docs/design/decisions.md, change 10: a run that cannot answer stops with a named
         failure), as local sharing does (`network.Instant.settle`).
 
         The solver keeps the problem that it settled on and its answer (`Ways.last`), which serve

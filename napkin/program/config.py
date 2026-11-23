@@ -3,7 +3,7 @@
 One engine invocation runs one program under one configuration and gives one record (D9). The
 configuration holds the values of the inputs, the mode and the seed, the limits of a runaway run
 (D6), the solver budgets (D0), the numerical settings, and the request of what to record. It has no
-player and no pick (item 15 of the plan's changes after G0): a caller who wants another value stops
+player and no pick (docs/design/decisions.md, change 15): a caller who wants another value stops
 the run at a breakpoint and edits it (`checkpoint.py`).
 
 - **An input value** follows the declared type (D2): a number with a unit of its dimension, a

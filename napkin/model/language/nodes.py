@@ -552,7 +552,7 @@ class Sees(Line):
 class Entity(Described):
     """`name:` (an entity) or `Name:` (a template), with its members; `title` describes it for
     displays. It has no role: who plays a part is the scenario's wrapper's, and the pictures'
-    stylesheet's (PLAN, change 23)."""
+    stylesheet's (docs/design/decisions.md, change 23)."""
 
     name: str
     members: tuple[Line, ...] = ()

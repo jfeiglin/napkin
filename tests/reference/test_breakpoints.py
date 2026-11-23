@@ -1,4 +1,4 @@
-"""Breakpoints and edits on the oracle, written from item 15 of the plan's changes after G0.
+"""Breakpoints and edits on the oracle, written from docs/design/decisions.md, change 15.
 
 The acceptance example (`tests/program/examples.py`, `pump_dispatch`): a depot draws its dispatcher's
 forecast, which never sends, into the occurrence's field `order` and switches on it. Stopped before

@@ -1,11 +1,11 @@
-"""One run played through its checkpoints (PLAN, change 15): `Session`, its `Log`, and `play`.
+"""One run played through its checkpoints (docs/design/decisions.md, change 15): `Session`, its `Log`, and `play`.
 
 A session plays one run of a program under a configuration. It sets breakpoints at locations of the
 compiled program (an event, a stage or a statement, for every occurrence or for one member or one
 occurrence: `napkin/program/checkpoint.py`), runs to the first stop (`advance`), shows the checkpoint
 (`view`: where the run stopped, in which occurrence, what runs next and the values that the caller
 asks for, each in its declared unit with its label), makes the caller's edits there (`edit`) and goes
-on, to the next stop or to the end. A member's title (`title "DC Water"`, PLAN change 19) comes from
+on, to the next stop or to the end. A member's title (`title "DC Water"`, docs/design/decisions.md, change 19) comes from
 the side table, for a caller that names the member (`title`, `View.title`, `Shown.title`). The
 engine stops, edits and resumes (`napkin/engine/timeline/checkpoints.py`) and checks each edit; it
 knows no player and no permission.

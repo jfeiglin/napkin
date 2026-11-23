@@ -1,6 +1,6 @@
 """The order of the claims (`network.claim_order`): an endpoint's rule ranks every claim of its flows,
 named by a solver or not, and a solver's own sharing acts only among the claims that those rules
-leave equal (the owner's rule after G2, PLAN.md change 19; re-audit row 07).
+leave equal (the owner's rule after G2, docs/design/decisions.md, change 19; re-audit row 07).
 
 Two rules, on small random networks with priorities (stocked, empty, full stores and `[0, 0]`
 junctions, endpoints with capacities, requests and `priority(...)`, and with reversible routes and

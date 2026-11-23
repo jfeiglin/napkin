@@ -16,7 +16,7 @@ Then each assertion over state is checked on that settled state (`check`), and t
 receiver and declaration, and the released gates go on, in the order in which their occurrences
 were made: what they start is the next round's, which settles it. A firing reads after the firings
 before it: its captures, the arguments of its start, the entry and the delay of what it starts and
-its `reset after D` read the rates of the sharing that preceded the firings (PLAN, change 27),
+its `reset after D` read the rates of the sharing that preceded the firings (docs/design/decisions.md, change 27),
 and a delay that reads a rate waits for the next settling
 (`occurrences.py`). A manual start of the event consumes nothing of its trigger. A draw of a firing
 (in a capture, in the start's arguments, in `reset after D`) is keyed by the firing's number
@@ -30,7 +30,7 @@ strict comparison is watched too, since the first instant at which an assertion 
 either form.
 
 **Reading a condition.** Numeric operands within the band of their own scales compare equal
-(PLAN, change 29). This applies to stored and moving values alike. A boolean
+(docs/design/decisions.md, change 29). This applies to stored and moving values alike. A boolean
 formula is read through its expression, so its comparisons are read the same way, and so is a
 membership `x in [lo, hi]` (the program's `within`): it is evaluated, so that a reversed interval
 fails the run by name where it is read, then read as its chain `lo <= x <= hi`. `and` and `or`
@@ -51,7 +51,7 @@ changes in exact arithmetic, as the clock builds a time (`moment.Clock`); of one
 its start plus its distance over its rate (their closed forms). So a condition on sets whose rates
 hold between moments is exact.
 
-**Values that turn** (PLAN, change 20). Where a read moves on a curve, the comparison is certified
+**Values that turn** (docs/design/decisions.md, change 20). Where a read moves on a curve, the comparison is certified
 step by step (`_contact`). Its difference d, the left side less the right, is a sum of what moves
 with weights that hold between moments (`_weights`, which reads the still parts now), and its
 physical crossing is where d reaches zero. A trigger or gate that fires there puts its

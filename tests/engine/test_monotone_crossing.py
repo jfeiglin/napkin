@@ -4,7 +4,7 @@ The rate of such a store can read the store, so its set runs on a curve: here th
 closed form of an exponential decay. Between moments the store less its threshold changes its sign
 once at most, so a trigger's first contact is bracketed on the curve and located by bisection
 (`timeline/triggers.py`); a store with an inflow and an outflow is certified step by step from the
-form of its segment (PLAN, change 20). The expected times come from the closed form of exponential
+form of its segment (docs/design/decisions.md, change 20). The expected times come from the closed form of exponential
 decay, not from the engine.
 """
 
@@ -101,7 +101,7 @@ def test_a_store_that_only_approaches_its_value_triggers_within_its_tolerance():
 
 def test_a_store_with_an_inflow_and_an_outflow_on_a_curve_triggers_where_it_reaches_its_value():
     # An inflow and an outflow that reads the water: no rule of its set says which way the water
-    # moves, and the engine certifies the contact step by step (PLAN, change 20). W' = 5 - W / 10
+    # moves, and the engine certifies the contact step by step (docs/design/decisions.md, change 20). W' = 5 - W / 10
     # from 100 gives W(t) = 50 + 50 exp(-t / 10), which reaches 60 at 10 ln 5 h.
     record = run(
         *tank(

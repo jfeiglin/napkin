@@ -1,4 +1,4 @@
-"""The solver examples of the spec (`scratch/rewrite/spec.md`), formed by hand as problems, by the
+"""The solver examples of the spec (`scratch/rewrite/spec.md` at ARCHIVE_SHA), formed by hand as problems, by the
 rules that the engine will apply: a flow's request is its target and its claim, a capacity is an
 upper bound, a stock held at a bound gives a row on its net rate (at an empty stock the outflow can
 use only the inflow), and an unmet request max(0, request - rate) is a positive part."""

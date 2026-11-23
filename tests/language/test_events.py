@@ -104,7 +104,7 @@ CATEGORICAL = """
 
     repairs = formula(count(machine.repair.occurrences))
     """
-# The acceptance example of item 15 of the plan's changes after G0: the dispatcher's forecast drawn
+# The acceptance example of docs/design/decisions.md, change 15: the dispatcher's forecast drawn
 # into the occurrence's field `order`, and a switch on it, which a caller edits at a breakpoint.
 DISPATCH = """
     dispatcher:
@@ -708,7 +708,7 @@ def test_a_part_of_an_event_that_breaks_a_rule_is_refused_by_its_code(text, code
 
 
 def test_delayed_is_refused_by_name_with_the_event_that_models_a_delayed_observation():
-    """`delayed(x, D)` left the language (PLAN.md, change 12 after G0): the refusal names its line and
+    """`delayed(x, D)` left the language (docs/design/decisions.md, change 12): the refusal names its line and
     column, and says that an event waits and then writes in its place."""
     found = refused("""
         tank:
@@ -720,7 +720,7 @@ def test_delayed_is_refused_by_name_with_the_event_that_models_a_delayed_observa
     assert problem.message.startswith('the language has no delayed read') and '`after D:`' in problem.message
 
 
-# ---- an empty case (PLAN, change 19) ----------------------------------------------------------------
+# ---- an empty case (docs/design/decisions.md, change 19) ----------------------------------------------------------------
 
 RESERVOIR = """
     scenario "A reservoir"

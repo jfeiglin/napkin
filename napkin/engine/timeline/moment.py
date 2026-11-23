@@ -28,7 +28,7 @@ At a time, rounds. One round is:
    put on the bound; one that misses it by more fails the run, and so does a move that does not fit.
    A rate or a result reads the last sharing at this time. Changes of the round, including a
    store meeting its bound, a switch and a keyed step, reach the rates at the settling. The setup
-   cannot read them because no sharing has taken place (PLAN, change 27).
+   cannot read them because no sharing has taken place (docs/design/decisions.md, change 27).
    A commit publishes the stage's writes, traces its edits and its moves and registers the
    occurrences that it queued, in order; a failure discards the stage and stops the run, also a
    failure in the commit itself (a start that a limit, its arguments or its entry refuse): the

@@ -1674,7 +1674,7 @@ class Reader:
             return Unavailable(str(problem) + (f': {stopped}' if stopped else ''))
 
     def comparison_floor(self, key, t):
-        """The comparison scale of a record key's value at a time, in canonical units (PLAN, change
+        """The comparison scale of a record key's value at a time, in canonical units (docs/design/decisions.md, change
         29): its declared scale or one declared unit, or for a formula the largest contribution of
         the quantities that it reads. None for a value that is no number then, or for a ledger."""
         t = float(t)

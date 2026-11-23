@@ -20,7 +20,7 @@ Then it goes through its steps in order (spec, "Time, waiting and completion"):
   is due later, at its own moment. Stages due together commit in the order in which their
   occurrences were made (D5). A D that a stage or the conditions of a round reach (a start of a
   firing, a release) and that reads a rate or a result takes them after the next settling, so a
-  solve that the round affects gives its settled answer and no read of it comes before (PLAN, change
+  solve that the round affects gives its settled answer and no read of it comes before (docs/design/decisions.md, change
   26); what else it reads is captured when the step is reached (`delays`);
 - `until C` is a gate: the occurrence waits there until the conditions of a round find C true
   (`triggers.py`), and goes on in that round.
@@ -32,7 +32,7 @@ formulas, the settings of its flows included, keeps the value that it has then, 
 has none (D7). Its flows leave the network at the settling of the round, and read zero from then on.
 `done` becomes true and `active` false: the occurrence is a stable record.
 
-**A finished occurrence is frozen** (PLAN, change 24 b, amended at change 29). An assignment
+**A finished occurrence is frozen** (docs/design/decisions.md, change 24 b, amended at change 29). An assignment
 and an authored move of any nonzero amount fail by name (`writable`). For each physical store of
 a finished occurrence, `carried` counts the inventory through each side after retirement. The sum
 over all its present connections and all elapsed segments has one conservation allowance in that

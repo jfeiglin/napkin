@@ -3,7 +3,7 @@ other things, what they change, the events that they start and the material that
 
 The map reads the declared model and the program through `things.Things`, the reachability of each
 run to know which events it can start (D16), and the picture (`style.toml`: `[layout] hide`, `[icon]`
-and `[role]`, who plays each thing, which the model never says: PLAN.md change 23 after G0). Nothing in
+and `[role]`, who plays each thing, which the model never says: docs/design/decisions.md, change 23). Nothing in
 the model, the engine or the studies reads it.
 
 - A **card** is a thing: an entity written once, a member written by hand, or a table, whose rows

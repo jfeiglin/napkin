@@ -1,6 +1,6 @@
 """Branches in a stage: `if` and `else` (decision D11), and `switch` on a value and on a drawn
 categorical value with guards on its cases. A breakpoint before a switch stops one atomic stage, and
-resuming commits it once (item 15 of the plan's changes after G0). The weights of a categorical are
+resuming commits it once (docs/design/decisions.md, change 15). The weights of a categorical are
 scaled by their sum."""
 
 from fractions import Fraction as F

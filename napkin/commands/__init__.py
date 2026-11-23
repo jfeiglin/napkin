@@ -11,7 +11,7 @@ A command module imports only the standard library and `common` when it is impor
 `napkin --help` loads no compiler and no engine. Its `main` imports them.
 
 `napkin play` is a client of the engine's checkpoints (`napkin/session.py`): breakpoints, checkpoints
-and edits replace the player's picks (scratch/rewrite/PLAN.md, change 15).
+and edits replace the player's picks (docs/design/decisions.md, change 15).
 """
 
 import importlib

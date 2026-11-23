@@ -826,7 +826,7 @@ class Instant:
         bound whose claims wait for its supply, and whose sharing fills it, holds stock just after,
         where they wait no more. Where the values with the store free move it back past its bound,
         no rates hold just after the instant (held, they move it off; free, back): the rates switch
-        back and forth at its bound, and the run stops, naming it (PLAN, change 10: a run that cannot
+        back and forth at its bound, and the run stops, naming it (docs/design/decisions.md, change 10: a run that cannot
         answer stops by name). A net rate within the roundoff of its flows holds a store where it is."""
         found = self.solve(part)
         while True:

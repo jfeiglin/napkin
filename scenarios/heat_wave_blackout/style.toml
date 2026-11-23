@@ -53,7 +53,7 @@ wrench = ["crews"]
 truck  = ["moves"]
 money  = ["Customers"]
 
-# Who plays each thing: the old model's `role` lines (PLAN.md, change 23 after G0).
+# Who plays each thing: the old model's `role` lines (docs/design/decisions.md, change 23).
 [role]
 environment = ["heat_wave", "Buildings", "supply", "devices", "incident", "extra"]
 community = ["AgeBand", "moves", "Customers", "Residents", "DeviceUsers", "Confined"]

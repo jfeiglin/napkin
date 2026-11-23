@@ -13,7 +13,7 @@ R-A4a-08) is a digest of exactly these:
   parent package's `__init__.py`), and `expressions.py` and `distributions.py`;
 - the Python, numpy and scipy versions, the machine, the processor and the numpy CPU features;
 - for a run with edits, its log (`napkin.session.Log`): the breakpoints and each edit, with the stop
-  of its hit, that a caller made at a checkpoint (PLAN, change 15). Such a run is the program
+  of its hit, that a caller made at a checkpoint (docs/design/decisions.md, change 15). Such a run is the program
   stopped at each hit of the breakpoints, edited there and resumed, to the end
   (`napkin.session.play`), so the code that plays it, `session.py` and its closure, takes the place
   of the engine code in the key. A log with no edit keys as the run without it: a breakpoint alone

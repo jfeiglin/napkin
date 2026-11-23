@@ -33,7 +33,7 @@ from napkin.program.config import Configuration, InputValue, Numerics, Quantity,
 from napkin.program.record import Key
 from tests.reference.from_program import run_of, value_at
 
-DRAFT = Path(__file__).resolve().parents[2] / 'scratch/rewrite/a5/translated/now/examples/reservoir/model.scn'
+DRAFT = Path(__file__).resolve().parents[2] / 'examples/reservoir/model.scn'
 UNITS = {'L': {'volume': 1}, 'h': {'time': 1}}
 
 

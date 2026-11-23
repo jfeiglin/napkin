@@ -91,7 +91,7 @@ def test_a_read_of_history_names_one_event_or_one_value(read_, code, words):
 
 
 def test_a_model_has_no_role():
-    """No part of a model has a role (PLAN, change 23): who plays a part is the wrapper's
+    """No part of a model has a role (docs/design/decisions.md, change 23): who plays a part is the wrapper's
     (`roles.toml`) and the pictures' stylesheet's, so a role under an entity is refused by name and
     says where it goes."""
     with pytest.raises(LanguageError) as caught:

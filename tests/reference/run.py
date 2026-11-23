@@ -9,7 +9,7 @@ At a time, rounds (`Run._moment`). One round is:
    earlier one committed: from 20 g, a stage that sets 8 g and then one that adds 4 g leave 12 g.
    A commit publishes the stage's writes and registers the occurrences that it queued; an
    occurrence that has no step left finishes, and its record freezes (decision D7). A write to a
-   finished occurrence fails the run (PLAN, change 24 b): an assignment to its field, a move of an
+   finished occurrence fails the run (docs/design/decisions.md, change 24 b): an assignment to its field, a move of an
    authored nonzero amount into or out of its store, or a computed flow whose cumulative amount
    in either direction exceeds the store’s allowance (`_frozen_transfer`).
 2. *Settle.* Each affected solver shares its results once (`network.settle`). Until then stages
@@ -24,7 +24,7 @@ is round zero: its statements commit as one stage, then the rates settle and the
 first check. Three limits protect a run (decision D6): `max_occurrences`, `max_active` and
 `max_rounds`, each a field of `Config`.
 
-A breakpoint (`Config.breakpoints`, item 15 of the plan's changes after G0) stops the run before a
+A breakpoint (`Config.breakpoints`, docs/design/decisions.md, change 15) stops the run before a
 statement of a stage, before a stage, or before the first stage of an occurrence of an event, and
 `Run.edit` then changes live stored values: of the type and in the range of the value, never of a
 finished occurrence, each edit in `edit_log` and in the trace, and a store's edit in the books as a

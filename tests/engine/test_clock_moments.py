@@ -2,7 +2,7 @@
 
 The flows share again after the stages. Later rounds at that time read the preceding round's share.
 Firings and assertions read that sharing. Occurrences a firing starts join the next sharing, and a
-delay that depends on them waits for it (PLAN, change 27). On leaving a switch, integration follows
+delay that depends on them waits for it (docs/design/decisions.md, change 27). On leaving a switch, integration follows
 the far side from the start of its segment.
 
 Small random networks put stages, changes of branch, key times and firings at the same times. The

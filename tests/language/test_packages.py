@@ -407,7 +407,7 @@ def test_a_change_rebinds_a_link_and_replaces_labels(tmp_path):
 
 def test_a_member_keeps_its_title_and_a_change_replaces_it(tmp_path):
     """A member's title is its own line's, and a variant's change of the member gives it another
-    (PLAN, change 19): before the audit the change compiled and its title was lost. A member with no
+    (docs/design/decisions.md, change 19): before the audit the change compiled and its title was lost. A member with no
     title, and a row of a table, has none."""
     common = COMMON.replace('first: Tank\n', 'first: Tank\n    title "The first tank"\n')
     variant = EAST.replace('change second:\n', 'change second:\n    title "The second tank"\n')

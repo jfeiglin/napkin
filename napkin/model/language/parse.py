@@ -58,7 +58,7 @@ FUNCTIONS = frozenset(
         *('sum', 'count', 'any', 'all', 'since', 'elapsed', 'priority', 'proportional'),
     }
 )
-# `delayed(x, D)` left the language (PLAN.md, change 12 after G0): it is refused by name, with the
+# `delayed(x, D)` left the language (docs/design/decisions.md, change 12): it is refused by name, with the
 # form that models a delayed observation.
 DELAYED = (
     'the language has no delayed read: a delayed observation is an event that waits (`after D:`) and '
@@ -73,7 +73,7 @@ RATINGS = ('ok', 'degraded', 'failed', 'inactive')
 RECORD_KINDS = ('source', 'source_transfer', 'assumption', 'identity', 'convention')
 SECTIONS = ('inputs', 'solve_for', 'constraints', 'objective')
 HEADER = ('summary', 'horizon', 'scope', 'library', 'resolution')
-# `timescales` left the scenario line (PLAN, change 19 after G0): it is refused by name.
+# `timescales` left the scenario line (docs/design/decisions.md, change 19): it is refused by name.
 TIMESCALES = (
     'timescales is no longer a line of the scenario: the engine chooses its own steps, and a run that '
     'needs finer ones sets max_step in its configuration'
@@ -102,7 +102,7 @@ EVENT = (
     'a line of an event is its text, its evidence, a local value or a flow (before the steps), a trigger '
     '(`when C:`), or a step (`after D:`, `after D when C:`, `after D`, `until C`)'
 )
-# Who plays a part belongs to the scenario's wrapper, not to the model (PLAN, changes 19 and 23 after
+# Who plays a part belongs to the scenario's wrapper, not to the model (docs/design/decisions.md, changes 19 and 23 after
 # G0): no part of a model has a role, and each is refused by name with where it goes, so that none is
 # lost. The pictures (`napkin draw`) take a thing's role from the stylesheet; `{role}` and `{name}`
 # are the refused line's, to show the line that the stylesheet takes.
@@ -1703,7 +1703,7 @@ class Parser:
             sub.op(':', 'a case is a member of the enum and a colon, with its actions under it: REPAIR:')
             cites = sub.cites()
             sub.end('a case has one member, an optional guard, and its actions under it')
-            # A case may do nothing (PLAN, change 19): its text alone, or nothing under it, is a case.
+            # A case may do nothing (docs/design/decisions.md, change 19): its text alone, or nothing under it, is a case.
             text, evidence, rest = None, [], []
             for item in child.under:
                 if item.first.kind == 'at' and not rest:

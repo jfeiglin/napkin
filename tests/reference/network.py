@@ -263,7 +263,7 @@ def solve(run, comp):
     makes the claims that it supplies wait for its supply, an answer that fills it is no answer just
     after, when it holds stock and they wait no more. Where the answer with a released store free
     moves it back past its bound, no answer holds just after the instant: the run stops by name
-    (`NotCovered`, as the engine stops; PLAN, change 10), for local sharing and for a solver. The cache holds the problem that the solve settled on, with its
+    (`NotCovered`, as the engine stops; docs/design/decisions.md, change 10), for local sharing and for a solver. The cache holds the problem that the solve settled on, with its
     answer and its releases: it serves again where the problem is that one, as assembled or with the
     bounds released that the cached answer moves off. The solve is noted once."""
     comp.busy = True

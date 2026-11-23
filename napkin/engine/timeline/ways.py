@@ -39,7 +39,7 @@ and state, and a moment that builds one of them again builds them all. A set of 
 whose problem moves runs alone: a set that would follow it, or that it would follow, stops the run
 by name.
 
-**A rate read in a round** (D5; PLAN, change 27): in a moment the stages commit
+**A rate read in a round** (D5; docs/design/decisions.md, change 27): in a moment the stages commit
 first and the flows are shared again after, so while the stages of a round run, and its conditions
 once a firing has changed something, every rate and result that the settling decides (of local
 sharing as of a declared solver, a flow from SOURCE to SINK too) is the one of the last settling.

@@ -1,5 +1,5 @@
 """A checkpoint: a run stopped at a breakpoint, as data that a fresh process loads, inspects and
-resumes (PLAN, change 15).
+resumes (docs/design/decisions.md, change 15).
 
 A caller sets breakpoints at locations of the compiled program (`Breakpoint`): an event (its first
 step), a stage or a statement, named by its origin (`depot.request_pump`, `depot.request_pump.step[0]`,

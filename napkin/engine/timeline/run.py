@@ -40,7 +40,7 @@ Formulas, reductions, keyed reads and dynamic reads use the values and members t
 `changed_at` gives the time of a stored value's last change. Other stored values come from `env`.
 A draw executes when an expression of a stage, an entry, a delay or a firing reads it (`truth`).
 
-Every stage and firing reads the rates and results of the last sharing at its time (PLAN, change
+Every stage and firing reads the rates and results of the last sharing at its time (docs/design/decisions.md, change
 27). This includes a flow from SOURCE to SINK. A flow that joins reads zero until the next sharing.
 A flow that leaves keeps its last shared rate until then. Setup precedes the first sharing.
 

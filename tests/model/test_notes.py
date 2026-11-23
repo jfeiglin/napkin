@@ -6,7 +6,7 @@ note. A note's records are the model's at any depth, so a name that names no rec
 line, as on any other line. A number of a note has no unit.
 
 The pages that read the notes and check the names that they read are the publisher's, which stage M
-ports (PLAN, change 13); the scope of an output went with the outputs (D10). The records of a note
+ports (docs/design/decisions.md, change 13); the scope of an output went with the outputs (D10). The records of a note
 that cite the library are resolved in `tests/evidence/test_library_integrity.py`.
 """
 

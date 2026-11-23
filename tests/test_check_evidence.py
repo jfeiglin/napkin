@@ -1,4 +1,4 @@
-"""The evidence stage of `tools.check` (item 16 of the plan's changes after G0): a scenario package of
+"""The evidence stage of `tools.check` (docs/design/decisions.md, change 16): a scenario package of
 the catalogue whose model rests a value on no record, or gives a value that differs from a datum that
 its record cites, fails the check, though the model still runs.
 

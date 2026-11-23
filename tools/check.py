@@ -196,7 +196,7 @@ def scope_of(paths, scenario_ids, readers=None):
 def unsupported(scope=None, root=ROOT):
     """{owner: [message]} of each owner of the catalogue at `root` that runs as a model of its own
     (`catalogue.entries`), or of those that `scope` names, whose model a record does not support: the
-    warnings of the evidence rule (item 16 of the plan's changes after G0), the reports of its compile
+    warnings of the evidence rule (docs/design/decisions.md, change 16), the reports of its compile
     with the code `no_record`, a value that rests on no record, or `datum`, a value that differs from a
     datum that its record cites (`napkin.model.support`), each at its file and line. A model being
     explored still runs with them, but a scenario package of the catalogue has none. A model that does

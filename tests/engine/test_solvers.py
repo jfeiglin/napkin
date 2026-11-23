@@ -3,7 +3,7 @@
 Two writes in one round cause one solve, and a trigger that reacts to the result causes a second
 round with a second solve at the same time. All stages in a round read the last solve's results,
 directly or through formulas. The next round reads the results published after those stages
-(PLAN, change 27). A solve that cannot answer stops the run
+(docs/design/decisions.md, change 27). A solve that cannot answer stops the run
 there, naming the solver and the step, before a trigger reads a partial answer. Flows of occurrences
 that join and leave a solver's store join and leave its problem, on the solver that the run keeps,
 and a store held at both bounds is one equality of it. A problem whose requests follow its tanks is

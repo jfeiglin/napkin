@@ -365,7 +365,7 @@ def test_a_cycle_of_starting_values_across_members_is_refused_at_a_value_on_it(t
     assert 'no order' in found.message
 
 
-# Every utility's total is its own demand and the totals of its children (PLAN, change 19). The
+# Every utility's total is its own demand and the totals of its children (docs/design/decisions.md, change 19). The
 # template reads itself, and no member does: c reads a and b, b reads a, and a reads nothing.
 UTILITIES = """
     scenario "Utilities"

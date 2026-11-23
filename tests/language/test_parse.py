@@ -231,7 +231,7 @@ def test_entities_templates_tables_and_instances():
 
 
 def test_a_member_written_by_hand_has_its_title_which_formats_and_parses_back():
-    """A member may have a title (PLAN, change 19), a text for the reports and the playback that name
+    """A member may have a title (docs/design/decisions.md, change 19), a text for the reports and the playback that name
     it, under its line beside its text and its values."""
     text = 'dc: Utility\n    "The utility of the district."\n    title "DC Water"\n    demand = 2 L/h\n'
     member = only(text)
@@ -259,7 +259,7 @@ def test_a_member_written_by_hand_has_its_title_which_formats_and_parses_back():
     ids=['event', 'case', 'member', 'change', 'entity', 'template'],
 )
 def test_a_role_anywhere_in_a_model_is_refused_with_where_it_goes(text, line):
-    """No part of a model has a role (PLAN, changes 19 and 23): who plays an event, a case, a
+    """No part of a model has a role (docs/design/decisions.md, changes 19 and 23): who plays an event, a case, a
     member, an entity or a template, and a part of a variant, belongs to the scenario's wrapper
     (roles.toml), and the model refuses each by name rather than lose it."""
     found = refused(text, 'role', line)

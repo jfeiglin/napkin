@@ -38,7 +38,7 @@ part that it names, and so is each of the setup's reports (`reports`), which ref
 `side_table` gives the program's side table (`napkin.program.artifact.SideTable`): the place in the
 source of each part of the program that has an origin, its label, its evidence and its title, from
 the declared part of that path, and the same of each member written by hand, so the table is outside
-the program: a title edit moves no hash (PLAN, change 19).
+the program: a title edit moves no hash (docs/design/decisions.md, change 19).
 """
 
 from __future__ import annotations

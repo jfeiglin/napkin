@@ -43,13 +43,13 @@ parts of a program, member by member.
   reads itself can fall: the proof cannot settle it.
 
 **An edited run** (`Proofs(program, configuration, changes)`): each change from outside (`Change`, an
-edit at a stop, PLAN change 15) is one more writer of the run that it changed, at its time, from its
+edit at a stop, docs/design/decisions.md, change 15) is one more writer of the run that it changed, at its time, from its
 old value to its new one, and every proof of that run follows from this one premise, as it follows
 from the program's own writers: none is computed for the unedited run and then patched by kind of
 edit. A change of a stored number is a writer of known sign: one that lowers what a form counts, or
 raises what it subtracts, makes the form fall, so the proof is withdrawn for that run, for the edited
 value and for every formula that rests on it, with the change's reason; one that does not break it
-keeps it (PLAN 15). A change of a named state (a yes/no or an enum member) lets the state take its new
+keeps it (docs/design/decisions.md, change 15). A change of a named state (a yes/no or an enum member) lets the state take its new
 value, so reachability is derived again (`reach`): an event that it lets start writes, and is no
 longer "cannot start", and a stage that it lets run can give a formula a new definition.
 

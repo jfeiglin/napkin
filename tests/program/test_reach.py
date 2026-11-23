@@ -129,7 +129,7 @@ def test_a_start_follows_its_branches_and_the_guard_of_its_stage():
 
 def test_a_draw_never_gives_an_outcome_of_no_weight():
     """D1: a forecast that always waits never draws SEND, whether a switch reads the draw or the field
-    that holds it (the acceptance example of item 15 of the plan's changes after G0), so the send
+    that holds it (the acceptance example of docs/design/decisions.md, change 15), so the send
     branch cannot run. Only an edit at a breakpoint sends, and an edit is no part of a configuration."""
     assert reach(EXAMPLES['pump_dispatch_unattended']().program).events['depot.send_pump'][0] is False
     b = Builder(UNITS)

@@ -5,7 +5,7 @@
   that each of its links names.
 
 It reads the program. (The view of actors, their sights and their choices left with the player
-machinery: item 15 of the plan's changes after G0.)
+machinery: docs/design/decisions.md, change 15.)
 """
 
 from __future__ import annotations

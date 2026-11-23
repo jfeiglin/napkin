@@ -5,7 +5,7 @@ stock, the people who wait, which a flow moves at a rate into a tally, the peopl
 the top level that follows the people served, for a caller to report (D10); and one assumption
 record, which every value cites. It uses the prelude's units only and names no library, so it
 compiles in any folder. It also writes the package's picture, `DIR/style.toml`, which says who plays
-the service (`[role]`): the model has no role (PLAN.md, change 23 after G0). With `--variants
+the service (`[role]`): the model has no role (docs/design/decisions.md, change 23). With `--variants
 east,west`, it also writes `variants/NAME/model.scn` for each NAME: a variant that changes the rate,
 each to a value of its own.
 
@@ -47,7 +47,7 @@ STEP = 10
 # The main file. `{title}` is the title, `{rate}` the rate and `{high}` the high end of its range.
 MODEL = """\
 # Written by `napkin new`. It compiles and runs as written: replace the title, the texts, the values
-# and the record `guess` with your own (scratch/rewrite/spec.md).
+# and the record `guess` with your own (docs/language/README.md).
 scenario {title}
     summary "A service serves the people who wait for it at a steady rate. How many people does it serve?"
     horizon 30 days
@@ -229,7 +229,7 @@ def next_steps(folder, title, variants):
             f'  - the title, "{title}", and the lines summary, horizon and scope under it;',
             f'  - the inputs, each with its value, its range and its text: {common.listed(INPUTS)}{changed};',
             f'  - the records, which each value cites: {common.listed(RECORDS)}. Give each value a record of its own.',
-            f'After each change, `napkin compile {target}` checks the model (scratch/rewrite/spec.md gives each line).',
+            f'After each change, `napkin compile {target}` checks the model (docs/language/README.md describes each line).',
             '',
         ]
     )

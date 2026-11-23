@@ -95,7 +95,7 @@ pump:
 
 
 def test_a_title_is_kept_with_the_labels_in_the_side_table():
-    """A member written by hand has a location of its own, with its title (PLAN, change 19); an entity
+    """A member written by hand has a location of its own, with its title (docs/design/decisions.md, change 19); an entity
     written once has its title at its template's location; a member with none has no title."""
     table = compile_text(TITLED, UNITS, file='tanks.scn').table
     assert table.location('first') == Location(

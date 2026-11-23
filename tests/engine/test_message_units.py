@@ -1,5 +1,5 @@
 """A value in a message is written in its declared unit, with the unit's name, at every place (spec.md:660:
-a failure "reports the stock, amount, unit, occurrence and time"; spec.md:572 and 899; PLAN, change 15:
+a failure "reports the stock, amount, unit, occurrence and time"; spec.md:572 and 899; docs/design/decisions.md, change 15:
 an edit is in the value's declared unit).
 
 A run fails, or an edit is refused, where a value would leave its range: a move into or out of a

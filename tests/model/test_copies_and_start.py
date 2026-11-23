@@ -8,7 +8,7 @@ stage comes due. The repair takes `repair` hours. While the service is up it ser
 at `k` times their number, so the users served are `users (1 - exp(-k u))`, with `u` the hours that
 the service has been up.
 
-The engine chooses its own steps: `timescales` left the scenario line (PLAN, change 19).
+The engine chooses its own steps: `timescales` left the scenario line (docs/design/decisions.md, change 19).
 
 Copies of a template (`* k` and `copy`) and units that name a text left the language (spec, "What
 the first version leaves out"): a template's members are written by hand or are the rows of a table.
@@ -109,7 +109,7 @@ def test_a_guard_read_when_the_stage_comes_due_skips_its_body():
 
 @pytest.mark.parametrize('written', ['2 h', '2 h, 3 h', 'service.repair'])
 def test_timescales_are_retired_with_the_steps_that_the_engine_chooses(written):
-    """The engine chooses its own steps (PLAN, change 19): `timescales` is refused by name, whatever it
+    """The engine chooses its own steps (docs/design/decisions.md, change 19): `timescales` is refused by name, whatever it
     lists, with the configuration's `max_step` for a run that needs finer steps."""
     text = OPERATION.replace('    horizon 150 h\n', f'    horizon 150 h\n    timescales {written}\n')
     with pytest.raises(LanguageError) as raised:

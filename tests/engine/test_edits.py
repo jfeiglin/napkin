@@ -1,4 +1,4 @@
-"""Edits at a checkpoint (PLAN, change 15; `napkin/program/checkpoint.py`, `timeline/checkpoints.py`).
+"""Edits at a checkpoint (docs/design/decisions.md, change 15; `napkin/program/checkpoint.py`, `timeline/checkpoints.py`).
 
 An edit gives a live stored value a new value at a stop: at a stop before a stage it commits at once,
 and at a stop before a statement it joins the writes of the stage, which sees it, and commits with

@@ -1,4 +1,4 @@
-"""A finished occurrence is frozen (re-audit 14, `briefs/audit3.md` part E; PLAN, change 24 b).
+"""A finished occurrence is frozen (re-audit 14, `briefs/audit3.md` part E; docs/design/decisions.md, change 24 b).
 
 The rule (spec, "State owned by an invocation": "A finished occurrence is frozen, and a write to it
 is an error"; D7, a finished occurrence is a stable record; G0, "Allow writes to live occurrences";

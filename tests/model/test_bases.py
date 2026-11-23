@@ -1,5 +1,5 @@
-"""The records of a status display (spec, "Evidence at the point of use"; item 16 of the plan's changes
-after G0). A case of a status display cites the records behind its text on its own line, and a case
+"""The records of a status display (spec, "Evidence at the point of use"; docs/design/decisions.md, change
+16). A case of a status display cites the records behind its text on its own line, and a case
 with none of its own rests on the records of its entity or template. A case that rests on no record is
 no error: the compiler warns of it with the code `no_record` at the case's line
 (`napkin/model/support.py`), and the model still compiles and runs. The old rule that a fixed value

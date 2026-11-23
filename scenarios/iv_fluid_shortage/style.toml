@@ -19,7 +19,7 @@ truck    = ["deliveries"]
 wrench   = ["release_team"]
 hospital = ["hospitals"]
 
-# Who plays each thing: the old model's `role` lines (PLAN.md, change 23 after G0).
+# Who plays each thing: the old model's `role` lines (docs/design/decisions.md, change 23).
 [role]
 operator = ["manufacturer", "release_systems", "records", "release_team", "deliveries"]
 responder = ["hospitals"]

@@ -5,7 +5,7 @@
 stylesheet is found beside it and the references read its library. `WORKS` is the water works: a
 model with every kind of card, part and relation that the picture draws, whose expected pictures the
 tests work out by hand from its text. Who plays each of its parts is its stylesheet's (`WORKS_ROLES`,
-PLAN.md change 23 after G0): a model has no role.
+docs/design/decisions.md, change 23): a model has no role.
 """
 
 from __future__ import annotations

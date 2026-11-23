@@ -1,4 +1,4 @@
-"""A round reads the rates of the last re-share (PLAN, change 27).
+"""A round reads the rates of the last re-share (docs/design/decisions.md, change 27).
 
 Small seeded networks change requests, capacities, allocations, levels and flow membership.
 Stages read a rate directly or in a formula, before and after re-sharing. An edit before the

@@ -11,7 +11,7 @@ of napkin: no `napkin.core.evaluation`, no `napkin.expressions`, nothing of `nap
 - `config_of(program, configuration)` gives the oracle's `Config`: the inputs, the mode and the
   seed, and the limits. Budgets and numerical settings do not apply to exact arithmetic.
 - `run_of(program, configuration, stops)` runs it, and stops at each breakpoint of `stops` in turn,
-  makes its edits and resumes (item 15 of the plan's changes after G0).
+  makes its edits and resumes (docs/design/decisions.md, change 15).
 - `value_at(run, program, key, t)` reads the value at a key of the record (`record.Key`) at a time,
   stated in the declared unit of that value, and `traced(run, kind, part)` gives the times and the
   rounds of the trace entries of a kind (`commit`, `finish`, ...) for a part named by its origin.

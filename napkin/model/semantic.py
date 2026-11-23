@@ -37,7 +37,7 @@ gives the part as its `origin` (`tank.water`, `Place.level`, `close` at the top 
   by hand (`north: Utility`, with its own values and links under it, and its `title`) or is a row of
   a table. A link (`origin: Place`) names one member, fixed for the run: the member sets it, or the
   link's initializer names it (`origin = sites.junction`), so the declared model knows each target.
-- **Titles, and no roles** (PLAN, changes 19 and 23 after G0). An entity, a template and a member
+- **Titles, and no roles** (docs/design/decisions.md, changes 19 and 23). An entity, a template and a member
   written by hand may have a `title` ("DC Water"), a label that reports and playback give the
   member (`DeclaredModel.title`) and no hash covers. No part of a model has a `role`: who plays a
   part belongs to the scenario's wrapper (`roles.toml`), and the pictures take it from the `[role]`
@@ -124,7 +124,7 @@ gives the part as its `origin` (`tank.water`, `Place.level`, `close` at the top 
   is read again (a gate, a trigger, a reset, an assertion) makes none (`formula_draws`). A
   distribution's parameters are numbers written in place, which hold its family's rule in one unit
   (`_broken`: `uniform(min, max)` needs min below max, and `uniform(5 h, 2 h)` is refused).
-- **No player machinery** (item 15 of the plan's changes after G0): `actor.choose(d)` and `sees`
+- **No player machinery** (docs/design/decisions.md, change 15): `actor.choose(d)` and `sees`
   are refused by name (`choose`, `sees`). A decision is a value stored in a field that a branch
   reads, and a caller that wants another value pauses before the branch and edits the field.
 - **Expressions** become a small typed form (`Const`, `Read`, `Apply`, `Retain`, `Distribution`,
@@ -622,8 +622,8 @@ INPUT, STATE, FORMULA, DISTRIBUTION = 'input', 'state', 'formula', 'distribution
 LINK, COLLECTION = 'link', 'collection'
 UNKNOWN = 'unknown'  # a new unknown of a solver: a result that the solver publishes
 
-# The refusals of the player machinery, which left the language (item 15 of the plan's changes after
-# G0): each names what it refuses and says what to write instead.
+# The refusals of the player machinery, which left the language (docs/design/decisions.md, change 15):
+# each names what it refuses and says what to write instead.
 CHOOSE = (
     'actor.choose(d) is not in the language: store the value in a field and branch on it '
     '(order = forecast.draw(), then switch order:); a wrapper can pause before the branch and edit the field'

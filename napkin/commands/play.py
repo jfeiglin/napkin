@@ -1,5 +1,5 @@
 """`napkin play`: run one run of a model, stop at breakpoints, show each stop, edit live stored values
-there, save a stop to a file, and go on (PLAN, change 15).
+there, save a stop to a file, and go on (docs/design/decisions.md, change 15).
 
 The command plays one run with a `napkin.session.Session`: the model's default run, or the run of
 `--run NAME`, under the edits of `--edits FILE`, as `napkin run` makes it. Each `--break AT` is a

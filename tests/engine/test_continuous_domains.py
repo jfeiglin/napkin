@@ -50,7 +50,7 @@ def queue(check):
 def test_a_transient_breach_of_an_assertion_cannot_hide_inside_a_segment():
     # A' = -A, W' = A - W, A(0) = 10, W(0) = 0: W(t) = 10 t exp(-t), which peaks at 10/e at 1 h.
     # The assertion W <= 3 holds at 0 h and at 12 h and breaks inside. W rises and falls, and the
-    # engine certifies its first contact step by step (PLAN, change 20): the run fails at the first
+    # engine certifies its first contact step by step (docs/design/decisions.md, change 20): the run fails at the first
     # root of 10 t exp(-t) = 3, and never reports the 0 h and 12 h samples as if the assertion held.
     assert 10 / math.e > 3 > 120 * math.exp(-12)
     record = queue(lambda this: this.waiting <= q(3, 'person'))

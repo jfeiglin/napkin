@@ -1,5 +1,5 @@
 """Any named value can be reported, in its declared unit, on every path that reads one (the review of
-`2cd1751`, R01, R02 and R07; `scratch/rewrite/briefs/audit3b.md`, agent V).
+`2cd1751`, R01, R02 and R07; `scratch/rewrite/briefs/audit3b.md` at ARCHIVE_SHA, agent V).
 
 The rule (spec, "Formulas and the values a caller can read": "Any named value can be reported. The
 caller selects paths"; D10): each value that the program names reads alike on every path, whatever

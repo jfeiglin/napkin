@@ -1,4 +1,4 @@
-"""The owner's evidence rule (item 16 of the plan's changes after G0, `napkin/model/support.py`): a
+"""The owner's evidence rule (docs/design/decisions.md, change 16, `napkin/model/support.py`): a
 warning, code `no_record`, for each part that rests on no record, of the kinds for which the
 compiler before the rewrite refused a model, at the part's line. A value that an option or a
 `change` sets keeps its error (R-A5-05). Then what the evidence tools need of the front end: the

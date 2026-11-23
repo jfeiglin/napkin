@@ -299,7 +299,7 @@ def test_the_stored_runs_stage_runs_in_a_process_of_its_own(monkeypatch):
 
 
 def test_the_evidence_stage_refuses_a_package_that_rests_a_value_on_no_record(tmp_path, capsys):
-    """Item 16 of the plan's changes after G0: a package of the catalogue has no part that rests on no
+    """docs/design/decisions.md, change 16: a package of the catalogue has no part that rests on no
     record. The synthetic catalogue holds the queue of `tests/evidence/support.py`, each of whose parts
     cites its record, and a copy whose arrivals cite none."""
     from tests.evidence.support import QUEUE, write_package

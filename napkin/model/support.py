@@ -1,4 +1,4 @@
-"""The owner's evidence rule (item 16 of the plan's changes after G0): what a model warns of when it
+"""The owner's evidence rule (docs/design/decisions.md, change 16): what a model warns of when it
 gives no record.
 
 Every choice of a model shows its support, a record (`@name`, or `@kind "explanation"` under its
