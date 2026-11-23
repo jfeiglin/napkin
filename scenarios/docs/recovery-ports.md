@@ -12,16 +12,16 @@ decision of an operator can change the events after it.
 | Package | Events and model | Comparison with the earlier catalogue |
 | --- | --- | --- |
 | Reservoir | The decision of the operator changes the gate. The spill and the time at risk after it depend on the level of the water that results. | 273 readings, also the analytical sweep and both choices of the operator. The report is `docs/migration/reservoir.md` at commit `e60e438`. |
-| IV supply | An input supplies the condition of a lot at its release. Quarantine uses the reserves that the lot touches, starts a reconciliation and changes when qualified supply can come back. The clinical results follow the inventory and the demand. | Seven fixed and four edited runs. All 3,349 physical readings that compare and all 88 lists of recovery events agreed. In each run, three clinical values with a lag have no history at 0 h. There the earlier report gave zero. [Package results](../iv_fluid_shortage/README.md) |
+| IV supply | An input supplies the condition of a lot at its release. Quarantine uses the reserves that the lot touches, starts a reconciliation and changes when qualified supply can return. The clinical results follow the inventory and the demand. | Seven fixed and four edited runs. All 3,349 physical readings that compare and all 88 lists of recovery events agreed. In each run, three clinical values with a lag have no history at 0 h. There the earlier report gave zero. [Package results](../iv_fluid_shortage/README.md) |
 | Defensive response | The observed workload of incidents changes the attention that the team wants. The actual attention moves toward it over time and changes the rate of remediation. | Four supplied workloads, five values and ten times. All 200 readings agreed with the earlier equations. The largest absolute difference in attention was 5.09 × 10⁻¹¹. [Package comparison](../cyber_learning_loop/defensive_response/README.md) |
-| Water utilities | A first interruption of service makes the repair jobs in the same stage. The return of control depends on the crews and the parts. When the stored water runs out, an advisory can start. To clear the advisory, the model needs restoration, supply and the delay of the laboratory. | All 768 readings agreed: eight civilian values at 0, 24, 72, 168, 720 and 2,160 hours in all sixteen places. Ten independent analytical cases check the queues, the water balances, the relief and the losses. [Water tests](../water_controls_wipe/tests/test_service_recovery.py) |
+| Water utilities | A first interruption of service makes the repair jobs in the same stage. The return of control depends on the crews and the parts. When the stored water is empty, an advisory can start. To clear the advisory, the model needs restoration, supply and the delay of the laboratory. | All 768 readings agreed: eight civilian values at 0, 24, 72, 168, 720 and 2,160 hours in all sixteen places. Ten independent analytical cases check the queues, the water balances, the relief and the losses. [Water tests](../water_controls_wipe/tests/test_service_recovery.py) |
 | Heat and power | The model follows the interrupted supply, the restoration work, the checks of the utility, the heat exposure, the cooling and the care. | 33 endpoints of the three published responses agreed at the archived display precision. [Package migration and edited-response checks](../heat_wave_blackout/MIGRATION.md) |
 
 ## How to read the comparisons
 
 The water fixture uses the earlier run "Delayed response" without more incidents. A separate test of
 Juneau delays the first report until 4 h, and recognition follows at 28 h. A field report of 160
-work hours at 200 h opens the repair queue again, and the system goes back to manual operation.
+work hours at 200 h opens the repair queue again, and the system returns to manual operation.
 Automatic service starts again at about 204.21 h, and the second clearance of the laboratory follows
 48 h later. Without that field report, the run has one restoration and one clearance. The test also
 counts each posted work hour. [Edited incident and paired control](../water_controls_wipe/tests/test_service_recovery.py)
@@ -29,8 +29,8 @@ counts each posted work hour. [Edited incident and paired control](../water_cont
 An edited heat run starts private relocation at 0 h, at the same time as the observed outage. It
 starts outreach at 1 h. The test finds positive relocations in the first hour, and it reads the number
 of people that outreach protects at 1 h. This test found an error in the order at one time: the
-relocation stood down before the outage finished its start. The stand-down now depends on the
-restoration event. [Opening-stage and outreach test](../heat_wave_blackout/tests/test_briefs.py)
+relocation ended before the outage finished its start. The end of the relocation now depends on
+the restoration event. [Opening-stage and outreach test](../heat_wave_blackout/tests/test_briefs.py)
 
 The water comparisons accept a relative error of 10⁻⁸, with an absolute floor of 10⁻⁸ in the reported
 unit. The sums of the repair queues accept 10⁻⁵ work hours absolute at zero, because each queue has a
@@ -81,8 +81,8 @@ held condition starts the forecast again. [Trigger regression](../../tests/engin
 
 The follow-up at commit `c328fbb` checks a much slower change. An inflow and an outflow that almost
 balance leave a small physical surplus. At first, the stock is inside its comparison band of zero. As
-the transfers add up, the stock crosses the edge of that band, and the dependent meter changes from
-1 L/h to 2 L/h. The methods Component, Sparse and MovingDeclared each record 1 L/h just before the
+the transferred amounts increase, the stock crosses the edge of that band. The dependent meter then
+changes from 1 L/h to 2 L/h. The methods Component, Sparse and MovingDeclared each record 1 L/h just before the
 located switch and 2 L/h at it. Their totals at 2,000 h agree with the independent result of 3,000 L
 to within 0.000002 L. The same check runs from a saved checkpoint.
 [Cross-method regression](../../tests/engine/test_held_branch_velocity.py)
@@ -135,7 +135,7 @@ process information. The budget check measured 178.411 seconds against a limit o
 confirmed all 300 rotated seeds with no truncated comparison. When each test case went to a worker
 separately, the tier took 214.397 seconds on the same computer. When each test file stayed on one
 worker, the water tests used their completed regional run again. Both timings cover the same cases
-and assertions. Thus `tools.check` uses scheduling by file for the full regular tier.
+and assertions. Thus `tools.check` keeps each test file on one worker for the full regular tier.
 
 ```sh
 python -m tools.publish --check --jobs 4

@@ -68,7 +68,7 @@ catalogue has no such warning:
 
 - The evidence stage of `python -m tools.check` compiles each selected package. It fails for each
   warning, at its file and line.
-- The publisher refuses to write the pages of a model with such a warning.
+- The publisher refuses to make the brief page and the readings page of a model with such a warning.
 
 ## Reproduce the evidence checks
 
@@ -98,7 +98,7 @@ a linked worktree uses the same bytes as the main checkout.
 The complete check (`integrate --check --complete`) needs a retrieval record and cached raw bytes for
 each source and claim. It extracts the text of the original bytes again, checks the extraction
 identifiers and the text digests, and matches each excerpt. Its report gives the coverage, the
-acquisition checks, the missing bytes and the result of each claim. No automatic check runs it.
+acquisition checks, the bytes that are not in the cache and the result of each claim. No automatic check runs it.
 
 ## Status and dependencies
 

@@ -710,7 +710,7 @@ Follow these rules for units:
   people.
 - Write a compound unit with `*` and `/`: `L/h`, or `tunings/(tuner * year)`. A compound unit needs no
   entry. Put a product below the line in brackets.
-- Write each number in the unit of its source, and let the compiler convert it. For example,
+- Write each number in the unit of its source, and the compiler converts it. For example,
   `150 L/day` in an `L/h` value is 6.25 L/h. Do not convert a number by hand.
 - Give money a unit that holds its price year, such as `USD2025` in `scenarios/library/vocabulary.json`.
   The compiler then refuses to add the dollars of two years.
@@ -736,7 +736,7 @@ A scale changes only these three things:
 
 - the result of a comparison inside the comparison band;
 - the accuracy of the integration;
-- the choice among equal answers of a solver, for unknowns that are not flows.
+- the selection among equal answers of a solver, for unknowns that are not flows.
 
 A change of the units of display changes nothing. [numerics.md](language/numerics.md) gives the
 rules.
@@ -786,8 +786,8 @@ pattern:
   differ, the compiler gives the warning `datum` with both numbers.
 - A value that only the run calculates, such as a draw, cannot be equal to a datum. The compiler
   gives the warning `datum` for it too.
-- The range cites a second, named `record` declaration, `heat_curve_limits`. It says that the limits
-  are a choice for a reader to explore, not a measured interval.
+- The range cites a second, named `record` declaration, `heat_curve_limits`. It says that the
+  scenario chooses the limits for a reader to explore, and that they are not a measured interval.
 
 The claims, the sources and the assumptions with an ID are in the folder `evidence/` of the package
 (`claims.json`, `sources.json`, `assumptions.json`), or in the library. In the catalogue,
@@ -802,7 +802,7 @@ alone.
 
 ### Local allocation
 
-An endpoint shares its limit among its own flows. In the package `share` below, the tank has one
+An endpoint shares its limit among its own flows. In the package `outlet` below, the tank has one
 outlet of 300 L/h. The clinic and the homes each request 200 L/h, and the clinic comes first:
 
 ```scn
@@ -838,7 +838,7 @@ record books: identity "The model counts each litre of water once, in the place 
 The package uses the `units.json` of step 2. The tank is empty at 13.3333 h:
 
 ```console
-$ napkin run share --value clinic.draw.actual_rate,homes.draw.actual_rate,tank.water --at 0h,12h,24h
+$ napkin run outlet --value clinic.draw.actual_rate,homes.draw.actual_rate,tank.water --at 0h,12h,24h
 One tank for two users: a median run to 24 h
                           unit   0 h    12 h   24 h
 clinic.draw.actual_rate   L/h    200    200    0
@@ -852,7 +852,7 @@ Without the line `outflow.allocation`, the endpoint uses `proportional()`, and e
 ### A solver for a joint decision
 
 In the package `refill` below, two tanks have their own connections. The main brings at most 500 L/h
-for both. No endpoint sees both connections, so the water company owns a solver:
+for both. No endpoint has both connections, so the water company owns a solver:
 
 ```scn
 scenario "Two tanks on one main"

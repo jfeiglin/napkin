@@ -26,11 +26,14 @@ reads. The plan gives each set its method by these rules, in this order:
    settings. Any other such set runs on Lines.
 4. A set whose rates move runs on Component when all of these hold:
    - all its flows are directed (no route, no flow with legs);
-   - no endpoint of its stocks has a setting (`outflow.capacity`, an allocation or a request);
+   - no endpoint of its stocks has a setting;
    - no keyed read that it reads moves;
    - it has at most 150 stocks (`plan.LIMIT`);
    - each stock meets at most one flow on each side.
 5. Any other set whose rates move runs on Sparse.
+
+An endpoint setting is a capacity or a request of an `outflow` or an `inflow` of a stock, or a
+statement of a stage that sets one (`Plan.settled`).
 
 A moment that changes a set builds it again (`ways.py`): a flow that joins or leaves, a stage that
 writes a value that a rate reads, or a rate of another set that changes. The new set can have
@@ -132,7 +135,7 @@ exact pieces at each change of a line.
 ## Lines
 
 `napkin/engine/timeline/lines.py`. A set whose rates do not move runs on one network
-(`napkin/engine/timeline/network.py`), at any size. Its rates hold from moment to moment, and each
+(`napkin/engine/timeline/network.py`), with any number of stocks. Its rates hold from moment to moment, and each
 stock is a straight line.
 
 - Local sharing at an instant (`network.Instant.settle`) gives the rates that hold just after the
@@ -163,15 +166,38 @@ horizon, where a stock reaches or leaves a bound, or where a rate changes its br
 3. **Numerical.** Else the Radau method integrates the segment with dense output
    (`integrate.numerical_segment`). The engine takes the Radau steps itself (`integrate.radau`).
 
+The continuous engine evaluates the formulas of a component with one generated program
+(`napkin/expressions.py` `compile_program`). Where that program fails, each formula is evaluated
+where a rate reads it, so a formula on a side that a rate does not take fails nothing.
+
+After a numerical segment, the engine samples the dense solution at each step cap from the start of
+the segment (`integrate.hidden_excursion`). When a sample crosses a watched threshold and no root
+ended the segment, the run stops: the value crossed the threshold and came back inside one step. A
+shorter `resolution` makes the samples closer.
+
 At bounds, `Held.bound_allocation` and `engine/allocation.py` cut a flow to what the stock can pass:
 a flow out of an empty stock gets what comes in, and a flow into a full stock is cut. Where local
 sharing would let a flow carry more than its request, the run stops and names the stock.
 
+Four parts of Component remove roundoff at a bound. `tests/engine/test_roundoff_properties.py` tries
+to break them with many seeded cases:
+
+- **A residual goes to a leg** (`Allocation.balance`). When what comes into a stock on a bound equals
+  what goes out but for roundoff, the residual is no rate. The engine moves it to a material leg, so
+  the total does not change and the stock stays on its bound.
+- **A short path of the closed form** (`Allocation.served_in_full`). It gives the same fractions from
+  the same doubles as the closed form, and it answers yes only when every unit is served in full.
+- **A face that runs out within one ulp of the time** (`continuous/bounds.py` `rounded_faces`). Before
+  the numerical stage, the engine puts such a stock on its lower bound, with its balancing leg.
+- **A face that departs** (`continuous/bounds.py` `depart_faces`). A stock on its zero face with a
+  positive rate departs. The engine calculates the field again one ulp above zero, with the bound
+  released. When that field does not point up, the run stops: the face would chatter.
+
 ## Sparse
 
-`napkin/engine/timeline/sparse.py`. A set whose rates move runs here when it is no Component, at any
-size ([change 3](../design/decisions.md#change-3)). Sets whose settings read the moving rates of another set
-integrate together, level by level.
+`napkin/engine/timeline/sparse.py`. A set whose rates move runs here when it is no Component, with
+any number of stocks ([change 3](../design/decisions.md#change-3)). Sets whose settings read the moving rates of
+another set integrate together, level by level.
 
 - The state is the vector of its stocks. Its rates at a time and a state are the local sharing of the
   network there (`network.Instant`).
@@ -216,12 +242,12 @@ values that hold between moments, or to split the set.
 
 | Method | Absolute tolerance of a stock | Relative tolerance |
 | --- | --- | --- |
-| Component | `atol_factor` times the size of the stock | `rtol` |
+| Component | `atol_factor` times the integration size of the stock | `rtol` |
 | Sparse, MovingDeclared | `atol_factor` times the scale of the stock | `rtol` |
 
-The size of a stock is its declared `scale`. A stock with no `scale` takes the largest of: one of its
+The integration size of a stock is its declared `scale`. A stock with no `scale` takes the largest of: 1 in its
 unit, its start value, its finite bounds, and the largest start value of the stocks that flows connect
-it to (`Run.sizes_of`). The scale of a stock is its declared `scale`, or else one of its unit.
+it to, directly or through other stocks (`Run.sizes_of`). The scale of a stock is its declared `scale`, or else 1 in its unit.
 
 **The step cap** is `max_step`, 1 h by default, or the `resolution` of the scenario. It is the interval
 at which a numerical method reads its roots and its field. It does not limit the steps of the solver,
@@ -419,12 +445,12 @@ stock with no edit has no such history, and its ledger reads 0. A request can na
 
 ## Retirement and frozen occurrences
 
-When an occurrence finishes, each stock that a flow or a move of it met must be empty within its
+When an occurrence finishes, each of its stocks that a flow or a move met must be empty within its
 conservation allowance (`atol_factor` times its scale). Else the run stops and names the occurrence,
 the stock, the amount, the unit and the time.
 
-A finished occurrence is frozen ([change 24](../design/decisions.md#change-24)). An assignment to it, or a
-`move` of a nonzero amount into or out of its stock, stops the run (`Occurrences.writable`). For a
+A finished occurrence is frozen ([change 24](../design/decisions.md#change-24)). An assignment to it,
+or a `move` of a nonzero amount into or out of its stock, stops the run (`Occurrences.writable`). For a
 flow, `Occurrences.carried` adds the amounts that pass through each side of the stock after
 retirement, over all connections and segments. The first amount over the allowance stops the run. The
 message lists every leg that adds to the violation, by stock name, outflow before inflow, then the

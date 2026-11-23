@@ -45,8 +45,8 @@ The nine first transformations:
 | Transformation | What it changes |
 | --- | --- |
 | `empty_event` | Adds an event that does nothing. |
-| `named` | Writes each formula as a named value in place of inline. |
-| `small_unit` | Writes each volume in mL in place of L. |
+| `named` | Writes a part of a request as a named formula in place of inline. |
+| `small_unit` | Writes volumes in mL in place of L, with the same physical values. |
 | `split` | Splits a `move` into two statements in one stage. |
 | `builder` | Builds the program through the Python builder in place of model text. |
 | `artifact` | Saves the compiled artifact and loads it again. |
@@ -102,7 +102,7 @@ that many units in the last place (`stocks.probed`). Each case must still give i
 
 | Test | What it compares |
 | --- | --- |
-| `tests/engine/solve/test_spec_answers.py` | Every answer that the spec states for a solver, against the selection order of the solve library. |
+| `tests/engine/solve/test_spec_answers.py` | Every solver answer that the language specification works out, against the selection order of the solve library. |
 | `tests/engine/solve/test_random.py` | Seeded random problems against exact references: a rational simplex, brute-force fair sharing and the enumeration of active sets. |
 | `tests/engine/test_random_solvers.py` | Small random programs with a declared solver, against the reference interpreter. |
 | `tests/engine/test_solver_adapters.py` | Each solver adapter (`napkin/engine/solvers.py`) against closed forms. |
@@ -121,8 +121,9 @@ the regular tier.
 
 To check a change:
 
-1. Run the tests of the files that the change touches: `python -B -m tools.check --tests PATH`.
-2. Add `--deep` to run the matching deep tests too.
+1. Run the tests that check the change: `python -B -m tools.check --tests PATH`. Give one
+   `--tests PATH` for each test file or folder.
+2. To run the matching deep tests too, add `--deep`.
 3. For the complete check, run `python -B -m tools.check --all`. With `--all --deep`, the check also
    runs every deep test and runs three stored runs again, which it compares with the run store, bit
    for bit.
@@ -131,8 +132,9 @@ The deep tier is slow. Run it by hand, never in the automatic check.
 
 ## Speed benchmarks
 
-Two tools measure speed. Neither asserts a time: a gate reads their output and judges it. The
-measured results are in [the measurements page](../design/measurements.md).
+Two tools measure speed. The paired benchmark has a gate in its summary. The benchmark of models
+asserts no time: a reader of its document judges it. The measured results are in
+[the measurements page](../design/measurements.md).
 
 ### The paired engine benchmark
 
@@ -164,15 +166,17 @@ earlier accounting work.
 - Keep the output folder outside the engine package.
 - The script runs each sample in a fresh process with one thread for BLAS and the run store off.
 - Each row has three paired timings in alternating order: B/F, F/B, B/F.
-- A calibration run on each engine sets one repeat count, so that each batch lasts at least 1.5 s on
-  either engine. A batch shorter than 1 s makes the result invalid.
+- For the tank rows and `held-pipes`, a calibration run on each engine sets one repeat count, so
+  that each batch lasts at least 1.5 s on either engine. A batch shorter than 1 s makes the result
+  invalid.
 - A sample that runs longer than 2 h 55 min stops, and the script records it as incomplete.
 - The gate is the median of the three paired ratios of the run-plus-record time, F/B. Its limit is
   1.05 for each row. The `events` guard has the limit 1.10. The `declared` row also checks the time of
   the build, the plan and the run together.
 - Each pair must give the same sampled results on both engines.
 
-**To compare a candidate with the baseline:**
+**To compare a candidate with the baseline,** give these commands from the root of the benchmark
+checkout, with the same Python for all of them:
 
 1. Make a clean worktree of the baseline: `git worktree add ../napkin-baseline 6202824`.
 2. Make a clean worktree of the candidate at its commit.
@@ -217,7 +221,7 @@ declared allocation work, and the amounts of the legs. Timing samples have no co
 
 - the models of the catalogue, with `--scenario ID`;
 - the examples, with `--example`;
-- synthetic families made as text, with `--family NAME` at each size of `--sizes`.
+- synthetic families made as text, with `--family NAME`, at each number of members in `--sizes`.
 
 Three fresh processes measure each model: the cold compile, the time to the first result, and the warm
 runs with their report. The warm process also shows where the time goes, by role (`analysis`,

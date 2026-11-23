@@ -30,7 +30,7 @@ SHA of this repository. The terms are those of [README.md](README.md#engine-term
 5. Run the tests of the row, and the corpus families of the row.
 6. When the change moves the owner, change its row on this page.
 
-When the spec leaves a result open, keep that case aside, write the question for the owner of the
+When the language leaves a result open, keep that case aside, write the question for the owner of the
 project, and continue with the independent work.
 
 ## The path of a transfer
@@ -51,7 +51,7 @@ The rules of the physical path:
 - The engine posts a stock when a stage reads or writes it, a rate changes, a set is built again, an
   occurrence finishes, a checkpoint saves, or the run ends. A moment of one stock does work in
   proportion to the stocks that it touches.
-- The gross amounts of the legs stay, for the rules of frozen stocks.
+- The engine keeps the gross amount of each leg, because the rules of frozen stocks read it.
 - A post changes the books at both ends of a leg. A placement proposes posts, under the physical and
   the authored limits. The status of a stock (on a bound, on a threshold) comes from its own band.
   [methods.md](methods.md#placement-at-a-contact) tells the rules of placement and contacts.
@@ -82,7 +82,7 @@ pieces.
 | What can one inlet and one outlet carry through one constrained stock? | `timeline/network.py` `paired_rates` | `network.Instant._groups` (local sharing), `declared._paired_answer` with `published` (a declared solver), `ComponentWay._pair` (Component). The reference ranks the feasible answers itself. | `tests/engine/test_allocation_bound_band.py::test_a_lower_bound_can_raise_a_soft_supply_only_as_far_as_its_capacity`, `tests/engine/test_claim_order.py` |
 | Which connections take part in sharing and priority? | `timeline/network.py` `carrying`: the evaluated pipe and endpoint capacities and the requests of proportional legs | The local allocator and `declared.Former.problem`. The reference makes its own set of closed legs. | `tests/engine/test_connection_eligibility.py`, `tests/engine/test_claim_order.py` |
 | Which unknowns does a declared solver control? | `timeline/declared.py` `Former.problem` | `allocation.py` `Allocation.allocated` and `network.Instant.settle` keep the local sharing of the flows that the solver does not name. | `tests/engine/test_claim_order.py`: `test_a_flow_that_the_solver_does_not_name_keeps_its_local_sharing`, `test_an_outlets_rule_ranks_its_flows_whichever_a_solver_names` |
-| Is a solver's answer exact enough to pin for the ranks after it? | `solve/ranked.py` `exact`: a second run at `kept.TIGHT` when a dual has the wrong sign beyond `ranked.TAU`, or when the answer misses a row by more than `TIGHT` in working units (`missed_by`) | `ranked.pin`, `fair._hold`. `kept.Kept._checked` uses the miss relative to the size of the terms (`missed`) only to decide whether HiGHS answered. | `tests/engine/solve/test_near_ties.py`: two meeting rows at gaps from 10⁻¹² to 10⁻⁶, both orders, three scales, and a run from 3 L whose bounds meet at 0.5 h |
+| Is a solver's answer exact enough to pin for the ranks after it? | `solve/ranked.py` `exact`: a second run at `kept.TIGHT` when a dual has the wrong sign beyond `ranked.TAU`, or when the answer misses a row by more than `TIGHT` in working units (`missed_by`) | `ranked.pin`, `fair._hold`. `kept.Kept._checked` uses the miss relative to the magnitude of the terms (`missed`) only to decide whether HiGHS answered. | `tests/engine/solve/test_near_ties.py`: two meeting rows at gaps from 10⁻¹² to 10⁻⁶, both orders, three scales, and a run from 3 L whose bounds meet at 0.5 h |
 | Which comparison scale and which value feed a guard? | `napkin/core/comparisons.py` `Comparisons`: named bindings and the floors of quantities | `napkin/core/literals.py` `Literals` (folding of literals only), `napkin/core/evaluation.py` (scalar reads), `napkin/core/arrays.py` (vector reads), `napkin/model/semantic.py` (compiler folding), `timeline/declared.py` `_compare`. A captured number keeps its own floor. A formula alias takes the floor of its selected operand. The references are `tests/core/reference.py` and `tests/reference/evaluate.py`. | `tests/language/test_folded_comparisons.py`; `tests/model/test_units.py::test_respelling_a_near_zero_value_preserves_its_guard_at_the_same_physical_scale`; `tests/core/test_arrays.py::test_scalar_and_array_rows_make_the_same_near_band_choices_in_mixed_units`; `tests/engine/test_comparison_bands.py::test_a_configured_band_applies_to_formulas_and_guards` |
 
 ## Reads, occurrence identity and evidence

@@ -1,8 +1,8 @@
 # Changes from the old language
 
-This page lists each word and each form of the old language (version 0.0.1) that the language of
-version 0.2.3 removed or replaced, and what to write now. It is the only page of the reference that
-names the removed forms. The rulings D0 to D17 and the changes 1 to 29 are in
+This page lists each word and each form of the old language, version 0.0.1, that version 0.2.3
+removed or replaced. It says what to write now. It is the only page of the reference that names the
+removed forms. The rulings D0 to D17 and the changes 1 to 29 are in
 [design/decisions.md](../design/decisions.md).
 
 The compiler refuses most removed forms by name. Its message says what to write now. The last
@@ -35,6 +35,8 @@ column gives the code of the refusal, where the compiler has one of its own.
 | `none` | Leave the declaration out, and say why in the documentation or the evidence (D4) | `none` |
 | A stock and a tally that never go below 0 | Write the range: `in [0,]`. A quantity with no range has no bound (D8). | |
 | A tally by mark | A tally is a stock that nothing drains. It has no mark (change 14). | |
+
+`none` and `is` stay reserved words. No value can take either name.
 
 ## Units and numbers
 

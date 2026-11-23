@@ -69,9 +69,13 @@ reservoir:
 record counts: identity "The model counts the water that comes in and goes out, each share once."
 ```
 
-Most lines take a citation at the end of the line or on a row under it: a value, an input, a flow,
-an event, a trigger, a stage, a case of a `switch`, a solver, a status case, an assertion, an
-entity, a template, a table, the own value of a member, an option setting, a `change` and a note.
+Most lines take a citation at the end of the line or on a row under it. These lines do:
+
+- a value, an input, a flow, a solver, an entity, a template, a table;
+- an event, a trigger, a stage, a case of a `switch`;
+- a status case, an assertion;
+- the own value of a member, an option setting, a `change`, a note.
+
 Three places differ:
 
 | Line | Where its citation stands |
@@ -136,9 +140,11 @@ A value whose `record` declaration names a datum (`datum: key` under a claim) mu
 - A value that the compiler cannot fold also gets the warning: a draw, or a read of another value.
   So does a value that is no number: a distribution, a Boolean, a link.
 
-The rule covers the values of entities, templates and the top level, the parameters and locals of
-events, the unknowns of solvers, the own values of members, the cells of tables, and the settings of
-options.
+The rule covers these values:
+
+- the values of entities, templates and the top level;
+- the parameters and the locals of events, and the unknowns of solvers;
+- the own values of members, the cells of tables, and the settings of options.
 
 ## The evidence rule
 

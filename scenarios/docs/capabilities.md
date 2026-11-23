@@ -7,8 +7,9 @@ uses the terms of the language reference ([Terms](../../docs/language/README.md#
 
 ## The parts of a model
 
-A model is a finite, deterministic hybrid system: values that change continuously through flows, and
-values that change at moments through events.
+A model describes a finite hybrid system: values that change continuously through flows, and values
+that change at moments through events. One run, with its configuration and its seed, is
+deterministic.
 
 | Part | What it models | Example |
 | --- | --- | --- |
@@ -46,8 +47,9 @@ values that change at moments through events.
 - **A decision inside the comparison band is a near-tie.** The engine marks it in the trace, and
   `napkin run` lists it.
 - **A run can stop at a breakpoint.** At a breakpoint, a caller can read values and edit a stored
-  value (`napkin play`). The caller can also save a checkpoint and go on later, also in a new process. A run that stops and goes
-  on without an edit gives the same record as a run without a stop.
+  value (`napkin play`). The caller can also save a checkpoint and continue later, also in a new
+  process. A run that stops and continues without an edit gives the same record as a run without a
+  stop.
 - **A study is a group of runs.** The named runs of a model, or the samples of a Monte Carlo
   calculation (`napkin sample`, and the spreads of `brief.toml`).
 - **The run store keeps each run.** An identical request reads the stored record and does not run
@@ -73,7 +75,7 @@ values that change at moments through events.
 | Entry | What the model follows | How the model receives the disruption |
 | --- | --- | --- |
 | `cyber_learning_loop` | One national workforce for 25 years: AI uptake, staff, shared review capacity, learning and defensive AI, in baseline-equivalent staff-years | No disruption. The options set the path of AI progress, funding and the allocation of work. |
-| `heat_wave_blackout` | An electricity outage in a heat wave: crews, utility checks, the temperature in homes, cooling places, protection and health | An observed outage at the start. Options add a safety hold, inspections on a calendar or after clearance, and a stop order. |
+| `heat_wave_blackout` | An electricity outage in a heat wave: crews, utility checks, the temperature in homes, cooling places, protection and health | An observed outage at the start. Inputs can add a safety hold and a work order. Options add inspections on a calendar or after clearance, and a stop order. |
 | `iv_fluid_shortage` | The release and the supply of IV fluid: quality review, reserves of the hospitals, patients and cost | Options supply the records work, the condition of the first lot, and the schedule of quality notices. |
 | `water_controls_wipe` (16 places) | A loss of the controls of water systems: crews and parts, stored water, advisories, relief water, hospitals and economic loss | An observed outage at the start. Options add batches of regional support requests at fixed intervals or after recovery. |
 
@@ -96,7 +98,7 @@ the old language and what replaced each.
 | A value that stands for "no estimate" | Do not declare the value. Say why in a note (`not_estimated`) or in the evidence. |
 | A list of plain values | Put the value on a member, and reduce the field |
 | A `where` filter on a value that changes in the run | Put a Boolean formula on the member, and reduce it |
-| A past value of a field, read in a stage, or a member by its position | Keep the past value in a stored value. Select a member by its key with `.at(key)`. |
+| A past value of a field, read in a stage, or a member by its position | A caller reads a past value from the record of the run. In a stage, read a value that an earlier stage stored. Select a member by its key with `.at(key)`. |
 | A handle that `.start(…)` gives | Find the occurrence in `event.occurrences` |
 | An interruption, a cancellation or a join of an occurrence | An occurrence runs to its end. Guard its later stages, or wait with `until`. |
 | A stage at an absolute time | A trigger on `t >= T` |

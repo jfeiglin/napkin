@@ -34,7 +34,7 @@ tank:
             this.delivered += amount
 ```
 
-The body of an event holds these lines, in this order of kinds:
+The body of an event holds these lines:
 
 1. Its text (its card) and its evidence.
 2. Its locals and its flows. They stand before the first timing step.
@@ -57,7 +57,7 @@ Each parameter declares its type: `event(amount: L, setup: h)`. An event with no
 - A parameter can have a range: `event(amount: L in [0 L,])`. The engine checks each argument at
   the start.
 - A number, a Boolean, an enum or a text parameter is a copy. A statement that assigns it changes
-  only the copy of this occurrence. The record keeps the original argument.
+  only the copy of this occurrence.
 - A parameter whose type is a template names a member: `event(source: Tank)`. The event reaches the
   values of the member through it: `source.water`.
 - Pass a quantity for an amount, and a member for access to its values. With `amount: L`, a caller
@@ -174,7 +174,7 @@ is read once, at 5 h. A loss of safety before 5 h has no effect on that check.
   work with a guard or a gate.
 
 An occurrence finishes when it passes its last step. It is then `done`, also when a guard skipped
-a stage. To record a success, start another event on the path of success:
+a stage. To mark a success, start another event on the path of success:
 `this.service_restored.start()`.
 
 ## Statements
@@ -199,8 +199,8 @@ statement fails, the run stops, and the stage commits nothing.
 - a stored value, a local, or the copy of a parameter;
 - a formula, with another formula and `=` only;
 - a distribution, with another distribution and `=` only;
-- the `request`, `capacity` or `allocation` of a flow, a leg or an endpoint
-  ([flows-and-solvers.md](flows-and-solvers.md#request-capacity-and-actual-rate));
+- the `request` or the `capacity` of a flow, a leg or an endpoint, or the `allocation` of an
+  endpoint ([flows-and-solvers.md](flows-and-solvers.md#request-capacity-and-actual-rate));
 - a writable local of a live occurrence: `this.repair.occurrences.at(t).crew_size = 3`.
 
 | Target | Result |
@@ -267,8 +267,8 @@ A branch has one condition. There is no `elif`: write an `if` inside the `else:`
 ### Branch with `switch`
 
 `switch E:` evaluates a value of an enum once, runs the case of its member, and goes on after the
-branch. An optional `else:` case runs for the other members. With no case and no `else:`, the
-stage goes on at once.
+branch. An optional `else:` case runs for the other members. With no matching case and no `else:`,
+the stage goes on at once.
 
 ```scn
 after 2 h:
@@ -286,7 +286,7 @@ after 2 h:
 - `else:` is the last case.
 
 **A random outcome.** When the selector is a draw of a `categorical`, the engine reads the guards
-first, then draws among the eligible outcomes, with their weights divided by their sum. A median run
+first. Then it draws among the eligible outcomes, with their weights divided by their sum. A median run
 takes the most likely eligible outcome, the first declared of them on a tie. With no eligible case,
 the `else:` body runs, if there is one, and the engine draws nothing. A sampled run draws `FIXED`
 with a probability of 0.7.
@@ -339,10 +339,12 @@ refill = event(amount: g):
 
 - A trigger belongs to its event on one receiver. It exists for the whole run, also before the
   event first starts. Each grinder has its own trigger, with its own state.
-- A trigger has no occurrence. Its condition reads the receiver (`this`), the top level and its own
-  captures. It cannot read `amount` or `status`.
-- The body of a trigger has, in this order: its captures (`name = value`), one start of its own
-  event or more (`this.refill.start(...)`), and an optional reset as its last line.
+- A trigger has no occurrence. Its condition reads the receiver (`this`) and the top level. Its
+  starts and its reset also read its captures. It cannot read `amount` or `status`.
+- The body of a trigger has these lines, in this order:
+  1. its captures (`name = value`);
+  2. one start of its own event or more (`this.refill.start(...)`);
+  3. an optional reset, as its last line.
 - A trigger can have its text and its evidence on rows of its body.
 - A start by hand (`grinder.refill.start(20 g)`) does not use or reset the trigger. A trigger and a
   start by hand on a grinder at 8 g give two refills: 108 g.
@@ -403,7 +405,8 @@ a rate that a solver publishes.
 - A condition whose first contact the engine cannot certify stops the run by name. The engine never
   polls at fixed times.
 - When a flow joins or leaves a stock, the engine calculates the time of a contact again. A tank at
-  10 L that fills at 1 L/h, with 2 L/h more drained from 2 h to 4 h, reaches 16 L at 10 h, not 6 h.
+  10 L fills at 1 L/h. An occurrence drains 2 L/h more from 2 h to 4 h. The tank reaches 16 L at
+  10 h, not at 6 h.
 - A trigger that fires inside the comparison band of its threshold is a near-tie. The trace marks
   it ([numerics.md](numerics.md#near-ties)).
 
@@ -439,8 +442,8 @@ stage raises the request of the garden to 6 L/h and reads the rate of the clinic
 - Setup has no rate or result to read. A read of one at setup stops the run by name.
 
 **The horizon.** The horizon is an inclusive cutoff. The engine settles the work due at the
-horizon, then records the committed state, also the quantities in occurrences that have not
-finished. The end of the run makes no completion.
+horizon. The record then holds the committed state, also the quantities in occurrences that have
+not finished. The end of the run makes no completion.
 
 ## Occurrences
 
@@ -489,15 +492,15 @@ is the start time.
 
 ## A finished occurrence
 
-A finished occurrence is a stable record of its start. It keeps its identity, its parameters, its
-locals and the last result of each of its formulas.
+A finished occurrence is frozen. It keeps its identity, its parameters, its locals and the last
+result of each of its formulas.
 
 - A formula that read 14 at the finish reads 14 after it, whatever changes later.
 - A formula that cannot be evaluated at the finish keeps the reason. The occurrence still finishes.
   A report can show the reason, and a read of the frozen value by the model fails with it.
-- A write to a finished occurrence stops the run: an assignment to its value, a `move` of a nonzero
-  amount at its stock, or a flow that carries a nonzero rate into or out of its stock. A connected
-  flow at a zero rate writes nothing.
+- A write to a finished occurrence stops the run. A write is an assignment to its value, a `move`
+  of a nonzero amount at its stock, or a nonzero rate of a flow at its stock. A connected flow at a
+  zero rate writes nothing.
 - A saved reference to an occurrence keeps naming it after later starts.
 
 **The stocks of an occurrence.** Each stock that an occurrence owns must be empty when the
@@ -562,8 +565,9 @@ A **breakpoint** is a place where a run stops. It names a part of the program by
 | `...do[1].SEND.do[0]`, `...do[1].else[0]` | Before a statement of a case of a `switch` |
 | `setup[0]` | Before the first start of the setup scope |
 
-A breakpoint holds for every occurrence, or for one member or one occurrence:
-`operator.decide.step[0]@operator`, or `depot.request_pump#0` for the first occurrence.
+A breakpoint holds for every occurrence, or for one member or one occurrence after `@`:
+`operator.decide.step[0]@operator`, or `depot.request_pump.step[0]@depot.request_pump#0` for the
+first occurrence only.
 
 A breakpoint alone never changes the run. A run that stops and goes on gives the same values, draws,
 event times and event order as the run straight through.

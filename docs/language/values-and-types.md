@@ -59,9 +59,9 @@ input delay: h = 3
     @timing
 ```
 
-A declaration stands at the top level, in an entity, in a template, or at the start of an event (a
-local of the occurrence, [events.md](events.md#state-of-an-occurrence)). An event has no `input`:
-its parameters take its arguments.
+A declaration stands at the top level, in an entity or in a template. At the start of an event, a
+declaration is a local of the occurrence ([events.md](events.md#state-of-an-occurrence)). An event
+has no `input`: its parameters take its arguments.
 
 ### The kinds of a declared value
 
@@ -186,8 +186,8 @@ actual rate, a served fraction, and the `started`, `done` and `active` fields of
   reading of a Boolean.
 - An enum lists its members by name, each with a capital first letter. Two declarations of
   `enum[OPEN, CLOSED]` are one type. Two enum values compare only when they have the same enum.
-- A bare member such as `OPEN` takes its enum from its place: a declared type, the other side of a
-  comparison, an assignment target, a parameter, a case of a `switch` or a column of a table.
+- A bare member such as `OPEN` takes its enum from its place. The place is a declared type, the
+  other side of a comparison, an assignment target, a parameter, a `switch` or a table column.
   `gate = OPEN` alone is an error. Write `gate: enum[OPEN, CLOSED] = OPEN`.
 - A text has `==` and `!=` and no other operation.
 - A link compares by identity with `==` and `!=`.
@@ -202,8 +202,8 @@ space. A quantity is its dimension and its exact value in the canonical unit, no
 
 ### Where units come from
 
-The units of a model come from the prelude (`napkin/std/units.json`), from the library that the
-scenario line names, and from `units.json` in the package and in a variant. The prelude has the
+The units of a model come from three places: the prelude (`napkin/std/units.json`), the library
+that the scenario line names, and `units.json` in the package and in a variant. The prelude has the
 units of time (`h`, `hour`, `day`, `week`, `month`, `year` and their plurals) and `fraction`,
 `ratio`, `percentage_points`, `person` and `people`. A name of the prelude cannot be defined again.
 Each unit has a dimension and an exact factor: the size of one unit in the canonical unit of its
@@ -385,8 +385,8 @@ Each member has a numeric **key**. The type of a collection is `<T>`.
 
 - A literal names each member once. `<a, a>` is an error.
 - An empty literal needs a declared type: `idle_pumps: <Pump> = <>`.
-- The creation numbers follow the order of the model: the members written by hand and the rows of
-  each table in the order of the text. The rows of a table with ids follow the order of their ids.
+- The creation numbers follow the order of the model. The members written by hand and the rows of
+  each table come in the order of the text. The rows of a table with ids follow the order of their ids.
 - A collection can be the value of a member: `machines = <a, b>`, `places = Place.instances`.
 
 ```scn
@@ -543,8 +543,8 @@ no draw. A categorical has no mean.
 
 `d.draw()` takes one value from the distribution. It draws each time that the engine executes it.
 
-- A draw stands where the engine captures a value once: an initializer, a statement of a stage, a
-  capture of a trigger, an argument of a start, the delay of a stage.
+- A draw stands where the engine captures a value once. These places are an initializer, a
+  statement of a stage, a capture of a trigger, an argument of a start and the delay of a stage.
 - A formula, a gate, a trigger, a reset and an assertion are read again, so they make no draw.
 - A branch that the engine does not take makes no draw.
 - Store a draw to read it twice. Two draws are independent. Correlated draws are not in the language.
@@ -571,6 +571,9 @@ input repair_time = uniform(1 h, 3 h).draw() in [1 h, 12 h]
 A number override of `repair_time` skips the draw. Without the explicit range, the input admits
 overrides from 1 h to 3 h, the support of the distribution.
 
+An enum input can draw its default from a `categorical` over its members:
+`input mode: enum[CALM, BUSY] = categorical(CALM: 0.7, BUSY: 0.3).draw()`.
+
 ### The run mode
 
 | Mode | A numeric draw | A categorical draw |
@@ -579,7 +582,7 @@ overrides from 1 h to 3 h, the support of the distribution.
 | `sampled` | A sample, keyed by the seed | A sample among the eligible outcomes |
 
 The default run is a median run. A median run has no seed. A sampled run needs a whole-number seed.
-The key of each draw is the seed, the place of the draw in the model and the member, the
+Three things key each draw: the seed, the place of the draw in the model, and the member, the
 occurrence or the firing that executes it. A read of a distribution, an extra report, another step
 size or a branch that the engine does not take moves no other draw. The eligible outcomes of a
 `switch` are in [events.md](events.md#branch-with-switch).

@@ -1,8 +1,8 @@
 # Flows and solvers
 
 A **flow** moves a quantity per time between two stocks, or between a stock and `SOURCE` or `SINK`.
-This page gives the three forms of a flow, the endpoints of a stock, the rules of a request and a
-capacity, local allocation, and declared solvers. The words in bold are the
+This page gives the three forms of a flow and the endpoints of a stock. It also gives the rules of
+a request and a capacity, local allocation, and declared solvers. The words in bold are the
 [terms](README.md#terms) of the documentation. How the engine calculates the rates is in
 [engine/README.md](../engine/README.md) and [engine/solver.md](../engine/solver.md).
 
@@ -344,9 +344,9 @@ reservoir.water.outflow.request       L/h    0     0     0     0
   served first. Members with equal ranks share in proportion.
 - The flows that a `priority(...)` does not name share the remainder in proportion to their
   requests. A new flow of an event is such a flow.
-- With one request on the endpoint and several equal flows that make no claim of their own, the
-  endpoint splits the rate equally among them, and gives what a capped flow cannot carry to the
-  others.
+- An endpoint can have one request and several equal flows that make no claim of their own. The
+  endpoint then splits the rate equally among them. It gives what a capped flow cannot carry to
+  the others.
 - An allocation ranks useful requested work. A preference alone moves no quantity.
 - A stage can assign an allocation with `=`: `this.water.outflow.allocation = proportional()`.
 
@@ -370,8 +370,7 @@ The two rates are 4 L/h and 2 L/h. A request of 6 L/h on each pipe would make tw
 ### Sharing is local
 
 Each endpoint decides with the values that it reads: its own inflow, and the claims on its own
-outflow. Nothing
-makes service equal across endpoints unless a solver does it.
+outflow. Nothing makes service equal across endpoints unless a solver does it.
 
 ```scn
 first:
@@ -401,9 +400,12 @@ on one another. An empty or a full stock alone needs no solver.
 ## Declared solvers
 
 A **solver** is a declared solver that an entity owns. It sets the rates and the values that it
-names in `solve_for`. Declare a solver for a joint decision that no endpoint can make alone: a limit
-across sites, a law that links two unknown levels, equal service across endpoints, or an order of
-objectives.
+names in `solve_for`. Declare a solver for a joint decision that no endpoint can make alone:
+
+- a limit across sites;
+- a law that links two unknown levels;
+- equal service across endpoints;
+- an order of objectives.
 
 ```scn
 clinic:
@@ -436,8 +438,8 @@ time.
 
 - A solver belongs to an entity or a template. Each member of a template has its own solver.
 - Inside the solver, a bare name is a binding of `inputs:` or an unknown of `solve_for:`.
-- A binding brings the present value of its source, with its units, bounds and restrictions. An
-  input of 8 W with a range `[0 W, 10 W]` gives 8 W. Its range does not let the solver select
+- A binding brings the present value of its source, with its units, bounds and restrictions. A
+  bound value of 8 W with a range `[0 W, 10 W]` gives 8 W. Its range does not let the solver select
   10 W.
 - `solve_for:` names stored numbers, actual rates of flows and routes, and served fractions. A
   projection names a field on each member: `routes.carried.actual_rate`.

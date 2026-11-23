@@ -63,7 +63,7 @@ tools do not publish it.
   package of the catalogue has such a name.
 - A variant is a folder `scenarios/<package>/variants/<name>/` with its own `model.scn`. The tools
   name it `<package>:<name>`, for example `water_controls_wipe:lumberton`. The name of its folder
-  obeys the rule for the name of a package.
+  starts with a lowercase letter, and it has only lowercase letters, digits and `_`.
 - `--scenario <package>` selects the package and all its variants. `--scenario <package>:<name>`
   selects one variant.
 
@@ -155,7 +155,8 @@ writes nothing, in each of these conditions:
 
 - A named run stops before its horizon.
 - The model has a warning of the evidence rule: `no_record` or `datum`
-  ([evidence/README.md](evidence/README.md#the-evidence-rule)).
+  ([evidence/README.md](evidence/README.md#the-evidence-rule)). This stops the brief page and the
+  readings page.
 - `brief.toml` has a problem ([brief.toml](#the-settings-of-the-pages-brieftoml)).
 - `--only` names `assumptions`, `html`, `methods` or `runs`. These are formats of the earlier
   catalogue at commit `8488047`.
@@ -209,10 +210,11 @@ a name that the model does not declare.
 
 The publisher checks each key, also a key that no current page shows:
 
-- Each path of `show` and of the `outputs` of a spread is a value that a record holds, or a path with
-  a `not_estimated` note.
+- Each path of `show` and of the `outputs` of a spread is a path that a run can report. It can also be
+  a path with a `not_estimated` note.
 - Each path of `drivers` is an input.
-- Each name of `featured`, of a comparison, of a sweep and of a spread is a named run.
+- Each name of `featured`, of a comparison, of the `run` of a sweep and of the `runs` of a spread is a
+  named run. The `id` of a sweep is not the name of a named run.
 - `choice_group` names a group of the options of the model.
 
 ### Named comparisons
@@ -343,11 +345,11 @@ The language reads `notes:` as free notes. It gives them no meaning, and no run 
 | Note | What it holds | Who reads it |
 | --- | --- | --- |
 | `reporting: <path>: scope:` | Whom or what the value covers | `tools.check` ([Scope](#the-scope-of-each-value-on-the-pages)) |
-| `reporting: <path>: about:` | What the value measures, in words | The publisher: the path goes on the pages when `show` is not given |
+| `reporting: <path>: about:` | What the value measures, in words | The publisher: the pages give the path when `show` is not given |
 | `reporting: <path>: category:` | `deaths`, `casualties`, `loss` or `exposure` | The tests of the catalogue ([Categories](#categories)) |
-| `reporting: <path>: lag:` | The reporting lag of the earlier pages | The publisher: the path goes on the pages when `show` is not given. No page applies the lag. |
+| `reporting: <path>: lag:` | The reporting lag of the earlier pages | The publisher: the pages give the path when `show` is not given. No page applies the lag. |
 | `not_estimated: <path>: reason:` | Why the model gives no value for the path, with its `record` declarations | Both pages and `--sample-spreads` |
-| `not_estimated: <path>: label:` | The name of the value in words | The publisher: the path goes on the pages when `show` is not given |
+| `not_estimated: <path>: label:` | The name of the value in words | The publisher: the pages give the path when `show` is not given |
 | `comparisons: <run>: <against>` | A named comparison | The brief page, when `brief.toml` has no `[[comparison]]` |
 
 A path under `reporting` or `not_estimated` can name a template. Then the note applies to each

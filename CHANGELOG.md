@@ -60,12 +60,11 @@ word and form, and what replaced it. The catalogue and the examples are in the n
 - The trace holds each edit, with its time, its stop, its target and its old and new value.
 - `napkin play` and `napkin.Session` are two clients of this machinery.
 
-**The run store** keeps the record of each run on disk ([docs/engine/README.md](docs/engine/README.md#the-run-store)).
-The key of a run is a digest of its program, its configuration and its request. The key also holds
-the code of the engine, the machine and the log of edits. An identical request reads the stored
-record. Any other
-request calculates a new run. `NAPKIN_STORE=off` stops the store, and `NAPKIN_STORE=DIR` puts it in
-another folder.
+**The run store** keeps the record of each run on disk
+([docs/engine/README.md](docs/engine/README.md#the-run-store)). The key of a run is a digest of its
+program, its configuration and its request. The key also holds the code of the engine, the machine
+and the log of edits. An identical request reads the stored record. Any other request calculates a
+new run. `NAPKIN_STORE=off` stops the store, and `NAPKIN_STORE=DIR` puts it in another folder.
 
 **Exact stocks and moves** ([docs/engine/methods.md](docs/engine/methods.md#the-exact-stock-ledger)).
 A stock is each value that a flow or a `move` touches. The engine keeps an exact balance for each
@@ -75,8 +74,9 @@ amount that it writes, or it fails and moves nothing. An assignment to a stock i
 **The evidence rule** ([docs/language/evidence.md](docs/language/evidence.md)). The compiler gives
 the warning `no_record` for each part that cites no `record` declaration: an input, a stored value,
 a timed event, a status case, an assertion, an own value of an instance or a table column. It gives
-the warning `datum` for a value that differs from the datum of the claim that it cites. A model with these warnings still runs.
-`tools.check` and the publisher refuse a package of the catalogue with any of them.
+the warning `datum` for a value that differs from the datum of the claim that it cites. A model with
+these warnings still runs. `tools.check` and the publisher refuse a package of the catalogue with any
+of them.
 
 **The publisher** ([tools/publish/README.md](tools/publish/README.md)).
 
@@ -114,7 +114,7 @@ The new flags are `--value` and `--lag` of `napkin run`, `--value` of `napkin sa
 | --- | --- |
 | `evaluate_study` | `napkin.study` for the named runs of a model, then `napkin.report` for each record |
 | `sample_result` | `napkin.report` or `napkin.read` for the readings of one record |
-| `evaluate_uncertainty` | `napkin.monte_carlo` for the samples of one run, or `napkin.spread` for a model file |
+| `evaluate_uncertainty` | `napkin.monte_carlo` for the samples of one run, or the module `napkin.spread` for a model file |
 | `uncertainty_report` | The summaries that `napkin.monte_carlo` gives, or `napkin sample --json` |
 | `actors` | Nothing. A model has no actors. `napkin.instances` stays. |
 

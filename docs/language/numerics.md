@@ -1,7 +1,7 @@
 # Numerics
 
-This page tells how two numbers of a model compare, how a **scale** sets the **comparison band**,
-what a declared scale can change, and which runs give the same numbers. The words in bold are the
+This page tells how two numbers of a model compare and how a **scale** sets the **comparison
+band**. It also tells what a declared scale can change, and which runs give the same numbers. The words in bold are the
 [terms](README.md#terms) of the documentation. The methods of integration and of the solvers are in
 [engine/methods.md](../engine/methods.md) and [engine/solver.md](../engine/solver.md).
 
@@ -31,13 +31,14 @@ max(rtol, atol_factor) × max(scale, |a|, |b|)
 - `scale` is the floor of the comparison, in the unit of the operands. The engine compares both
   operands and their floor in the canonical unit of their dimension.
 - A quantity gives its declared `scale` as its floor. A quantity with no `scale` gives the size of
-  one of its declared units: a value in `h` gives 1 h, a value in `day` gives 24 h.
+  one of its declared units. A value in `h` gives 1 h, and a value in `day` gives 24 h.
 - Inside the band, the operands are equal. So `==`, `<=` and `>=` hold, and `<`, `>` and `!=` do
   not.
-- The same band applies in every evaluator: a formula, a guard, a trigger, a gate, a reset, an
-  assertion, the ends of a membership test, and the reference interpreter of the tests.
+- The same band applies in every evaluator. These are a formula, a guard, a trigger, a gate, a
+  reset, an assertion, the ends of a membership test, and the reference interpreter of the tests.
 
-This model compares values of 0 with a small literal. It gives the readings below its text.
+This model compares values of zero with small literals, and two literals with each other. A run
+gives the readings in the table below the model.
 
 ```scn
 scenario "Bands"
@@ -100,9 +101,9 @@ through a float. `0.1 day` is exactly 2.4 h, and `48 people/day` is exactly 2 pe
 
 - An authored literal contributes no floor to a comparison, whatever its unit. This also holds for
   an expression of literals only, and for a formula that names one.
-- The compiler folds constant expressions exactly, wherever the result is rational. It uses the
-  folded value for a range, a domain, the ends of a test, a fixed key, the support of a drawn input
-  and a cited datum.
+- The compiler folds constant expressions exactly, wherever the result is rational. A range, a
+  domain, the ends of a test, a fixed key, the support of a drawn input and a cited datum use the
+  folded value.
 - The factor of a unit is exact. `0.01` in `units.json` is 1/100.
 - The run calculates with the float nearest to each exact value.
 - A datum of evidence is exact. A value equals its cited datum only when the two are the same
@@ -111,8 +112,8 @@ through a float. `0.1 day` is exactly 2.4 h, and `48 people/day` is exactly 2 pe
 ## Intervals and bounds
 
 - An interval is reversed only when its lower end is above its upper end by more than their band.
-  A reversed interval is an error of the compiler when its ends are fixed, and stops the run by name
-  when only the run knows them.
+  A reversed interval is an error of the compiler when its ends are fixed. When only the run knows
+  its ends, it stops the run by name.
 - The interval `[x, x]` holds the values that compare equal to `x`.
 - Hard bounds that are inverted by less than their band admit one point, their midpoint.
 - A stock inside its own band of a bound counts as on the bound, for sharing, comparisons and
@@ -148,8 +149,8 @@ tuners:
 - A formula can declare the scale of its result: `gap = formula(this.a - this.b) scale 1 L`.
 
 With no `scale`, the engine infers the size of each stock for integration. The size is the largest
-of one declared unit, the starting value, the starting values of the stocks that flows join to it,
-and its finite bounds. A declared scale replaces that inference. Declare a scale when the inferred
+of these: one declared unit, the starting value, the starting values of the stocks that flows join
+to it, and its finite bounds. A declared scale replaces that inference. Declare a scale when the inferred
 size understates how large a value grows.
 
 ## What a scale can change
@@ -181,7 +182,7 @@ planner:
 
 **Units of display never change an answer.** A display unit is the unit in which a report shows a
 value, or in which a caller writes an edit or a time. The engine converts it to the canonical unit
-first. The final distance step divides each flow rate by one canonical unit of its dimension, so the
+first. The final distance step divides each flow rate by one canonical unit of its dimension. So the
 unit in which a model writes a rate does not change the rates that a solver selects.
 
 The declared unit of a value is different. It is part of the model: for a value with no `scale`,
@@ -193,16 +194,16 @@ unit, declare a `scale`.
 A **contact** is the time at which a stock reaches a bound or a threshold between two scheduled
 times. The engine locates it to the crossing tolerance in time.
 
-- A contact joins a nearby **moment** only when two tests pass: its located time is within the
-  crossing tolerance of the moment, and the stock at the time of the moment is within its own band
-  of the threshold or the bound. Else the contact is a moment of its own, at its located time.
+- A contact joins a nearby **moment** only when two tests pass. Its located time is within the
+  crossing tolerance of the moment. The stock at the time of the moment is within its own band of
+  the threshold or the bound. Else the contact is a moment of its own, at its located time.
 - An earlier contact runs before the stages that are due. A later contact waits across those stages
   when their writes keep it.
 - The books always balance. A transfer posts equally at both ends. A read, a group of events or a
   located crossing moves no material.
-- When the flows can put a stock exactly on its bound or threshold, the engine posts the small
-  correction on the legs that move the stock toward that value, in proportion to their rates. This
-  placement is a preference. The engine does not make it when it would break a hard relation of the
+- When the flows can put a stock exactly on its bound or threshold, the engine posts a small
+  correction. It posts it on the legs that move the stock toward that value, in proportion to their
+  rates. This placement is a preference. The engine does not make it when it would break a hard relation of the
   author, a frozen allowance, a capacity, or the range of another stock.
 - A run fails only when a hard rule breaks by more than its band.
 
@@ -210,16 +211,16 @@ The engine pages give the details ([engine/README.md](../engine/README.md)).
 
 ## Near-ties
 
-A tiny difference can change a discrete result: a trigger fires or not, a branch goes one way or
-the other, a claim is served or not. The engine does not calculate more precisely. It detects the
+A tiny difference can change a discrete result. A trigger fires or not, a branch goes one way or
+the other, a claim gets service or not. The engine does not calculate more precisely. It detects the
 case and marks it.
 
 - A decision is a near-tie when the two sides of the comparison that decides it are inside their
   band, now and an instant later.
 - The trace marks a near-tie with the detail `near`: the origin, the comparison, the difference and
   the tolerance, in canonical units.
-- The trace marks a firing in its entry `fire`, a trigger that came near and did not fire in an
-  entry `miss`, and a gate that released in an entry `release`.
+- The entry `fire` of the trace marks a firing. The entry `miss` marks a trigger that came near and
+  did not fire. The entry `release` marks a gate that released.
 - Sides that cross through the boundary are no near-tie. The time of the crossing decides.
 - `napkin run` gives a summary of the near-ties under its table ([cli.md](../cli.md)).
 
@@ -245,12 +246,12 @@ The engine chooses its own steps. A run that needs finer steps sets `max_step`.
 
 - **The same run is deterministic.** The same code, configuration, seed and thread settings on one
   machine give the same record, bit for bit.
-- **Other runs agree within tolerance.** A sample alone or in a batch, another solver, or another
-  platform gives values that agree within the stated tolerances, not bit for bit.
+- **Other runs agree within tolerance.** A sample alone or in a batch gives values that agree within
+  the stated tolerances, not bit for bit. So do another solver and another platform.
 - A threshold at the edge of its band can fire differently across those settings. The near-ties in
   the trace show where.
-- A run that stops at a breakpoint and goes on gives the same record as the run straight through,
-  on one platform, with the same program, engine version, settings and seed
+- A run that stops at a breakpoint and goes on gives the same record as the run straight through.
+  This holds on one platform, with the same program, engine version, settings and seed
   ([events.md](events.md#breakpoints-checkpoints-and-edits)).
 - A budget of a solver counts work, never seconds. A run that succeeds on one machine succeeds on
   another ([flows-and-solvers.md](flows-and-solvers.md#budgets)).

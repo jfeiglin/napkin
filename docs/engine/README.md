@@ -33,6 +33,7 @@ These words are the engine's own. Each has one meaning on the engine pages.
 | trace | The list of entries in a record: starts, finishes, commits, firings, draws, moves, solves, edits, pauses and the failure. |
 | near-tie | A decision that the engine made inside the comparison band of its boundary. The trace marks it. |
 | crossing tolerance | `Numerics.crossing`, 1e-8 h by default: the shortest time between two moments that the engine tells apart. |
+| integration size | The number that sets the absolute tolerance of a stock in Component: its declared `scale`, or else the largest of 1 in its unit, its start value, its finite bounds and the start values of the stocks that flows connect it to, directly or through other stocks. |
 
 ## From a program to a record
 
@@ -43,7 +44,7 @@ The engine does these steps in each run (`napkin/engine/timeline/run.py`):
 2. It evaluates the start values once: each input, draw, link, stored value and captured request or
    capacity, in the order of what each value reads. An input outside its admitted range stops the
    run. Each assertion over inputs is checked once.
-3. It finds the scale and the size of each stock. Each stock must start within its bounds.
+3. It finds the scale and the integration size of each stock. Each stock must start within its bounds.
 4. It runs round zero at 0 h: the setup commits as one stage. Then each connected set starts, and the
    flows get their first rates.
 5. It goes from moment to moment until the horizon. At each moment it runs rounds. Between two
@@ -124,7 +125,8 @@ alone, at the start of the run and again at each moment that changes the set.
 | Declared | The set of a declared solver whose problem reads nothing that moves. |
 | MovingDeclared | The set of a declared solver whose problem reads a moving stock or the time. It has at most 20 stocks. |
 
-[methods.md](methods.md) tells how each method calculates its stocks.
+An endpoint setting is a capacity or a request of an `outflow` or an `inflow`, or a stage that sets
+one. [methods.md](methods.md) tells how each method calculates its stocks.
 
 ## Moments and rounds
 
@@ -144,11 +146,11 @@ runs rounds (`napkin/engine/timeline/moment.py`). One round has three steps:
 Another round follows at the same time while a stage is due there or a condition acted. Round zero is
 the setup. More than `max_rounds` rounds at one time stop the run with the name of the limit.
 
-**Rates read as the round began** ([change 27](../design/decisions.md#change-27)). A stage or a firing reads the
-rates and the solver results of the last re-share, also through a formula. The writes of a round
-reach the rates only at the re-share after its stages. A flow that joins reads zero until then. A
-flow that leaves keeps its last rate until then. The setup has no rate to read. In this package, a
-stage at 2 h raises the garden's request and reads the clinic's rate:
+**Rates read as the round began** ([change 27](../design/decisions.md#change-27)). A stage or a
+firing reads the rates and the solver results of the last re-share, also through a formula. The
+writes of a round reach the rates only at the re-share after its stages. A flow that joins reads zero
+until then. A flow that leaves keeps its last rate until then. The setup has no rate to read. In this
+package, a stage at 2 h raises the garden's request and reads the clinic's rate:
 
 ```json
 {"L": {"kind": "volume", "dimensions": {"volume": 1}, "scale": 1}}
@@ -197,14 +199,14 @@ time is due at that moment. A delay above zero that a moment reaches is due at a
 
 Between two moments each connected set runs on its method. The next moment is the earliest of:
 
-- a stage that is due, a timer of a reset, or a key time of a keyed read by the time;
+- a stage that is due, the end of a `reset after D`, or a key time of a keyed read by the time;
 - the horizon;
 - the first contact of a watched condition or assertion;
 - an event of a method (a stock that reaches a bound, the end of a segment) that changes what a
   condition or another set reads.
 
-A condition on a value that moves is watched step by step ([change 20](../design/decisions.md#change-20);
-`napkin/engine/timeline/triggers.py`). For a value on a line, the engine calculates the time of the
+A condition on a value that moves is watched step by step
+([change 20](../design/decisions.md#change-20); `napkin/engine/timeline/triggers.py`). For a value on a line, the engine calculates the time of the
 crossing exactly. For a value on a curve, it reads the form of the method's solution over each step:
 
 - a piece that cannot reach the threshold costs no read;
@@ -219,7 +221,8 @@ there, or misses there, has the detail `near` in its trace entry. The
 [events page](../language/events.md) tells how a model writes triggers.
 
 A contact joins a nearby moment only when its time and its stock both qualify (amended
-[change 27](../design/decisions.md#change-27)). [methods.md](methods.md#contacts-and-moments) tells the rule.
+[change 27](../design/decisions.md#change-27)). [methods.md](methods.md#contacts-and-moments) tells
+the rule.
 
 ## The stock ledger
 
@@ -269,6 +272,11 @@ from its fitted pieces.
 values and adds the unit, the label, the status display, the evidence trail and the near-ties of
 each path. A report claims nothing that the record does not show.
 
+**The evidence trail** of a value lists the parts that the value can read, with the records that
+each part cites. It tells whether this run exercised each part: a flow that moved material, an event
+that started, a trigger that fired, a stage that committed, a solver that solved, a value that was
+read. A part whose use the record cannot show has no answer (`exercised` is `None`).
+
 **A reporting lag** (`napkin.Lag(shortest, longest)`, in hours) shows the mean of the history of a
 value from `longest` to `shortest` hours before each time. Equal ends make a fixed delay. A lag:
 
@@ -297,10 +305,11 @@ record so far, the edits so far, and the saved state of the engine. Its text for
 
 1. Run the program with the breakpoints. The result is a `Checkpoint`.
 2. Call `checkpoint.edit(target, value)` for each change. An edit gives a live stored value a new value.
-3. Optionally, save the checkpoint with `dumps` and load it again with `loads`, in any process.
+3. To resume in another process, save the checkpoint with `dumps`. Load it there with `loads`.
 4. Call `resume(program, checkpoint)`. The result is the record, or the next checkpoint.
 
 ```python
+import napkin
 from napkin.engine.timeline import resume, run
 from napkin.program.checkpoint import Breakpoint, dumps, loads
 
@@ -343,10 +352,13 @@ it. The processes of a study use the store of the process that made them.
 | Setting | Effect |
 | --- | --- |
 | `NAPKIN_STORE` | A directory for the store, or `off`. The default is `.cache/runs` in a source checkout, and `~/.cache/napkin/runs` (or under `XDG_CACHE_HOME`) for an installed package. |
-| `NAPKIN_STORE_LIMIT` | The size limit in gigabytes, 4 by default. The entries used least recently go first. |
+| `NAPKIN_STORE_LIMIT` | The limit of the store in gigabytes, 4 by default. The entries used least recently go first. |
 
 Each entry has a lock. A process that needs a run that another process runs waits for it, then reads
-it. The thread settings of the linear algebra are not in the key.
+it. The thread settings of the linear algebra are not in the key. The last digits of a result can
+depend on the processor, so an entry serves only the machine that wrote it.
+`python -B -m tools.check --all --deep` runs three stored runs again and compares each with the store,
+bit for bit.
 
 ## Studies
 
@@ -371,9 +383,9 @@ The numerical settings of a run (`Numerics`) set every tolerance of the engine:
 
 | Tolerance | Value | Where it applies |
 | --- | --- | --- |
-| Comparison band | `max(rtol, atol_factor) × max(scale, \|a\|, \|b\|)`, 1e-9 of the size by default | Every comparison of two numbers, in every evaluator ([change 29](../design/decisions.md#change-29)). |
-| Conservation allowance | `atol_factor × max(scale, \|amount\|)` | The retirement of an occurrence's stock, the amounts of a frozen stock, the bounds at setup. |
-| Integration accuracy | `rtol`, and `atol_factor` times the size (Component) or the scale (Sparse, MovingDeclared) of each stock | The numerical methods ([methods.md](methods.md#integration-tolerances)). |
+| Comparison band | `max(rtol, atol_factor) × max(scale, \|a\|, \|b\|)`: by default 1e-9 times the largest of the scale and the two operands | Every comparison of two numbers, in every evaluator ([change 29](../design/decisions.md#change-29)). |
+| Conservation allowance | `atol_factor × scale` | The retirement of an occurrence's stock and the amounts of a frozen stock. At setup, a start value can miss a bound by `atol_factor × max(scale, \|value\|)`. |
+| Integration accuracy | `rtol`, and `atol_factor` times the integration size (Component) or the scale (Sparse, MovingDeclared) of each stock | The numerical methods ([methods.md](methods.md#integration-tolerances)). |
 | Crossing tolerance | `crossing`, 1e-8 h | The time of a contact or a crossing, and the time between two moments. |
 | Step cap | `max_step`, 1 h, or the `resolution` of the scenario | The interval at which a numerical method reads its roots and its field inside a long step. |
 
@@ -382,7 +394,7 @@ outcome of a comparison inside its band, the accuracy of the integration, and th
 of a solver that are equally optimal for its nonflow unknowns. A change of the display units changes
 nothing.
 
-The scale of a value is its declared `scale`, or else the size of one of its declared units. A
+The scale of a value is its declared `scale`, or else 1 in its declared unit (1 mL for a value in mL). A
 literal in the model is exact: it adds no floor to a comparison band, and the relative term of the
 band still applies. The
 [numerics page](../language/numerics.md) tells how a model declares a scale.
@@ -397,9 +409,15 @@ band still applies. The
   trace marks such a decision as a near-tie.
 - A draw is keyed by the seed, its site and its owner (the first 64 bits of the SHA-256 of
   `seed|site|owner`), never by its place in a stream. So a branch that is not taken, an extra read, a
-  report or the step size of an integrator moves no draw.
+  report or the step length of an integrator moves no draw.
 - A sum over a list adds in a pairwise tree of a fixed shape (`timeline/trees.py`). Its bits depend on
   the present values only. The language promises no order of a sum over a list.
+
+A change of the numerical core is compared with the build before it by classes of difference, as
+[CONTRIBUTING.md](../../CONTRIBUTING.md) tells under "Comparisons of a change of the numerical core".
+A refactor that changes no arithmetic keeps the bits ("Refactor comparisons" in the same file).
+Agreement of two builds is no proof of the mathematics: [verification.md](verification.md) tells how
+the tests check it.
 
 ## When a run stops
 

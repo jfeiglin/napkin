@@ -19,10 +19,14 @@ gives the same steps to a program ([python-api.md](../python-api.md)). For a gui
 ## What a model is
 
 A **model** is the text that the compiler reads: a `model.scn` file and the files beside it. The
-model says which members exist, which values they hold, which flows move quantities between them,
-which events change them, and which evidence supports each number.
+model says:
 
-The compiler reads the model and makes a **program**. The program is a versioned file that the
+- which members exist and which values they hold;
+- which flows move quantities between them;
+- which events change them;
+- which evidence supports each number.
+
+The compiler reads the model and makes a program. The program is a versioned file that the
 engine runs without the parser ([compiler.md](../compiler.md)). One **run** calculates the program
 from time 0 to the horizon and gives one **record**. A caller then reads any value of the record at
 any time. The model has no report block: the caller selects the paths and the times.
@@ -120,7 +124,7 @@ runs:
 - A number or a Boolean that an option sets needs a `record`. Without one, the model does not
   compile ([evidence.md](evidence.md#values-that-an-option-or-a-change-sets)).
 
-The **default run** is a median run to the horizon of the scenario line. It takes no option. The
+The default run is a median run to the horizon of the scenario line. It takes no option. The
 order of precedence of edits, options and the model is in
 [values-and-types.md](values-and-types.md#where-a-value-comes-from).
 
@@ -138,6 +142,8 @@ change reservoir:
 
 - `change name:` names an entity, a template or a member that an earlier file declares.
 - A line under it gives a new initializer, of the same kind and type as the declaration.
+- A `change` of a template gives the template a new initializer. A member whose own line gives
+  the value keeps its own line. A `change` of a member replaces its own line.
 - A `change` can also give a new text, a new `title` and new evidence.
 - Two `change` lines for one value are an error, in any order of the files.
 - A variant has its own program. An option or an edit only configures a run of a program.
@@ -241,7 +247,8 @@ refills                         0       1       1       1
 - These words name nothing else: `true`, `false`, `this`, `t`, `SOURCE`, `SINK`, `and`, `or`,
   `not`, `if`, `else`, `in`, `from`, `to`, `when`, `after`, `until`, `reset`, `switch`, `move`,
   `assert`, `flow`, `record`, `readonly`, `input`, `formula`, `event`, `solver`, `enum`, `bool`
-  and `scale`. The keywords of Python are free names.
+  and `scale`. Two more words are reserved because the old language used them
+  ([changes.md](changes.md)). The keywords of Python are free names.
 - `napkin fmt` writes a file in the layout of the formatter. The layout keeps each order that
   changes the meaning of the model.
 

@@ -3,7 +3,7 @@
 | Package | Question | Current results |
 | --- | --- | --- |
 | [Water service](water_controls_wipe/README.md) | How do repeated demands on emergency support change response, repair, stored water and relief? The package has 16 service areas. | [Example regional comparison](water_controls_wipe/variants/washington_dc/results/brief.md) |
-| [Electricity restoration during heat](heat_wave_blackout/README.md) | How do the interval of service interruptions, the clearance of outstanding work and the protection decisions change cooling and exposure during a heat wave? | [Heat comparisons](heat_wave_blackout/results/brief.md) |
+| [Electricity restoration during heat](heat_wave_blackout/README.md) | How do the interval of service interruptions, the clearance of the remaining work and the protection decisions change cooling and exposure during a heat wave? | [Heat comparisons](heat_wave_blackout/results/brief.md) |
 | [IV-fluid supply](iv_fluid_shortage/README.md) | How do the timing of quality reviews and the capacity to clear them change release, fluid stocks and unmet demand? | [IV-fluid comparisons](iv_fluid_shortage/results/brief.md) |
 | [Strategic cyber](cyber_learning_loop/README.md) | Over 25 years, how much do different assumptions about AI productivity change the balance between surveillance and effects missions, while defenders also adapt? | [AI-uplift comparisons](cyber_learning_loop/results/brief.md) |
 

@@ -105,8 +105,9 @@ unknown.
 
 ## The ranks
 
-The solve library selects the answer by the selection order of the spec (`solve/solver.py`). Each rank
-keeps what the ranks before it attained.
+The solve library selects the answer by the selection order of the language (`solve/solver.py`;
+[flows and solvers](../language/flows-and-solvers.md)). Each rank keeps what the ranks before it
+attained.
 
 1. **The hard constraints**: the bounds and the rows of the problem. With no objective, one linear
    program with no cost checks that they have an answer.
@@ -127,8 +128,8 @@ columns that the face leaves free. Each part gets its own level in one linear pr
 of programs is that of the part with the most levels, not the sum over the parts.
 
 **The distance method** is a dual semismooth Newton method. It factorizes its Newton system by
-`qdldl` (LDL'). When a solve by LDL' is not accurate (backward error above 1e-10), the stage continues
-by SuperLU. A stage that does not converge so runs again by SuperLU alone. A stage that still does not
+`qdldl` (LDL'). When a solve by LDL' is not accurate (backward error above 1e-10), or when LDL' refuses
+a factorization, the stage continues by SuperLU. A stage that does not converge so runs again by SuperLU alone. A stage that still does not
 converge within its Newton steps goes to the QP of HiGHS, the exact fallback.
 
 ## Pinning and tolerances
@@ -151,18 +152,18 @@ level only to its feasibility tolerance.
 | Constant | Value | Where | What it decides |
 | --- | --- | --- | --- |
 | `ranked.TAU` | 1e-9 | `solve/ranked.py` | A reduced cost or a dual above this is not zero. |
-| `ranked.KEPT` | 1e-7 | `solve/ranked.py` | An optimum is kept to this, relative to the size of its terms. |
+| `ranked.KEPT` | 1e-7 | `solve/ranked.py` | An optimum is kept to this, relative to the magnitude of its terms. |
 | `ranked.NEAR` | 1e-9 | `solve/ranked.py` | A value this near its bound, relative to the bound, rests on it. |
 | `kept.TIGHT` | 1e-10 | `solve/kept.py` | The tight primal tolerance of HiGHS. |
-| `kept.MISS` | 10 | `solve/kept.py` | A run that misses its program by more than this times the primal tolerance runs again on a fresh instance. |
+| `kept.MISS` | 10 | `solve/kept.py` | A run that misses its program by more than this times the primal tolerance, relative to the magnitude of its terms, runs again on a fresh instance. |
 | `fair.TAU` | 1e-9 | `solve/fair.py` | A claim whose dual is above this is held at its level. |
 | `fair.FIX` | 1e-7 | `solve/fair.py` | A held claim keeps its level to this. |
 | `fair.FULL` | 1e-9 | `solve/fair.py` | A level within this of one serves every pending claim in full. |
 | `fair.UPDATES` | 100 | `solve/fair.py` | HiGHS factorizes its basis again after this many updates. |
-| `distance.TOL` | 1e-9 | `solve/distance.py` | A row is met when its residual is below this times one plus the size of its terms. |
+| `distance.TOL` | 1e-9 | `solve/distance.py` | A row is met when its residual is below this times one plus the magnitude of its terms. |
 | `distance.FEASIBLE` | 1e-7 | `solve/distance.py` | A stalled method counts a row as met to this. |
 | `distance.ACCURATE` | 1e-10 | `solve/distance.py` | An LDL' solve with a backward error above this goes to SuperLU. |
-| `solver.CHECK` | 1e-6 | `solve/solver.py` | The end checks of a row, a bound and a fair level, relative to the size of the terms. |
+| `solver.CHECK` | 1e-6 | `solve/solver.py` | The end checks of a row, a bound and a fair level, relative to the magnitude of the terms. |
 
 **The kept instance.** One `solve.Solver` serves each declared solver for the whole run
 (`Ways.kept`). Its HiGHS instance follows each new problem by the keys of its unknowns and rows: what
@@ -191,7 +192,7 @@ The ranks and the distance use the scales differently (`solve/scaled.py`):
   declared `scale`, else its finite width, else one canonical unit. Only the second distance stage
   reads it, as its metric (`distance.select`).
 
-The spec's example `level = 0 in [-30, 30]` has the reference zero in every solve. A feasible level can
+A value declared `level = 0 in [-30, 30]` has the reference zero in every solve. A feasible level can
 differ from zero when the route equations require it.
 
 ## When a solver solves
@@ -208,8 +209,8 @@ differ from zero when the route equations require it.
 
 ## Budgets
 
-The budgets count deterministic work, never seconds ([change 4](../design/decisions.md#change-4)). So a run that
-succeeds on one machine succeeds on another. `Configuration.budgets` (`napkin.program.config.Budgets`)
+The budgets count deterministic work, never seconds ([change 4](../design/decisions.md#change-4)). So
+a run that succeeds on one machine succeeds on another. `Configuration.budgets` (`napkin.program.config.Budgets`)
 holds them:
 
 | Budget | Default | What it counts | Diagnostic when it runs out |
@@ -223,8 +224,7 @@ change the model. With `Budgets(fair_programs=1)`, the fair sharing package abov
 this message:
 
 ```text
-the solver provider.share cannot answer at t = 0 h: fair-sharing budget exceeded in fair sharing,
-tier 0: 1 levels in 1 programs, 1 claims pending (budget: 1 programs)
+the solver provider.share cannot answer at t = 0 h: fair-sharing budget exceeded in fair sharing, tier 0: 1 levels in 1 programs, 1 claims pending (budget: 1 programs)
 ```
 
 The message names the solver, the time, the failure, the step and what the step reached.
@@ -255,8 +255,8 @@ stocks. Each stops the run with a message that names the solver.
 The same run, with the same code, configuration, seed and thread settings on one machine, gives the
 same answers bit for bit. One `Solver` for each declared solver of a run, and no state outside it,
 make sure of this. Anything else agrees within the tolerances of the steps
-([change 11](../design/decisions.md#change-11)): a sample alone or in a batch, a problem formed fresh against a
-kept one, another platform. A threshold at a tolerance boundary can decide differently there: a dual
+([change 11](../design/decisions.md#change-11)): a sample alone or in a batch, a problem formed fresh
+against a kept one, another platform. A threshold at a tolerance boundary can decide differently there: a dual
 against `TAU`, a level against `FULL`, a miss against `MISS`, a residual against the stall rule. Then
 the work differs and the answers agree within the tolerances. A solve near a budget can pass in one
 setting and stop by name in another.

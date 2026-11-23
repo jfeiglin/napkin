@@ -2,7 +2,7 @@
 
 This page gives the conventions that the models of the catalogue obey. The
 [language reference](../../docs/language/README.md) gives the rules of each line, and the
-[modelling guide](../../docs/modeling-guide.md) says how to write a model on any subject. This page
+[modeling guide](../../docs/modeling-guide.md) says how to write a model on any subject. This page
 uses the terms of the language reference ([Terms](../../docs/language/README.md#terms)).
 
 The compiler reads none of these conventions. Some of them are rules of the tools of the catalogue
@@ -146,8 +146,7 @@ utility = ["crews", "utility"]
 
 - A role is one of these words: `adversary`, `responder`, `operator`, `environment`, `community` and
   `clinician`. A role can also be the name of a card of the picture: an entity, a member written by
-  hand or a table. The test `tests/evidence/test_catalogue.py` checks the
-  roles of both files.
+  hand or a table. The test `tests/evidence/test_catalogue.py` checks the roles of both files.
 - An entity or a template plays one role at most.
 - Give the same role to a part in both files.
 
@@ -179,11 +178,11 @@ package of the catalogue has no warning of the evidence rule.
   ```
 
 - Put the `record` declaration that supports a whole entity on the line of the entity
-  (`incident: @service_incident`). A Boolean of the entity without a record of its own rests on it.
+  (`incident: @service_incident`). A Boolean of the entity without a `record` declaration of its own rests on it.
 - A number or a Boolean that an option or a `change` sets needs a `record` declaration of its own.
   Without one, the model does not compile.
-- Sources and claims come only through `tools.evidence.integrate`. A record of another package comes
-  through `tools.evidence.adopt`.
+- Sources and claims come only through `tools.evidence.integrate`. A claim, an assumption or a source
+  of another package comes through `tools.evidence.adopt`.
 
 ## Options and named runs
 

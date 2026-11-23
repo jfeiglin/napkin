@@ -25,8 +25,8 @@ line that this page names. This page uses the terms of the language reference
 In this example, an attacker changes the chlorine dosing of a treatment plant. The operators find
 each change and reset the dosing. While the attacker keeps its access, it changes the dosing again
 after each reset. The responders remove the access some time after the first find. The option of
-the group "Attacker" sets the pace of the attacker. An AI agent comes back within minutes, and a
-human team comes back about two days later.
+the group "Attacker" sets the pace of the attacker. An AI agent returns within minutes, and a
+human team returns about two days later.
 
 The values and the evidence of the example are invented. The package is a folder `dosing_attack/`
 with this `model.scn` and the `brief.toml` below.
@@ -102,7 +102,7 @@ options "Attacker":
         "An AI agent acts within minutes of each reset."
         attacker.return_time = 0.25 h @ai_pace
     "Human team":
-        "A human team comes back about two days after a reset."
+        "A human team returns about two days after a reset."
         attacker.return_time = 48 h @human_pace
 
 options "Response":
@@ -122,7 +122,7 @@ runs:
 
 record exercise: assumption "Illustrative times and counts for a tabletop exercise."
 record ai_pace: assumption "An AI agent watches the plant without a break and acts within minutes."
-record human_pace: assumption "A human team plans each move and comes back about two days later."
+record human_pace: assumption "A human team plans each move and returns about two days later."
 ```
 
 | Part | Lines | What it does |
@@ -142,8 +142,8 @@ The three named runs give these values at 72 h:
 | `human_team` | 2 h | 1 | 1 |
 | `ai_agent_early` | 6 h | 3 | 3 |
 
-The AI agent comes back 15 minutes after each reset. Thus it changes the dosing 11 times before the
-responders remove its access at 24 h. The human team would come back at 50 h, but its access goes at
+The AI agent returns 15 minutes after each reset. Thus it changes the dosing 11 times before the
+responders remove its access at 24 h. The human team would return at 50 h, but its access goes at
 24 h. Thus it changes the dosing once.
 
 ```sh
@@ -206,11 +206,11 @@ pairs the samples of the two runs ([catalogue.md](catalogue.md#spreads-and-their
 ## Ask a question at a breakpoint
 
 `napkin play` stops a run before an event, a stage or a statement. At the stop, you can read values
-and edit a stored value. The edit is the action: the run goes on from the edited value. A run that
-stops and goes on without an edit gives the same record as a run without a stop.
+and edit a stored value. The edit is the action: the run continues from the edited value. A run that
+stops and continues without an edit gives the same record as a run without a stop.
 
 This session stops the AI run before the first return of the attacker, at 2.25 h. It removes the
-access there, and the run goes on to 72 h:
+access there, and the run continues to 72 h:
 
 ```text
 $ napkin play dosing_attack --run ai_agent --break 'attacker.come_back.step[0]' --value attacker.access,plant.tampered_hours,attacker.changes
@@ -234,7 +234,7 @@ attacker.changes                                1      1
 edit at 2.25 h, before attacker.come_back.step[0]: attacker.access true -> false
 ```
 
-`save FILE` at a stop writes a checkpoint, and `napkin play MODEL --from FILE` goes on from it in a
+`save FILE` at a stop writes a checkpoint, and `napkin play MODEL --from FILE` continues from it in a
 new process. [cli.md](../../docs/cli.md) gives the commands.
 
 ## Rules for a model of an attack
