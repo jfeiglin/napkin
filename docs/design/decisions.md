@@ -125,7 +125,7 @@ solver settled again.
 
 **Later changes.** [Change 25](#change-25) extended that error to the rate of every flow.
 [Change 26](#change-26) extended it to the changes that a moment makes by itself.
-[Change 27](#change-27) replaced the error of D5, of change 25 and of change 26: each reader now
+[Change 27](#change-27) replaced the error of D5, of change 25 and of change 26. Each reader now
 gets the rates and the results of the last new share.
 
 ### D6
@@ -316,7 +316,7 @@ The decision record of G0 also gives these rules without numbers. Later changes 
   first, the answer is `(4, 0, 5) W`. A later fairness preference cannot undo an earlier objective.
 - **Three forms of flow.** A directed flow has one actual rate. A route has one signed actual rate
   and two **legs**, which `priority(...)` names. A flow with several legs serves all legs at one
-  `served_fraction`: legs that request 4 L/h and 8 Wh/h at half service deliver 2 L/h and 4 Wh/h. A
+  `served_fraction`. Legs that request 4 L/h and 8 Wh/h at half service deliver 2 L/h and 4 Wh/h. A
   junction held at `[0, 0]` balances its inflow and its outflow at each instant. Both ends of a route
   must supply and receive, so `SOURCE` and `SINK` cannot be the end of a route. G0 also refused a
   tally there; [change 14](#change-14) removed that rule.
@@ -449,7 +449,7 @@ record, and made its committed outputs again. No drift check is required ([D9](#
 ### Change 14
 
 **A tally is known by its use.** The owner, 2026-11-19. A tally is a stock that nothing drains. It
-has no mark. A stock at the end of a route is a stock by its use, so only `SOURCE` and `SINK` are
+has no mark. A stock at the end of a route is a stock by its use. Thus, only `SOURCE` and `SINK` are
 refused at the end of a route. This revises the G0 rule that also refused a tally there
 ([G0](#flows-solvers-and-events-at-g0)). See also [D13](#d13) and [change 31](#change-31).
 
@@ -467,12 +467,14 @@ refused at the end of a route. This revises the G0 rule that also refused a tall
   apply edits and resume (`napkin/program/checkpoint.py`, `napkin/engine/timeline/checkpoints.py`).
 - The edit is the action. There is no answer channel. `choose(...)`, `sees`, the controllers of
   actors and picks are removed from the language, the program, the engine and the reference. This
-  revises the actor half of [D1](#d1), the controller choices of a run in [D9](#d9), the G0 rule "A
-  human prompt pauses one atomic stage" and `R-A5-14`. Eligibility is an ordinary guard.
+  revises the actor half of [D1](#d1) and the controller choices of a run in [D9](#d9). It also
+  revises the G0 rule "A human prompt pauses one atomic stage" and `R-A5-14`. Eligibility is an
+  ordinary guard.
   `readonly` applies only to the assignments of the model.
-- **Exact resume is a rule.** On one supported platform, with the same compiled program, engine
-  version, numerical settings and seed, a run that stops and resumes with no edit gives the same
-  recorded values, draws, event times and event order as a run with no stop. A breakpoint alone
+- **Exact resume is a rule.** The conditions are one supported platform and the same compiled
+  program, engine version, numerical settings and seed. Under these conditions, a run that stops and
+  resumes with no edit matches a run with no stop. Both give the same recorded values, draws, event
+  times and event order. A breakpoint alone
   never changes which branch fires. The tests check three cases: no breakpoint, a stop resumed in
   one process, and a stop saved and resumed in a fresh process.
 - **Edits.** An edit changes a live stored value. Types and bounds hold, and the engine calculates
@@ -481,7 +483,7 @@ refused at the end of a route. This revises the G0 rule that also refused a tall
   proof for the edited run. The trace holds each edit: its time, its breakpoint, its target, and the
   old and the new value. Two stops in one stage do not lose the first edit and do not apply it two
   times.
-- **Acceptance.** The pump dispatch case runs with no stop. It also stops before its branch, and a
+- **Acceptance.** The pump dispatch case runs with no stop. It also stops before its branch. A
   fresh process loads the saved checkpoint and resumes with no edit, with the same values, draws and
   events. It also resumes with `order` changed from `WAIT` to `SEND`. The send branch then runs one
   time, the first draw stays in the history, and the edit explains the difference.
@@ -514,8 +516,11 @@ compiler before the rewrite is at commit `8488047`.
 3. Fair sharing solves independent parts together.
 
 What trades precision or robustness for speed is deferred, with its plan, to
-[docs/scoping/solver-speed.md](../scoping/solver-speed.md): a looser tolerance of fair sharing, a
-path by an interior-point algorithm, and the precision profiles `default` and `fast`.
+[docs/scoping/solver-speed.md](../scoping/solver-speed.md):
+
+- a looser tolerance of fair sharing
+- a path by an interior-point algorithm
+- the precision profiles `default` and `fast`.
 
 ### Change 19
 
@@ -526,7 +531,7 @@ path by an interior-point algorithm, and the precision profiles `default` and `f
   the limits of the flow, so that the books still balance. To decide who is served, the provider
   names those rates. In the two junctions of G0, a solver that names only the upstream feed leaves
   1/2, 1/4 and 1/4. This reverses the rule of stage S5 that put such a flow in the calculation of
-  the solver, and limits the selection order of [D0](#d0) to the rates that the solver names.
+  the solver. It also limits the selection order of [D0](#d0) to the rates that the solver names.
 - **An empty case.** A case of a `switch` can be empty, with or without a text ([D11](#d11)).
 - **Titles.** An entity, a **template** and an **instance** that the model writes out can have a
   `title`. The title is a label outside the identity of the program: no hash covers it. Reports and
@@ -580,17 +585,17 @@ change, the report gave the value at 0 h, and the engine before the rewrite gave
 `role`. The model refuses `role` by name, and says where it goes. The wrapper says who plays a part,
 in `roles.toml`, which the publisher and the interface read. For the pictures, `style.toml` has a
 `[role]` table beside its `[icon]`, for example `operator = ["pump", "Utility"]`. `napkin draw` takes
-from it the icon of each card that `[icon]` does not name, the words "who acts" and the group of the
-card ([change 19](#change-19)).
+from it the icon of each card that `[icon]` does not name. It also takes from it the words "who
+acts" and the group of the card ([change 19](#change-19)).
 
 ### Change 24
 
 **Three answers during the readiness fixes.** The owner, 2026-11-20.
 
 - (a) [Change 28](#change-28) replaces the rule for a shorter request from a stored record.
-- (b) **A finished occurrence is frozen.** The error is an actual write to it: an assignment to its
-  value, a `move` of an amount that is not zero, or a flow that carries a rate that is not zero into
-  or out of its stock. A connected flow at a zero rate writes nothing, and the run continues
+- (b) **A finished occurrence is frozen.** The error is an actual write to it. An actual write is an
+  assignment to its value, or a `move` of an amount that is not zero. It can also be a flow that
+  carries a rate that is not zero into or out of its stock. A connected flow at a zero rate writes nothing, and the run continues
   ([D7](#d7)). [Change 29](#change-29) adds the allowance for computed transfers.
 - (c) `napkin new` writes two files: `model.scn` and `style.toml`. The `[role]` of `style.toml`
   gives the picture of the starter its icon.
@@ -598,17 +603,19 @@ card ([change 19](#change-19)).
 ### Change 25
 
 **A stale rate is an error, for every flow.** The owner, 2026-11-20. [Change 27](#change-27) replaced
-this rule. Change 25 made a stage stop the run by name when it read the rate of a flow after an
-earlier stage of the same round changed what that rate depends on, before the engine shared the
-flows again. It extended the read error of [D5](#d5) from the results of a solver to local sharing.
+this rule. Change 25 made a stage stop the run by name in one case. In that case, an earlier stage
+of the same round changed what the rate of a flow depends on. The stage then read that rate before
+the engine shared the flows again. It extended the read error of [D5](#d5) from the results of a solver to local sharing.
 
 ### Change 26
 
 **What a moment changes by itself.** The main session of the rewrite, 2026-11-20, from the answer of
 the owner to change 25. [Change 27](#change-27) replaced this rule. Change 26 extended change 25, and
-so the read error of [D5](#d5), to each change that no stage made and that the next share takes: a
-stock at its bound, a keyed read by the time at its key time, and a branch on the time or on a
-stored value whose condition changes at the time of the moment.
+so the read error of [D5](#d5), to each change that no stage made and that the next share takes:
+
+- a stock at its bound
+- a keyed read by the time at its key time
+- a branch on the time or on a stored value whose condition changes at the time of the moment.
 
 ### Change 27
 
@@ -623,8 +630,8 @@ of [change 25](#change-25), [change 26](#change-26) and [D5](#d5).
 - Ordinary writes stay sequential, as D5 says.
 - A firing reads the new share before it. A stage after `after 0 h:` reads the new share of the
   round before it, at the same time.
-- Example: in the clinic and garden case, the stage gets 4 L/h, the next round gets 2.4 L/h, and the
-  record gives 2.4 L/h from 2 h.
+- Example: in the clinic and garden case, the stage gets 4 L/h, and the next round gets 2.4 L/h.
+  The record gives 2.4 L/h from 2 h.
 - The setup has no rate or result to give, and a read of one stops the setup by name.
 - A delay that needs a result uses the new share. A delay that a condition reaches waits for the
   next new share.
@@ -659,8 +666,8 @@ shorter run can end at 1 h. The engine adds no transfer at 1 h.
 - The order of the selected keys can differ: the result gives them in the order of the caller.
 - An identical request that reached its budget of pieces gives the same stored failure.
 - A different request runs again, also a shorter horizon or a smaller selection.
-- The program, the inputs, the seed, the numerical settings, the processor, the engine and the log
-  of edits stay in the identity of a run (`napkin/store.py`).
+- The program, the inputs and the seed stay in the identity of a run. The numerical settings, the
+  processor, the engine and the log of edits also stay in it (`napkin/store.py`).
 
 This replaces (a) of [change 24](#change-24). It applies "one record for one run" of [D9](#d9) to the
 run store.
