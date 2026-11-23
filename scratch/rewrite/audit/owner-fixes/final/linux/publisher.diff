@@ -1,0 +1,20 @@
+--- scenarios/heat_wave_blackout/results/source-dossier.json (committed)
++++ fresh render
+@@ -4332 +4332 @@
+-  "model_hash": "1fd5a16266a5b5b549c8fba8d80ccf36ce98cd493f4aa1b46bf0f83e9d5d21b0"
++  "model_hash": "cee3575356ec75a1c9216f91ceddfbbfc64ec55abb2b24900577850263c382f8"
+--- scenarios/water_controls_wipe/variants/auburn/results/source-dossier.json (committed)
++++ fresh render
+@@ -200 +200 @@
+-  "model_hash": "73e86ec37883a4d77dda4a3c8a16d978e0c763280a7cf11546300b9d80ac88d1"
++  "model_hash": "2aefe7745e47de8ec0377bc6b9c63bd600be328f7d535d15cf35e5c36a4235a3"
+--- scenarios/water_controls_wipe/variants/cape_may/results/source-dossier.json (committed)
++++ fresh render
+@@ -484 +484 @@
+-  "model_hash": "24763edeb99dd481be89d5d0629341a7781a11903b6d081915c5cba6793c91fa"
++  "model_hash": "282698360f44cd5d304e3a6fac4fb533151b4f5a5d2534fbbb00bcb3b3c92bca"
+--- scenarios/heat_wave_blackout/results/readings.md (committed)
++++ fresh render
+@@ -7 +7 @@
+-Model revision `1fd5a16266a5b5b549c8fba8d80ccf36ce98cd493f4aa1b46bf0f83e9d5d21b0`. Readings are instantaneous, without reporting lags. All times are in hours.
++Model revision `cee3575356ec75a1c9216f91ceddfbbfc64ec55abb2b24900577850263c382f8`. Readings are instantaneous, without reporting lags. All times are in hours.

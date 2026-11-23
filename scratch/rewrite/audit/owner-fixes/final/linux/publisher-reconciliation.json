@@ -1,0 +1,35 @@
+{
+  "linux_publisher_source": "93ebabf349d051f6fa71f1615732f5326b61ec4e",
+  "corrected_artifacts": "4b372a0a5c39fb7f1e2b9233599b0219f4d95bc7",
+  "basis": "The four complete Linux diff hunks applied to the original committed bytes. Each resulting file was compared with its corrected git blob.",
+  "paths": [
+    {
+      "path": "scenarios/heat_wave_blackout/results/source-dossier.json",
+      "line": 4332,
+      "original_sha256": "6cd62efebc74a673351832eecd0fe4358f05853a3411dd3196408c90ef17da52",
+      "linux_fresh_sha256": "d7abd3fbe4aebb95c012c8b2875b9c7c03f15f7a95cb829569443b1dfd3807e0",
+      "corrected_sha256": "d7abd3fbe4aebb95c012c8b2875b9c7c03f15f7a95cb829569443b1dfd3807e0"
+    },
+    {
+      "path": "scenarios/water_controls_wipe/variants/auburn/results/source-dossier.json",
+      "line": 200,
+      "original_sha256": "7f2f6b81a2ac7ab7434ba35521d98f165d2c13abbf5daa94cae299459e24b829",
+      "linux_fresh_sha256": "611cdd41fe3bd32fba5d6625cd02345f3436feeb2a4dff71721acab339750201",
+      "corrected_sha256": "611cdd41fe3bd32fba5d6625cd02345f3436feeb2a4dff71721acab339750201"
+    },
+    {
+      "path": "scenarios/water_controls_wipe/variants/cape_may/results/source-dossier.json",
+      "line": 484,
+      "original_sha256": "5b4ccbe10e7ad167a2179596f9a70efe7a67a76463be52e71684cf24af0224a2",
+      "linux_fresh_sha256": "ac778292f950c4249481aa8f92b7cc5b63551cd007a1fb55d18efab7997269d5",
+      "corrected_sha256": "ac778292f950c4249481aa8f92b7cc5b63551cd007a1fb55d18efab7997269d5"
+    },
+    {
+      "path": "scenarios/heat_wave_blackout/results/readings.md",
+      "line": 7,
+      "original_sha256": "cd84233e824755af0e968009ae8fab581a4f326f6965fe0ed3152dea993d6c95",
+      "linux_fresh_sha256": "eba1c37d8daef66abb0082c371fdac58584ed39e0db9302afd111361f5674204",
+      "corrected_sha256": "eba1c37d8daef66abb0082c371fdac58584ed39e0db9302afd111361f5674204"
+    }
+  ]
+}
