@@ -1,5 +1,5 @@
 """The library of a model: the prelude's units, the library that its main file names, and the units and
-evidence of the folders of its package (docs/language.md, §2.12).
+evidence of the folders of its package (docs/language/README.md, "The files of a package").
 
 Units and evidence come, in this order, from the prelude (`napkin/std/units.json`), which every model
 has; from the library that the main file's `library "PATH"` line names (`vocabulary.json` of that

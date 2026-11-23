@@ -17,9 +17,9 @@ import re
 from collections.abc import Mapping
 from types import MappingProxyType
 
-# The version of the language, which the model hash covers (docs/language.md): the identity of a model
+# The version of the language, which the model hash covers (docs/language/README.md): the identity of a model
 # changes with the language, never with the version of the package. It imports nothing of the package's
-# root, so the run store's key does not read the root's exports (docs/engine.md, "The run store").
+# root, so the run store's key does not read the root's exports (docs/engine/README.md, "The run store").
 LANGUAGE_VERSION = '0.0.1'
 EVENT_TIME_TOLERANCE_H = 1e-8
 RESERVED = '__'

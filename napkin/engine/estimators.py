@@ -1,4 +1,4 @@
-"""The estimators of a study, each with the interval that belongs to it (docs/engine.md, "Estimators").
+"""The estimators of a study, each with the interval that belongs to it (docs/engine/README.md, "Studies").
 
 A study gives numbers that vary with its samples. Each function here gives one estimate with one
 interval, and says in its text under which assumption the interval holds. The functions take plain

@@ -1,4 +1,4 @@
-"""The scenario language: read a model file and lower it to its program (docs/language.md).
+"""The scenario language: read a model file and lower it to its program (docs/language/README.md).
 
 The front end (`language/`) parses a file, `semantic` declares it (names, types and units),
 `lowering` writes it as a program (`napkin/program`), `solvers` checks what each declared solver says

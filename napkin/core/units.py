@@ -192,7 +192,7 @@ _PARTS = re.compile(r'(/|(?<!\^)-)')
 class UnitRegistry:
     """Explicit units prevent accidental conflation of episodes, people or money years.
 
-    A unit that no entry declares is composed of declared units (docs/language.md, §2.1): `a/b`
+    A unit that no entry declares is composed of declared units (docs/language/values-and-types.md, "Units and quantities"): `a/b`
     divides, `a-b` is a product, which binds tighter than `/`, and `a^n` is a power with a whole
     exponent, so `tunings/tuner-year` is tunings per tuner per year. An entry always wins over a
     composition: of the whole name, of a product of its parts and of the first parts of a quotient."""

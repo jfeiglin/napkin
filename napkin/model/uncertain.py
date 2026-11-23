@@ -1,4 +1,4 @@
-"""A distribution as a file or an edit writes it, read with its units (docs/language.md, §2.3).
+"""A distribution as a file or an edit writes it, read with its units (docs/language/values-and-types.md, "Distributions and draws").
 
 A distribution is one call of a family: `pert(24 h, 72 h, 336 h)`. Its arguments are positional, in
 the order of the family's parameters, or keywords: `normal(mean=10 h, sd=2 h, min=4 h, max=16 h)`.

@@ -12,7 +12,7 @@ the engine and the comparison of solvers read every solver in one way:
 - `run.counts()` gives the calls of `fun` (every one, also those that a solver makes to find a
   Jacobian by differences), the Jacobians and the factorizations so far;
 - a `Step` also has `rate`, the rate of change of `dense` (`rate(at)`): the engine compares it with
-  the field inside a long step (docs/engine.md, "Steps");
+  the field inside a long step (docs/engine/methods.md, "Integration tolerances");
 - `run.limit(max_step)` sets the longest step from the next step on, and `run.retake(max_step)`
   forgets the last step: the run is at the start of that step again, with that limit. The engine
   retakes a step whose solution is too far from the field between its ends.

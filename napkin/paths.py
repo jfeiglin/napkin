@@ -1,4 +1,4 @@
-"""The files of a package (docs/language.md, §2.12).
+"""The files of a package (docs/language/README.md, "The files of a package").
 
 A package is a folder whose entry file is its `model.scn`. Its variants are the folders of its
 `variants/` folder that hold an entry file of their own: the variant `east` is the file

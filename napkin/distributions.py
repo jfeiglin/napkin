@@ -1,5 +1,5 @@
 """Distributions of uncertain values: the families, the checks of their arguments, and the quantile
-function that turns a uniform number into a value (docs/language.md, §2.3).
+function that turns a uniform number into a value (docs/language/values-and-types.md, "Distributions and draws").
 
 The arguments of a family are numbers in the unit of the value, except the dimensionless ones: the
 geometric standard deviation `gsd`, the shape numbers `a` and `b` of a beta, and probabilities. Every

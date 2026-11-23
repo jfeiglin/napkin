@@ -1,4 +1,4 @@
-"""Monte Carlo studies: one run of a program sampled many times (docs/engine.md, "Monte Carlo studies").
+"""Monte Carlo studies: one run of a program sampled many times (docs/engine/README.md, "Studies").
 
 `monte_carlo(program, configuration, paths, times, settings)` reads the values of `paths` at `times`
 (the caller selects them, D10) in a central run and in each sample of a run:

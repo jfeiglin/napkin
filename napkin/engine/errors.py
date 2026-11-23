@@ -1,4 +1,4 @@
-"""The error of a run: the engine stops a run that it cannot carry on (docs/engine.md)."""
+"""The error of a run: the engine stops a run that it cannot carry on (docs/engine/README.md)."""
 
 from __future__ import annotations
 

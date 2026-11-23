@@ -27,7 +27,7 @@ RUN = 'standard'
 # quadratures reach 1e-12, so a relative difference above REL is a disagreement.
 REL = 1e-6
 # Floors for values near zero. The solver's absolute tolerance is 1e-10 times each quantity's scale
-# (docs/engine.md); the measured differences in counts of people stay below 1e-7.
+# (docs/engine/README.md, "Tolerances and reproducibility"); the measured differences in counts of people stay below 1e-7.
 PEOPLE_FLOOR = 1e-6
 LEDGER_FLOOR = {
     'supply.resident_hours': 1e-6,

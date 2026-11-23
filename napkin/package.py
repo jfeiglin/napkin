@@ -1,7 +1,7 @@
 """A package's models: the main file of a package with no variants, else each of its variants.
 
 `load_package` compiles every model of a package as `napkin.model.compile.load_scenario` compiles
-one (docs/language.md): the package's own model when it has no variants, else the model of each
+one (docs/language/README.md): the package's own model when it has no variants, else the model of each
 variant, whose files read the main file's (spec, "How templates compose into a run"). A run of one of
 them, under its options and an edit document, is that model's configuration
 (`Compiled.configure`), so nothing here makes a model of a run.

@@ -1,7 +1,7 @@
 """The synthetic families of the benchmark: models made as text, one for each size.
 
 A family is a function `text(n)` that gives the main file of a model of size `n` (1 or more), in the
-language of the rewrite (docs/language.md), which the front end lowers to a program. Each family
+language of the rewrite (docs/language/README.md), which the front end lowers to a program. Each family
 stresses one part of the compiler or of the engine, and the docstring of its function says which. The
 names are generic (`Cell`, `tank`, `chain`): no family is a model of the catalogue, and none reads a
 library. Every value rests on one record, `shape`, an assumption that says that the model is
@@ -405,7 +405,7 @@ def formulas(n):
     )
 
 
-# ---- the families whose members are the rows of a table (docs/language.md) ----------------------------
+# ---- the families whose members are the rows of a table (docs/language/README.md) ----------------------------
 #
 # The four families of copies again, each with its cells from a table: the value that each copy wrote
 # by hand is a column of the table.

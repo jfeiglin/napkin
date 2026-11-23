@@ -1,4 +1,4 @@
-"""The types and the written numbers of the values of a model file (docs/language.md, §2.3).
+"""The types and the written numbers of the values of a model file (docs/language/values-and-types.md, "Types").
 
 A type is a unit of the library (`duration` is hours, and braces name a text value of the entity:
 `{item}/h`), `bool`, named values, or `text`. Every number has its unit: `72 h`, `3 days`,
@@ -171,7 +171,7 @@ def hours(value, units=None):
 def written_unit(written, text):
     """The unit that a `type` writes: each `{name}` is `text(name)`, the value of that text value of
     the entity, and `duration` is hours. A brace that names anything else is a ValueError: a unit
-    names a text value of its own entity (docs/language.md, §2.3)."""
+    names a text value of its own entity (docs/language/values-and-types.md, "Types")."""
     unit = OWN_TEXT.sub(lambda match: text(match.group(1)), written)
     if '{' in unit or '}' in unit:
         raise ValueError('a unit names a text value of its own entity in braces: {item}')

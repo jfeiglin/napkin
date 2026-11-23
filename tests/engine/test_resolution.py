@@ -1,4 +1,4 @@
-"""The step cap of a numerical segment (`Numerics.max_step`, docs/engine.md "Steps").
+"""The step cap of a numerical segment (`Numerics.max_step`, docs/engine/methods.md, "Integration tolerances").
 
 The cap is the interval at which the engine reads a segment; the solver takes longer steps where
 its control of the error allows them. A program declares no physical timescale, so nothing else

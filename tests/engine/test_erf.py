@@ -1,4 +1,4 @@
-"""The error function `erf` of the expression language (docs/language.md, §2.4).
+"""The error function `erf` of the expression language (docs/language/values-and-types.md, "Expressions").
 
 `erf(x)` takes a number without a unit and gives a number without a unit. Its values come from the
 same function in a compiled program and in an evaluation; mpmath, which computes erf with its own

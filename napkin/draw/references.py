@@ -82,7 +82,7 @@ COLOUR_KIND = {
     'convention': 'rule',
     'assumption': 'assumption',
 }
-# The kinds of record (docs/language.md, §2.10), and those whose claims are the sources of a value.
+# The kinds of record (docs/language/evidence.md), and those whose claims are the sources of a value.
 RECORD_KINDS = frozenset({'source', 'source_transfer', 'assumption', 'identity', 'convention'})
 SOURCED = frozenset({'source', 'source_transfer'})
 # The collections of the library whose records have IDs.

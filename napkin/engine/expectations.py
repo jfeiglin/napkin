@@ -1,5 +1,5 @@
 """The plain estimators of a Monte Carlo study: what the samples of one value at one time say of its
-distribution, each with the interval that belongs to it (docs/engine.md, "Estimators").
+distribution, each with the interval that belongs to it (docs/engine/README.md, "Studies").
 
 Each sample is a run under a seed of its own (`sampling.py`), so the samples of one value are
 independent draws of its distribution under the model's assumptions, and the plain estimators hold:

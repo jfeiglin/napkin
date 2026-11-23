@@ -1,5 +1,5 @@
-"""The samples of a Monte Carlo study: how many, and the seed of each (docs/engine.md, "Monte Carlo
-studies").
+"""The samples of a Monte Carlo study: how many, and the seed of each (docs/engine/README.md,
+"Studies").
 
 A sample is one run of the study's program in `sampled` mode under a seed of its own. The engine keys
 each executed draw by the seed, the draw's site and the member, occurrence or firing that executes it

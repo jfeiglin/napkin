@@ -1,4 +1,4 @@
-"""The timeline engine: the engine of every run (docs/engine.md).
+"""The timeline engine: the engine of every run (docs/engine/README.md).
 
 It reads a program (`napkin/program`) under a run configuration and gives the record of the run
 (`napkin/program/record.py`): the history of each value as pieces, and the trace.

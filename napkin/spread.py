@@ -1,4 +1,4 @@
-"""Spreads: one run of a model sampled many times (docs/engine.md, "The spread").
+"""Spreads: one run of a model sampled many times (docs/engine/README.md, "Studies").
 
 `spread(model, paths, times=None, *, run=None, edits=None, samples=200, seed=0, jobs=1, ...)` is the
 Monte Carlo study (`napkin.engine.uncertainty.monte_carlo`) of one run of a model, as a command or a

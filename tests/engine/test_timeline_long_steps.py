@@ -1,6 +1,6 @@
 """A connected set that goes to the solver takes steps longer than the step cap, and the engine reads
-each such step inside (`napkin/engine/continuous/integrate.py`, the check interval; docs/engine.md,
-"Steps"). Each model is a table of cells, each cell one component of the continuous engine.
+each such step inside (`napkin/engine/continuous/integrate.py`, the check interval; docs/engine/methods.md,
+"Integration tolerances"). Each model is a table of cells, each cell one component of the continuous engine.
 
 The oracles are closed forms, from the numbers that each test writes into its table:
 
