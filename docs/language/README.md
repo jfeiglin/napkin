@@ -121,8 +121,8 @@ runs:
 - `runs:` holds the named runs. A run takes one option of a group at most, with `+` between the
   options: `both = "Quick fill" + "Large tank"`.
 - Two options of one run must not set the same input.
-- A number or a Boolean that an option sets needs a `record`. Without one, the model does not
-  compile ([evidence.md](evidence.md#values-that-an-option-or-a-change-sets)).
+- A number, a Boolean or a distribution that an option sets needs a `record` declaration. Without
+  one, the model does not compile ([evidence.md](evidence.md#values-that-an-option-or-a-change-sets)).
 
 The default run is a median run to the horizon of the scenario line. It takes no option. The
 order of precedence of edits, options and the model is in

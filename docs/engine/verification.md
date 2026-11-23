@@ -3,8 +3,8 @@
 A test of the engine compares the engine with something that does not depend on it: an exact
 interpreter, a closed form, exact fractions, or the same run in another spelling. Agreement of two
 builds of the engine is no proof of the mathematics. This page tells which checks exist, how to run
-them, and how to measure the speed of the engine. The engine terms (ledger, near-tie, crossing
-tolerance) are defined in [README.md](README.md#engine-terms).
+them, and how to measure the speed of the engine. The engine terms (ledger, crossing tolerance) are defined in
+[README.md](README.md#engine-terms).
 
 ## The reference interpreter
 
@@ -107,7 +107,7 @@ that many units in the last place (`stocks.probed`). Each case must still give i
 | `tests/engine/test_random_solvers.py` | Small random programs with a declared solver, against the reference interpreter. |
 | `tests/engine/test_solver_adapters.py` | Each solver adapter (`napkin/engine/solvers.py`) against closed forms. |
 | `tests/engine/test_roundoff_properties.py` | Roundoff at the bounds of stocks under local sharing, against exact fractions and conservation. |
-| `tests/engine/test_highs.py` | The fast path to HiGHS (`continuous/highs.py`) against `linprog`, bit for bit. |
+| `tests/engine/test_highs.py` | The fast path to HiGHS (`napkin/engine/continuous/highs.py`) against `linprog`, bit for bit. |
 
 ## Test tiers
 

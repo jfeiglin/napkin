@@ -17,7 +17,8 @@ integration in `continuous/` and the solve library of declared solvers in `solve
 
 ## Engine terms
 
-These words are the engine's own. Each has one meaning on the engine pages.
+These words are the engine's own. Each has one meaning on the engine pages. The language defines
+contact, near-tie, endpoint, leg and member ([terms](../language/README.md#terms)).
 
 | Term | Meaning |
 | --- | --- |
@@ -27,11 +28,10 @@ These words are the engine's own. Each has one meaning on the engine pages.
 | round | One pass at one moment: the stages that are due, then the re-share, then the conditions. |
 | re-share | The step of a round that calculates the rates and the solver results again, after the stages commit. |
 | segment | The calculation of one connected set from one event of its method to the next. |
-| contact | A time at which a stock reaches a bound or a threshold, or at which a rate changes its branch. |
+| switch | A time at which a rate or a formula changes its branch, because two of its operands change their order. |
 | ledger | The exact balance of a stock, in rational numbers, which only posted transfers change. |
 | piece | One part of the history of a value in the record. |
 | trace | The list of entries in a record: starts, finishes, commits, firings, draws, moves, solves, edits, pauses and the failure. |
-| near-tie | A decision that the engine made inside the comparison band of its boundary. The trace marks it. |
 | crossing tolerance | `Numerics.crossing`, 1e-8 h by default: the shortest time between two moments that the engine tells apart. |
 | integration size | The number that sets the absolute tolerance of a stock in Component: its declared `scale`, or else the largest of 1 in its unit, its start value, its finite bounds and the start values of the stocks that flows connect it to, directly or through other stocks. |
 
@@ -410,7 +410,7 @@ band still applies. The
 - A draw is keyed by the seed, its site and its owner (the first 64 bits of the SHA-256 of
   `seed|site|owner`), never by its place in a stream. So a branch that is not taken, an extra read, a
   report or the step length of an integrator moves no draw.
-- A sum over a list adds in a pairwise tree of a fixed shape (`timeline/trees.py`). Its bits depend on
+- A sum over a list adds in a pairwise tree of a fixed shape (`napkin/engine/timeline/trees.py`). Its bits depend on
   the present values only. The language promises no order of a sum over a list.
 
 A change of the numerical core is compared with the build before it by classes of difference, as

@@ -105,7 +105,7 @@ unknown.
 
 ## The ranks
 
-The solve library selects the answer by the selection order of the language (`solve/solver.py`;
+The solve library selects the answer by the selection order of the language (`napkin/engine/solve/solver.py`;
 [flows and solvers](../language/flows-and-solvers.md)). Each rank keeps what the ranks before it
 attained.
 
@@ -151,19 +151,19 @@ level only to its feasibility tolerance.
 
 | Constant | Value | Where | What it decides |
 | --- | --- | --- | --- |
-| `ranked.TAU` | 1e-9 | `solve/ranked.py` | A reduced cost or a dual above this is not zero. |
-| `ranked.KEPT` | 1e-7 | `solve/ranked.py` | An optimum is kept to this, relative to the magnitude of its terms. |
-| `ranked.NEAR` | 1e-9 | `solve/ranked.py` | A value this near its bound, relative to the bound, rests on it. |
-| `kept.TIGHT` | 1e-10 | `solve/kept.py` | The tight primal tolerance of HiGHS. |
-| `kept.MISS` | 10 | `solve/kept.py` | A run that misses its program by more than this times the primal tolerance, relative to the magnitude of its terms, runs again on a fresh instance. |
-| `fair.TAU` | 1e-9 | `solve/fair.py` | A claim whose dual is above this is held at its level. |
-| `fair.FIX` | 1e-7 | `solve/fair.py` | A held claim keeps its level to this. |
-| `fair.FULL` | 1e-9 | `solve/fair.py` | A level within this of one serves every pending claim in full. |
-| `fair.UPDATES` | 100 | `solve/fair.py` | HiGHS factorizes its basis again after this many updates. |
-| `distance.TOL` | 1e-9 | `solve/distance.py` | A row is met when its residual is below this times one plus the magnitude of its terms. |
-| `distance.FEASIBLE` | 1e-7 | `solve/distance.py` | A stalled method counts a row as met to this. |
-| `distance.ACCURATE` | 1e-10 | `solve/distance.py` | An LDL' solve with a backward error above this goes to SuperLU. |
-| `solver.CHECK` | 1e-6 | `solve/solver.py` | The end checks of a row, a bound and a fair level, relative to the magnitude of the terms. |
+| `ranked.TAU` | 1e-9 | `napkin/engine/solve/ranked.py` | A reduced cost or a dual above this is not zero. |
+| `ranked.KEPT` | 1e-7 | `napkin/engine/solve/ranked.py` | An optimum is kept to this, relative to the magnitude of its terms. |
+| `ranked.NEAR` | 1e-9 | `napkin/engine/solve/ranked.py` | A value this near its bound, relative to the bound, rests on it. |
+| `kept.TIGHT` | 1e-10 | `napkin/engine/solve/kept.py` | The tight primal tolerance of HiGHS. |
+| `kept.MISS` | 10 | `napkin/engine/solve/kept.py` | A run that misses its program by more than this times the primal tolerance, relative to the magnitude of its terms, runs again on a fresh instance. |
+| `fair.TAU` | 1e-9 | `napkin/engine/solve/fair.py` | A claim whose dual is above this is held at its level. |
+| `fair.FIX` | 1e-7 | `napkin/engine/solve/fair.py` | A held claim keeps its level to this. |
+| `fair.FULL` | 1e-9 | `napkin/engine/solve/fair.py` | A level within this of one serves every pending claim in full. |
+| `fair.UPDATES` | 100 | `napkin/engine/solve/fair.py` | HiGHS factorizes its basis again after this many updates. |
+| `distance.TOL` | 1e-9 | `napkin/engine/solve/distance.py` | A row is met when its residual is below this times one plus the magnitude of its terms. |
+| `distance.FEASIBLE` | 1e-7 | `napkin/engine/solve/distance.py` | A stalled method counts a row as met to this. |
+| `distance.ACCURATE` | 1e-10 | `napkin/engine/solve/distance.py` | An LDL' solve with a backward error above this goes to SuperLU. |
+| `solver.CHECK` | 1e-6 | `napkin/engine/solve/solver.py` | The end checks of a row, a bound and a fair level, relative to the magnitude of the terms. |
 
 **The kept instance.** One `solve.Solver` serves each declared solver for the whole run
 (`Ways.kept`). Its HiGHS instance follows each new problem by the keys of its unknowns and rows: what
@@ -179,7 +179,7 @@ any rank (`Answer.admits`).
 
 ## Scales
 
-The ranks and the distance use the scales differently (`solve/scaled.py`):
+The ranks and the distance use the scales differently (`napkin/engine/solve/scaled.py`):
 
 - **The physical ranks do not depend on a declared scale.** The hard constraints, the written
   objectives and fair sharing use physical coordinates. A flow is in its physical rate unit. A nonflow
@@ -232,7 +232,7 @@ The message names the solver, the time, the failure, the step and what the step 
 ## Failure names
 
 A solve gives the answer of the selection order, or raises a `SolveFailure` with one of these names
-(`solve/failures.py`). The engine stops the run with the message
+(`napkin/engine/solve/failures.py`). The engine stops the run with the message
 `the solver <id> cannot answer at t = <T> h: <name> in <step>: <detail>`.
 
 | Name | Cause |

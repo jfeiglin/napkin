@@ -46,7 +46,7 @@ The body of an event holds these lines:
 - An event is read-only by default. `readonly refill = event(...)` means the same.
 - An event has no `input` and no `status` display. A field of its own progress is a local:
   `status: enum[WEIGHING, ADDED] = WEIGHING`.
-- An event with a stage or a trigger needs a `record` ([evidence.md](evidence.md#the-evidence-rule)).
+- An event with a stage or a trigger needs a `record` declaration ([evidence.md](evidence.md#the-evidence-rule)).
 
 ### Parameters
 
@@ -544,7 +544,7 @@ assert plant.rate <= 5 L/h  @fixture
 - An assertion makes no draw.
 - Between moments, the engine watches an assertion as it watches a trigger. A strict comparison is
   valid in an assertion, because the first instant at which it fails exists.
-- An assertion needs a `record` ([evidence.md](evidence.md#the-evidence-rule)).
+- An assertion needs a `record` declaration ([evidence.md](evidence.md#the-evidence-rule)).
 
 ## Breakpoints, checkpoints and edits
 

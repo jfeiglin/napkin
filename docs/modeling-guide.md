@@ -355,8 +355,8 @@ These are the parts of the trigger and of the event:
 - The request reads `saving`, so it is 75 L/h from 20 h to 24 h. At 24 h the tank holds 2700 L,
   because 3000 L − 75 L/h × 4 h = 2700 L.
 
-Use `<=` or `>=` in a trigger on a value that moves. A moving value has no first time at which it is
-strictly below a threshold. If the trigger is `tank.water < this.reserve`, the run stops:
+Use `<=` or `>=` in a trigger on a value that moves. A value that moves has no first time at which
+it is strictly below a threshold. If the trigger is `tank.water < this.reserve`, the run stops:
 
 ```console
 clinic/model.scn: error: the run failed at 0 h: a strict threshold on a value that changes continuously: tank.water < clinic.reserve has no first instant; use an inclusive threshold [run]
@@ -1006,8 +1006,8 @@ The values:
 The flows, events and triggers:
 
 9. Each flow has a request. A flow that cannot take more than it asks for has the same capacity.
-10. A request or a capacity that must follow a changing value is a `formula(...)`.
-11. Each trigger on a moving value uses `<=` or `>=`.
+10. A request or a capacity that must follow a value that changes is a `formula(...)`.
+11. Each trigger on a value that moves uses `<=` or `>=`.
 12. Each trigger reads only what its entity can know.
 
 The runs and the evidence:

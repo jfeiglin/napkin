@@ -9,7 +9,7 @@ a run and gives the timeline the same operations for every method:
 - `cut(t)`, which commits a segment that went past a moment up to that moment;
 - `build(sets, values, t)` and `retire(ids)`.
 
-The engine terms on this page (connected set, segment, contact, ledger, near-tie) are defined in
+The engine terms on this page (connected set, segment, ledger, switch) are defined in
 [README.md](README.md#engine-terms). The other terms are in
 [the terms of the language](../language/README.md#terms).
 
@@ -175,7 +175,7 @@ the segment (`integrate.hidden_excursion`). When a sample crosses a watched thre
 ended the segment, the run stops: the value crossed the threshold and came back inside one step. A
 shorter `resolution` makes the samples closer.
 
-At bounds, `Held.bound_allocation` and `engine/allocation.py` cut a flow to what the stock can pass:
+At bounds, `Held.bound_allocation` and `napkin/engine/allocation.py` cut a flow to what the stock can pass:
 a flow out of an empty stock gets what comes in, and a flow into a full stock is cut. Where local
 sharing would let a flow carry more than its request, the run stops and names the stock.
 
@@ -187,9 +187,9 @@ to break them with many seeded cases:
   the total does not change and the stock stays on its bound.
 - **A short path of the closed form** (`Allocation.served_in_full`). It gives the same fractions from
   the same doubles as the closed form, and it answers yes only when every unit is served in full.
-- **A face that runs out within one ulp of the time** (`continuous/bounds.py` `rounded_faces`). Before
+- **A face that runs out within one ulp of the time** (`napkin/engine/continuous/bounds.py` `rounded_faces`). Before
   the numerical stage, the engine puts such a stock on its lower bound, with its balancing leg.
-- **A face that departs** (`continuous/bounds.py` `depart_faces`). A stock on its zero face with a
+- **A face that departs** (`napkin/engine/continuous/bounds.py` `depart_faces`). A stock on its zero face with a
   positive rate departs. The engine calculates the field again one ulp above zero, with the bound
   released. When that field does not point up, the run stops: the face would chatter.
 
@@ -290,13 +290,13 @@ and Declared have no moving rate, so their branches change only at moments.
 A stock can cross a bound and come back inside one step. So the engine reads the whole step, not only
 its two ends:
 
-- **On a Radau step** (`continuous/dense.py`, `bound_crossings`). The dense output is a cubic in time.
+- **On a Radau step** (`napkin/engine/continuous/dense.py`, `bound_crossings`). The dense output is a cubic in time.
   The engine cuts each candidate cubic at its turns and finds the first outward arrival at each bound.
   An exact touch from inside counts. A stationary stock on its bound, or an inward departure, does not.
 - **From a bound.** A step that starts on a bound must reach a different float before the engine
   records that bound again (`dense._distinct_turn`). A release watches the next distinct level in the
   release direction (`StockFaces.armed`).
-- **On a held line** (`engine/allocation.py`, `StockFaces.contact`). The time of the next physically
+- **On a held line** (`napkin/engine/allocation.py`, `StockFaces.contact`). The time of the next physically
   distinct bound. A residue inside the band, already on its bound, cannot give the same root again.
   Family, Lines, Declared and Component use it for a stock on a line.
 
@@ -306,7 +306,7 @@ breaks them, it integrates again to the located contact before it publishes the 
 ## Release from a bound
 
 A stock on a bound leaves it only when its net rate away from the bound is strictly more than 10⁻¹²
-of its gross traffic: the sum of its incoming and outgoing rates (`engine/departure.py`). Equality
+of its gross traffic: the sum of its incoming and outgoing rates (`napkin/engine/departure.py`). Equality
 keeps the bound.
 
 - Near that boundary, the engine compares the individual rates in exact arithmetic before they cancel
@@ -413,7 +413,7 @@ posted, and the time of the last post.
 - **The method supplies amounts.** Each method gives the cumulative amount that each leg carried from
   the start of its instance (`Way.transferred`). Family, Lines and Declared use `HeldAmounts`: rate
   times time. Component, Sparse and MovingDeclared integrate each leg's rate on the accepted dense
-  output (`continuous/transfers.py`). Trial states of the solver never post.
+  output (`napkin/engine/continuous/transfers.py`). Trial states of the solver never post.
 - **A read does not post.** `Stocks.stock_balance` calculates a balance at a time without a change.
   `Stocks.post_stock` posts it once at a time. The engine posts a stock at these events: a stage
   reads or writes it, a rate changes, a set is built again, an occurrence finishes, a checkpoint
