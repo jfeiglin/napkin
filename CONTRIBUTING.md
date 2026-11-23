@@ -103,7 +103,7 @@ records the owner, the reduced cases and the evidence of each fix to the engine.
 ### A test for each rule
 
 - Each fix comes with a test of its rule: a property, or a metamorphic test that does not depend on
-  the reference interpreter. Put it beside the test of the failing example.
+  the reference interpreter. Put it beside the test of the example that failed.
 - A bug fix comes with a test that fails before the fix.
 - A new rule of the language comes with a test on a small model with a closed form.
 
@@ -296,8 +296,8 @@ The full check and the release check take a long time. Do not start them during 
 a check needs more time than the user gave you, say so before you start it.
 
 The tests in `tests/engine/`, `tests/model/` and `tests/acceptance/` always calculate their runs.
-Every other test takes its runs from the run store, which is `.cache/runs` in the checkout. `NAPKIN_STORE=off` stops the store, and `NAPKIN_STORE=DIR` uses
-another folder.
+Every other test takes its runs from the run store, which is `.cache/runs` in the checkout.
+`NAPKIN_STORE=off` stops the store, and `NAPKIN_STORE=DIR` uses another folder.
 
 `pytest --scenario ID --focused` applies the filter of a focused check: the tests of the folders of
 the scenario and the central tests with the mark `scenario_contract`. Without `--focused`,
@@ -406,7 +406,7 @@ on fixed workloads:
 2. Do the paired runs: `python tools/bench/port_benchmark.py campaign --phase final --out RESULTS --revision B=BASELINE --revision F=FINAL`.
 3. Print the gate: `python tools/bench/port_benchmark.py summary --phase final --out RESULTS`.
 
-Each row has three pairs of runs in alternating order. The gate compares the median of the paired
+Each row has three pairs of runs, and the order of the two engines changes in each pair. The gate compares the median of the paired
 ratios F/B with the limit 1.05 for each row. The `events` guard has the limit 1.10. Do the benchmark
 alone on the machine, with the same Python and the same power settings throughout.
 [docs/engine/verification.md](docs/engine/verification.md#speed-benchmarks) gives the workloads, the

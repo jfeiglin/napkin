@@ -18,8 +18,8 @@ word and form, and what replaced it. The catalogue and the examples are in the n
 - Units use `*` and `/`: `tunings/(tuner * year)`. `48 h/2` and `48 h / 2` are both 24 h.
 - An event is a value: `repair = event(...):`. Each `.start(...)` makes an occurrence with its own
   arguments, locals, flows and stages (`after D:`), and gates (`until C`).
-- A trigger (`when C:`) belongs to its event, with a `reset` rule. A trigger on a moving value fires
-  at its crossing, which the engine finds between moments.
+- A trigger (`when C:`) belongs to its event, with a `reset` rule. A trigger on a value that moves
+  fires at its crossing, which the engine finds between moments.
 - A stage can branch with `if`, `else` and `switch`. A random outcome is a `switch` on a draw of a
   `categorical(...)` distribution.
 - A flow has a `request`, which is soft, a `capacity`, which is hard, and an `actual_rate`. A route

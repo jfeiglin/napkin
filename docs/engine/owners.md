@@ -2,10 +2,10 @@
 
 ## Why this map exists
 
-A decision of the engine is a rule that gives one answer: for example, "is this stock on its bound?"
-or "which branch of a formula applies after a switch?". When two places in the code calculate the
-same decision, they can give different answers at a tie, on another platform, or after a change to
-one copy. An audit found that fixes of single cases left their causes in other copies
+A decision of the engine is a rule that gives one answer. Examples are "is this stock on its
+bound?" and "which branch of a formula applies after a switch?". Two places in the code can calculate
+the same decision. Then they can give different answers at a tie, on another platform, or after a
+change to one copy. An audit found that fixes of single cases left their causes in other copies
 ([change 21](../design/decisions.md#change-21)). So each decision has one owner: one file and one
 function. Every other place that needs the answer reads the owner, and supplies its own operands, state
 or time. Then a rule has one copy.
@@ -30,8 +30,8 @@ SHA of this repository. The terms are those of [README.md](README.md#engine-term
 5. Run the tests of the row, and the corpus families of the row.
 6. When the change moves the owner, change its row on this page.
 
-When the language leaves a result open, keep that case aside, write the question for the owner of the
-project, and continue with the independent work.
+When the language leaves a result open, keep that case aside. Write the question for the owner of
+the project. Continue with the independent work.
 
 ## The path of a transfer
 

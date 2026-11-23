@@ -1,4 +1,4 @@
-"""Paired engine benchmarks. See port-benchmark.md for sample invocations and counter definitions."""
+"""Paired engine benchmarks. docs/engine/verification.md, "Speed benchmarks", gives the commands and the rules."""
 
 import argparse
 import ast

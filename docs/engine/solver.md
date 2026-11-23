@@ -95,13 +95,19 @@ feed leaves the other flows to local sharing.
   rank every claim (`network.claim_order`). The solver's own sharing acts only among the claims that
   they leave equal.
 
-The solver reads its unknowns as symbols (`Affine`). The engine accepts these forms: affine `==`, `<=`
-and `>=`, their conjunction, `all(...)`, sums, products and quotients by known numbers, a membership
-`x in [lo, hi]`, and positive parts (`max` of an unknown) where they are convex. These forms stop the
-run with a diagnostic that names the solver and the form: a strict relation, `!=`, `or`, `any`, `not`
-of a relation, a relation under a condition, `min` of an unknown, a product of two unknowns, a division
-by an unknown, another function of an unknown, and a request or a capacity of the set that reads an
-unknown.
+The solver reads its unknowns as symbols (`Affine`). The engine accepts these forms:
+
+- affine `==`, `<=` and `>=`, and their conjunction;
+- `all(...)`, sums, and products and quotients by known numbers;
+- a membership `x in [lo, hi]`;
+- positive parts (`max` of an unknown) where they are convex.
+
+These forms stop the run with a diagnostic that names the solver and the form:
+
+- a strict relation, `!=`, `or`, `any`, `not` of a relation, or a relation under a condition;
+- `min` of an unknown, a product of two unknowns, a division by an unknown, or another function of an
+  unknown;
+- a request or a capacity of the set that reads an unknown.
 
 ## The ranks
 
@@ -114,8 +120,9 @@ attained.
 2. **The written objectives**, in order (`ranked.optimize`). After each objective, the engine pins its
    optimal face (next section).
 3. **Fair sharing**, one priority tier after another, tier 0 first (`fair.py`). In a tier, the
-   smallest served fraction rises as far as the face allows, then the next smallest, until no claim
-   can rise without lowering one that is no higher. A served fraction counts from 0 up to 1.
+   smallest served fraction rises as far as the face allows, then the next smallest. This continues
+   until no claim can rise without lowering one that is no higher. A served fraction counts from 0 up
+   to 1.
 4. **The final distance** (`distance.select`), in two stages:
    1. the flows nearest their targets;
    2. with the flows fixed, the other unknowns nearest their references.
@@ -166,10 +173,10 @@ level only to its feasibility tolerance.
 | `solver.CHECK` | 1e-6 | `napkin/engine/solve/solver.py` | The end checks of a row, a bound and a fair level, relative to the magnitude of the terms. |
 
 **The kept instance.** One `solve.Solver` serves each declared solver for the whole run
-(`Ways.kept`). Its HiGHS instance follows each new problem by the keys of its unknowns and rows: what
-left is deleted, what joined is added, a row that changed is replaced. A run of HiGHS whose status says
-nothing of the program, or whose answer misses the program, runs again on a fresh instance with the
-same basis, then on one with no basis (`Kept.run`).
+(`Ways.kept`). Its HiGHS instance follows each new problem by the keys of its unknowns and rows. It
+deletes what left, adds what joined, and replaces a row that changed. Sometimes a run of HiGHS gives a
+status that says nothing of the program, or an answer that misses the program. Then the program runs
+again on a fresh instance with the same basis, then on one with no basis (`Kept.run`).
 
 **The end checks.** Before the solver gives an answer, it checks each kept optimum, each claim's
 served fraction against its level, and every bound and row. The engine then polishes the answer onto
@@ -246,19 +253,23 @@ A solve gives the answer of the selection order, or raises a `SolveFailure` with
 The step names are `the hard constraints`, `objective k`, `fair sharing, tier k`,
 `distance of the flows` and `distance of the others`.
 
-Other stops of a solver set are not `SolveFailure` names: an unsupported form, two solvers in one set,
-a relation that reads a flow that the solver does not name, and a MovingDeclared set of more than 20
-stocks. Each stops the run with a message that names the solver.
+These other stops of a solver set are not `SolveFailure` names. Each stops the run with a message
+that names the solver:
+
+- an unsupported form;
+- two solvers in one set;
+- a relation that reads a flow that the solver does not name;
+- a MovingDeclared set of more than 20 stocks.
 
 ## Reproducibility
 
 The same run, with the same code, configuration, seed and thread settings on one machine, gives the
 same answers bit for bit. One `Solver` for each declared solver of a run, and no state outside it,
 make sure of this. Anything else agrees within the tolerances of the steps
-([change 11](../design/decisions.md#change-11)): a sample alone or in a batch, a problem formed fresh
-against a kept one, another platform. A threshold at a tolerance boundary can decide differently there: a dual
-against `TAU`, a level against `FULL`, a miss against `MISS`, a residual against the stall rule. Then
-the work differs and the answers agree within the tolerances. A solve near a budget can pass in one
+([change 11](../design/decisions.md#change-11)). Examples are a sample alone or in a batch, a problem
+formed fresh against a kept one, and another platform. There a threshold at a tolerance boundary can
+decide differently: a dual against `TAU`, a level against `FULL`, a miss against `MISS`, or a
+residual against the stall rule. Then the work differs and the answers agree within the tolerances. A solve near a budget can pass in one
 setting and stop by name in another.
 
 ## Speed

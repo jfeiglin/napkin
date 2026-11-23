@@ -1,7 +1,7 @@
 # How the engine is verified
 
-A test of the engine compares the engine with something that does not depend on it: an exact
-interpreter, a closed form, exact fractions, or the same run in another spelling. Agreement of two
+A test of the engine compares the engine with something that does not depend on it. That can be an
+exact interpreter, a closed form, exact fractions, or the same run in another spelling. Agreement of two
 builds of the engine is no proof of the mathematics. This page tells which checks exist, how to run
 them, and how to measure the speed of the engine. The engine terms (ledger, crossing tolerance) are defined in
 [README.md](README.md#engine-terms).
@@ -23,9 +23,9 @@ raises `errors.NotCovered` with the reason, and never guesses an answer.
 | `exact.py`, `poly.py` | Exact linear algebra on fractions, and polynomials in time with exact coefficients. |
 | `stocks.py` | Finds the stocks that a declared move or flow can reach before its first transfer. |
 
-A test reads the interpreter through `from_program.run_of(program, configuration, stops)`, which runs it
-and stops at each breakpoint in turn, and `value_at(run, program, key, t)`, which reads a value in its
-declared unit. The interpreter has its own tests in `tests/reference/test_*.py`.
+A test runs the interpreter with `from_program.run_of(program, configuration, stops)`. It stops at
+each breakpoint in turn. A test reads a value in its declared unit with
+`value_at(run, program, key, t)`. The interpreter has its own tests in `tests/reference/test_*.py`.
 
 ## The generated corpus
 
@@ -153,7 +153,7 @@ fails.
 
 The phase `final` runs all nine rows. The phase `guard` runs `events` with 30,000 places and
 `held-pipes` with 30,000 rows, once on each engine. The phase `prototype` runs the first seven rows on
-smaller networks (3,000 places) and compares the baseline `B` with the builds `A` and `P` of the
+smaller networks (3,000 places). It compares the baseline `B` with the builds `A` and `P` of the
 earlier accounting work.
 
 **The rules:**

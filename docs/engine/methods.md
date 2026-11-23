@@ -32,12 +32,16 @@ reads. The plan gives each set its method by these rules, in this order:
    - each stock meets at most one flow on each side.
 5. Any other set whose rates move runs on Sparse.
 
-An endpoint setting is a capacity or a request of an `outflow` or an `inflow` of a stock, or a
-statement of a stage that sets one (`Plan.settled`).
+An endpoint setting is a capacity or a request of an `outflow` or an `inflow`, or a stage statement
+that sets one (`Plan.settled`).
 
-A moment that changes a set builds it again (`ways.py`): a flow that joins or leaves, a stage that
-writes a value that a rate reads, or a rate of another set that changes. The new set can have
-another method. Every other set continues in its instance.
+A moment builds a set again when one of these changes it (`ways.py`):
+
+- a flow that joins or leaves;
+- a stage that writes a value that a rate reads;
+- a rate of another set that changes.
+
+The new set can have another method. Every other set continues in its instance.
 
 This package has one set of each method. Its `units.json` declares the litre:
 
@@ -148,8 +152,8 @@ stock is a straight line.
 - Where every flow is directed and rigid and no endpoint has a capacity or a request, a moment solves
   only the groups downstream of the change, upstream first.
 
-Where local sharing has no defined answer, the run stops and names the stocks: a ring of empty
-stocks that feed one another, or a ring of full stocks that pass room around.
+Where local sharing has no defined answer, the run stops and names the stocks. This occurs for a
+ring of empty stocks that feed one another, and for a ring of full stocks that pass room around.
 
 ## Component
 
@@ -167,16 +171,16 @@ horizon, where a stock reaches or leaves a bound, or where a rate changes its br
    (`integrate.numerical_segment`). The engine takes the Radau steps itself (`integrate.radau`).
 
 The continuous engine evaluates the formulas of a component with one generated program
-(`napkin/expressions.py` `compile_program`). Where that program fails, each formula is evaluated
-where a rate reads it, so a formula on a side that a rate does not take fails nothing.
+(`napkin/expressions.py` `compile_program`). Where that program fails, the engine evaluates each
+formula where a rate reads it. So a formula on a side that a rate does not take fails nothing.
 
 After a numerical segment, the engine samples the dense solution at each step cap from the start of
-the segment (`integrate.hidden_excursion`). When a sample crosses a watched threshold and no root
-ended the segment, the run stops: the value crossed the threshold and came back inside one step. A
-shorter `resolution` makes the samples closer.
+the segment (`integrate.hidden_excursion`). A sample can cross a watched threshold where no root
+ended the segment. Then the value crossed the threshold and came back inside one step, and the run
+stops. A shorter `resolution` makes the samples closer.
 
-At bounds, `Held.bound_allocation` and `napkin/engine/allocation.py` cut a flow to what the stock can pass:
-a flow out of an empty stock gets what comes in, and a flow into a full stock is cut. Where local
+At bounds, `Held.bound_allocation` and `napkin/engine/allocation.py` cut a flow to what the stock
+can pass. A flow out of an empty stock gets what comes in, and a flow into a full stock is cut. Where local
 sharing would let a flow carry more than its request, the run stops and names the stock.
 
 Four parts of Component remove roundoff at a bound. `tests/engine/test_roundoff_properties.py` tries
@@ -245,17 +249,23 @@ values that hold between moments, or to split the set.
 | Component | `atol_factor` times the integration size of the stock | `rtol` |
 | Sparse, MovingDeclared | `atol_factor` times the scale of the stock | `rtol` |
 
-The integration size of a stock is its declared `scale`. A stock with no `scale` takes the largest of: 1 in its
-unit, its start value, its finite bounds, and the largest start value of the stocks that flows connect
-it to, directly or through other stocks (`Run.sizes_of`). The scale of a stock is its declared `scale`, or else 1 in its unit.
+The integration size of a stock is its declared `scale`. A stock with no `scale` takes the largest
+of these (`Run.sizes_of`):
+
+- 1 in its unit;
+- its start value;
+- its finite bounds;
+- the largest start value of the stocks that flows connect it to, directly or through other stocks.
+
+The scale of a stock is its declared `scale`, or else 1 in its unit.
 
 **The step cap** is `max_step`, 1 h by default, or the `resolution` of the scenario. It is the interval
 at which a numerical method reads its roots and its field. It does not limit the steps of the solver,
 which its own control of the error decides. Inside a step longer than the cap:
 
 1. At each half of the cap, the engine compares the field with the rate of the dense solution
-   (`integrate.departure`). When their difference times the step is outside the solver's tolerance,
-   the engine does not use the step, and tries again from its start with a shorter limit.
+   (`integrate.departure`). Their difference times the step must be inside the solver's tolerance.
+   Else the engine does not use the step, and tries again from its start with a shorter limit.
 2. At each whole cap, the engine reads the roots.
 
 After a fall to the cap, the solver waits before it tries a longer step again. The wait doubles with
@@ -265,9 +275,13 @@ less than half a cap can fall between two reads and stay unseen. A model with su
 
 ## Branches and the comparison band
 
-Each comparison other than `==` and `!=`, each pair of operands of `min`, `max` and `clip`, `abs`, and
-the two ends of a membership, is a switching surface when one side moves
-(`integrate.switching_surfaces`). One step never mixes two branches:
+These are the switching surfaces of a rate, when one side moves (`integrate.switching_surfaces`):
+
+- each comparison other than `==` and `!=`;
+- each pair of operands of `min`, `max` and `clip`, and the operand of `abs` against zero;
+- the two ends of a membership.
+
+One step never mixes two branches:
 
 - At the start of a segment, the engine classifies each surface by its comparison band
   (`integrate.comparison_side`): a gap inside the band is zero, else its sign.
@@ -306,8 +320,8 @@ breaks them, it integrates again to the located contact before it publishes the 
 ## Release from a bound
 
 A stock on a bound leaves it only when its net rate away from the bound is strictly more than 10⁻¹²
-of its gross traffic: the sum of its incoming and outgoing rates (`napkin/engine/departure.py`). Equality
-keeps the bound.
+of its gross traffic (`napkin/engine/departure.py`). The gross traffic is the sum of its incoming and
+outgoing rates. Equality keeps the bound.
 
 - Near that boundary, the engine compares the individual rates in exact arithmetic before they cancel
   (`departure.refined`).
@@ -348,11 +362,11 @@ Else the contact is a moment of its own, at its located time. An earlier contact
 scheduled stages. A later contact stays pending across those stages when their writes keep its
 trajectory. A run whose horizon comes before the contact ends at the horizon.
 
-For a comparison of several moving stocks, each stock that the condition reads directly must be inside
-its own band of its reading at the located time, and the whole comparison must qualify too
-(`Triggers.anchor`). A rate that a condition reads can give a threshold, but it gives the condition no
-claim on its stock. A contact that joins a moment has a `contact` entry in the trace, with its located
-time and its signed difference from the moment, in hours.
+A comparison can read several moving stocks. Then each stock that it reads directly must be inside
+its own band of its reading at the located time (`Triggers.anchor`). The whole comparison must
+qualify too. A rate that a condition reads can give a threshold, but it gives the condition no claim
+on its stock. A contact that joins a moment has a `contact` entry in the trace. The entry gives the
+located time and the signed difference from the moment, in hours.
 
 In this package the stock fills at 1 L/h until its capacity, `2 - t` L/h, falls below the request at
 1 h. A stage is due at 1 h, and a trigger watches 1.000000005 L:
@@ -398,9 +412,10 @@ admits, it can put the stock exactly on its bound or threshold. That placement i
    rates just before the contact. Each leg's other end gets the matching post.
 3. When no leg moved toward the target, it keeps the amounts that the legs carried.
 4. It applies a connected placement together, or not at all (`Stocks.faces`).
-5. When the correction would break a hard equation of a solver, a frozen allowance, a capacity or the
-   limit of another stock, it keeps the delivered amounts. When the affected stocks are inside their
-   bands, it skips the correction and reports the tied targets. A breach beyond a band stops the run.
+5. A correction must keep the hard equations of a solver, the frozen allowances, the capacities and
+   the limits of the other stocks. When it would break one, the engine keeps the delivered amounts.
+   When the affected stocks are inside their bands, it skips the correction and reports the tied
+   targets. A breach beyond a band stops the run.
 
 Independent placements in the same moment can still commit. The run continues from the outcome that
 the ledger accepted: each method rebases its trajectory there (`Stocks.install`).
@@ -445,8 +460,8 @@ stock with no edit has no such history, and its ledger reads 0. A request can na
 
 ## Retirement and frozen occurrences
 
-When an occurrence finishes, each of its stocks that a flow or a move met must be empty within its
-conservation allowance (`atol_factor` times its scale). Else the run stops and names the occurrence,
+When an occurrence finishes, each of its stocks that a flow or a move met must be empty. The
+tolerance is its conservation allowance, `atol_factor` times its scale. Else the run stops and names the occurrence,
 the stock, the amount, the unit and the time.
 
 A finished occurrence is frozen ([change 24](../design/decisions.md#change-24)). An assignment to it,

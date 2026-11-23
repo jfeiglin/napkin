@@ -12,8 +12,8 @@ moment, stage, record and the others) have the meanings in
 | [verification.md](verification.md) | The reference interpreter, the generated corpus, the test tiers and the speed benchmarks. |
 | [owners.md](owners.md) | The one owner (file and function) of each decision of the engine, its readers and its tests. |
 
-The code of the engine is in `napkin/engine/`: the timeline in `timeline/`, the continuous
-integration in `continuous/` and the solve library of declared solvers in `solve/`.
+The code of the engine is in `napkin/engine/`. The timeline is in `timeline/`, the continuous
+integration is in `continuous/`, and the solve library of declared solvers is in `solve/`.
 
 ## Engine terms
 
@@ -273,9 +273,9 @@ values and adds the unit, the label, the status display, the evidence trail and 
 each path. A report claims nothing that the record does not show.
 
 **The evidence trail** of a value lists the parts that the value can read, with the records that
-each part cites. It tells whether this run exercised each part: a flow that moved material, an event
-that started, a trigger that fired, a stage that committed, a solver that solved, a value that was
-read. A part whose use the record cannot show has no answer (`exercised` is `None`).
+each part cites. It tells whether this run exercised each part. A part is exercised when it acted: a
+flow moved material, an event started, a trigger fired, a stage committed, a solver solved, or a
+value was read. A part whose use the record cannot show has no answer (`exercised` is `None`).
 
 **A reporting lag** (`napkin.Lag(shortest, longest)`, in hours) shows the mean of the history of a
 value from `longest` to `shortest` hours before each time. Equal ends make a fixed delay. A lag:
@@ -295,13 +295,18 @@ At 0 h the lagged value is `Unavailable`, because the window starts at -1440 h. 
 
 ## Breakpoints, checkpoints and resume
 
-A breakpoint names a location of the compiled program: an event, a stage or a statement, for every
-occurrence or for one member or occurrence (`napkin.program.checkpoint.Breakpoint`). The engine stops
-before that location and gives a checkpoint ([change 15](../design/decisions.md#change-15)).
+A breakpoint names a location of the compiled program: an event, a stage or a statement
+(`napkin.program.checkpoint.Breakpoint`). It applies to every occurrence, or to one member or
+occurrence. The engine stops before that location and gives a checkpoint
+([change 15](../design/decisions.md#change-15)).
 
-A checkpoint holds the stop (why, where, which occurrence, what runs next), the logical state, the
-record so far, the edits so far, and the saved state of the engine. Its text form starts with the line
-`napkin checkpoint 2`. To edit a run and resume it:
+A checkpoint holds these parts:
+
+- the stop: why and where the run stopped, which occurrence, and what runs next;
+- the logical state of the run, and the record so far;
+- the edits so far, and the saved state of the engine.
+
+Its text form starts with the line `napkin checkpoint 2`. To edit a run and resume it:
 
 1. Run the program with the breakpoints. The result is a `Checkpoint`.
 2. Call `checkpoint.edit(target, value)` for each change. An edit gives a live stored value a new value.
@@ -366,16 +371,22 @@ A study runs one program under several configurations (`napkin/engine/study.py`)
 (`napkin.monte_carlo`, `napkin/engine/uncertainty.py`) does these steps:
 
 1. It runs the configuration in `median` mode. A central run that stops refuses the study.
-2. It runs each sample in `sampled` mode. Sample k takes the seed of the SHA-256 of
-   `study seed|k`, so more samples leave the earlier seeds unchanged.
+2. It runs each sample in `sampled` mode. Sample k takes its seed from the SHA-256 digest of the
+   text `seed|k`, where `seed` is the seed of the study. So more samples leave the earlier seeds
+   unchanged.
 3. A sample that stops refuses the study, with its index, seed and reason.
-4. It summarizes each value at each time and gives the rank correlation (Spearman) of the value with
-   each draw that every sample made once at one site.
+4. It summarizes each value at each time. For each draw that every sample made once at one site, it
+   gives the rank correlation (Spearman) of the value with the draw.
 
-`napkin/engine/estimators.py` holds the estimators: the mean with Student's interval, an interval of
-a quantile from two order statistics, a stopping rule that keeps its confidence over several looks,
-and the expectation over every path of the outcomes of chance events. The
-[Python API](../python-api.md) and the [command line](../cli.md) (`napkin sample`) tell how to use them.
+`napkin/engine/estimators.py` holds the estimators:
+
+- the mean, with Student's interval;
+- an interval of a quantile from two order statistics;
+- a stopping rule that keeps its confidence over several looks;
+- the expectation over every path of the outcomes of chance events.
+
+The [Python API](../python-api.md) and the [command line](../cli.md) (`napkin sample`) tell how to
+use them.
 
 ## Tolerances and reproducibility
 
@@ -413,9 +424,10 @@ band still applies. The
 - A sum over a list adds in a pairwise tree of a fixed shape (`napkin/engine/timeline/trees.py`). Its bits depend on
   the present values only. The language promises no order of a sum over a list.
 
-A change of the numerical core is compared with the build before it by classes of difference, as
-[CONTRIBUTING.md](../../CONTRIBUTING.md) tells under "Comparisons of a change of the numerical core".
-A refactor that changes no arithmetic keeps the bits ("Refactor comparisons" in the same file).
+A change of the numerical core is compared with the build before it by classes of difference.
+[CONTRIBUTING.md](../../CONTRIBUTING.md) gives the rules under "Comparisons of a change of the
+numerical core". A refactor that changes no arithmetic keeps the bits ("Refactor comparisons" in the
+same file).
 Agreement of two builds is no proof of the mathematics: [verification.md](verification.md) tells how
 the tests check it.
 

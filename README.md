@@ -7,7 +7,7 @@ its source. The compiler checks that the numbers fit together, and each result t
 facts behind it.
 
 The catalogue studies hypothetical AI uplift in strategic cyber operations. It also studies how the
-timing of incidents and the response policies change water, electricity and IV-fluid service. The
+times of incidents and the response policies change water, electricity and IV-fluid service. The
 engine also runs models of other subjects.
 
 ```mermaid
@@ -122,7 +122,7 @@ python3 -m venv .venv
 | [scenarios/docs/recovery-ports.md](scenarios/docs/recovery-ports.md) | The baselines, the inputs and the historical comparisons of each recovery port |
 | [scenarios/water_controls_wipe/ui/README.md](scenarios/water_controls_wipe/ui/README.md) | The live view of the water case |
 | [scenarios/heat_wave_blackout/explore.ipynb](scenarios/heat_wave_blackout/explore.ipynb) | A notebook that runs the heat-wave case with values that you choose |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | How to work on `napkin`: the setup, the rules of a change, the tests and the writing standard |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How to work on `napkin`: the setup, the rules of a change, the tests and the rules of the text |
 | [CHANGELOG.md](CHANGELOG.md) | The releases |
 
 ## License and citation

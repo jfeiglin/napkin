@@ -147,7 +147,7 @@ column gives the code of the refusal, where the compiler has one of its own.
 | --- | --- |
 | `--variant NAME` | Give the folder of the variant, or its `model.scn`, as the model: `napkin run scenarios/x/variants/east` |
 | `--set NAME=VALUE` | An edit document with `--edits FILE`. Its level `set` edits every run. |
-| `--option [GROUP=]OPTION` | A named run under `runs:` that takes the option, or an edit document with `--edits FILE` |
+| `--option [GROUP=]OPTION` | A named run under `runs:` that takes the option. In Python, `Compiled.configure(run, edits, options)` selects options. |
 | `--control THING` | `napkin play --break AT[@OWNER]`, and an edit at each stop |
 | `--picks FILE` | `napkin play --from FILE`, which goes on from a stop that `save FILE` wrote |
 | `--events` | No flag. The trace of the record holds each start, finish, firing and draw (`napkin.run(...).trace` in Python). |
