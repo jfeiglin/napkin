@@ -379,13 +379,15 @@ class Recorder:
         # A store that edits changed -> (its start, [(time, amount from outside)]) (`external`).
         self.transfers = {}
         self.fits = Fits()
-        self._schema = None
+        self._indexed_value_count = None
+        self._indexed_version = None
         self._dirty = set()
         self._from = math.inf
         self._private = None
         self._moving = set()
         self._histories = {}
         self._raw_positions = {}
+        self._counted = {}
         self._total = 0
         self._as_of = None
         self._held_upper = None
@@ -395,7 +397,8 @@ class Recorder:
         """One entry of the trace, in the round where the run is (`round`: 0 is the setup)."""
         self.trace.append(Entry(t, self.round, kind, part, owner, tuple(details.items())))
         if kind == 'start':
-            self._schema = None
+            # A predeclared occurrence can become visible without growing plan.values.
+            self._indexed_value_count = None
 
     def failure(self, t, message, **details):
         """The entry of the failure that stopped a run at time t."""
@@ -479,7 +482,7 @@ class Recorder:
                 for key in registry:
                     ways.sets[key][1].incoming_history(end)
         self.fits.advance(end)
-        if internal and self._schema == (len(self.plan.values), self.plan.version):
+        if internal and self._index_current():
             if self._held_upper is None:
                 self._held_upper, self._held_growth = self._held_piece_bound()
             if self._held_upper <= self.plan.configuration.request.pieces:
@@ -629,7 +632,12 @@ class Recorder:
 
     # ---- the committed histories -----------------------------------------------------------------
 
-    def _prepare_histories(self, signature):
+    def _index_current(self):
+        return (
+            self._indexed_value_count == len(self.plan.values) and self._indexed_version == self.plan.version
+        )
+
+    def _prepare_histories(self):
         """Order the histories that this request retains and index their direct readers."""
         plan = self.plan
         request = plan.configuration.request
@@ -667,27 +675,32 @@ class Recorder:
                 or (name in plan.keyed and plan._chosen(plan.keyed[name]) is None)
             ):
                 self._clock.add(name)
-        self._histories.clear()
-        self._raw_positions.clear()
-        self._moving.clear()
+        # A redefinition can change an existing formula without writing a raw piece.
+        # An occurrence start only adds names and readers to the committed history.
+        if self._indexed_version != plan.version:
+            self._histories.clear()
+            self._raw_positions.clear()
+            self._moving.clear()
+            self._counted.clear()
+            self._total = 0
+            self._as_of = None
+            self._dirty.update(self.transfers)
         self._names = Manifest(request.horizon, request.everything, request.keys).names
-        self._counted = {
-            name: 0 for name in names if (key := plan.values[name].key) is not None and self._names(key)
-        }
-        self._total = 0
-        self._as_of = None
+        for name in names:
+            if name not in self._histories:
+                self._dirty.add(name)
+                if (key := plan.values[name].key) is not None and self._names(key):
+                    self._counted[name] = 0
         self._held_upper = None
         self._held_growth = 0
-        self._dirty.update(names)
-        self._dirty.update(self.transfers)
-        self._schema = signature
+        self._indexed_value_count = len(plan.values)
+        self._indexed_version = plan.version
 
     def _advance(self, end):
         """Update only histories whose inputs changed or whose current interval moves."""
         plan = self.plan
-        signature = (len(plan.values), plan.version)
-        if signature != self._schema:
-            self._prepare_histories(signature)
+        if not self._index_current():
+            self._prepare_histories()
         dirty, self._dirty = self._dirty, set()
         since = min(self._as_of or 0.0, self._from)
         self._from = math.inf
@@ -704,7 +717,8 @@ class Recorder:
         for name in sorted(changed, key=self._order.__getitem__):
             value = plan.values[name]
             if name in self._derived:
-                history = self._derived_history(name, value, end, since)
+                start = since if name in self._histories else plan.start_of(name)
+                history = self._derived_history(name, value, end, start)
             else:
                 history = self._raw_history(name, value, end)
                 if history.pieces and (history.pieces[-1].curve is not None or history.pieces[-1].rate != 0):

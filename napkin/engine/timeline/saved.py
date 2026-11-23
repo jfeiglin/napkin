@@ -200,8 +200,7 @@ def at_stop(run):
     recorder._dirty = set(recorder._dirty)
     recorder._moving = set(recorder._moving)
     recorder._raw_positions = dict(recorder._raw_positions)
-    if recorder._schema is not None:
-        recorder._counted = dict(recorder._counted)
+    recorder._counted = dict(recorder._counted)
     recorder.pieces = {name: list(pieces) for name, pieces in run.recorder.pieces.items()}
     recorder.trace = list(recorder.trace)
     projected.moved = set(run.moved)

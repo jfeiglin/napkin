@@ -8,7 +8,7 @@ import pytest
 from napkin.engine import run
 from napkin.engine.timeline.collections import dynamic_value
 from napkin.engine.timeline.plan import Plan
-from napkin.engine.timeline.record import Reader, key_of
+from napkin.engine.timeline.record import Reader, Recorder, key_of
 from napkin.engine.uncertainty import Sample, _drawn
 from napkin.model.compile import compile_text
 from napkin.program.config import ConfigurationError, InputValue, Quantity
@@ -127,6 +127,54 @@ def test_recorder_and_fresh_reader_visit_only_starts_they_need(n, monkeypatch):
         assert [reader.at(name, i + 0.25) for name in fields] == [1, i + 1]
     counts = recording, membership_reads - recording, stored_reads
     assert max(counts) <= 12 * n, f'{counts} recorder, membership and stored start reads for {n} instances'
+
+
+def test_a_new_collection_member_backfills_its_global_dependency_only_once(monkeypatch):
+    source = """scenario "A late first observation"
+    horizon 7 h
+yard:
+    level = 2
+    triple = formula(3 * this.level)
+    sample = event():
+        observation = formula(this.triple + 1)
+        after 1 h
+    total = formula(sum(this.sample.occurrences.observation))
+    bell = event():
+        after 0 h
+    schedule = event():
+        after 1 h:
+            this.level += 1
+        after 2 h:
+            this.sample.start()
+        after 2 h:
+            this.bell.start()
+        after 1 h:
+            this.bell.start()
+
+yard.schedule.start()
+"""
+    model = compile_text(source, UNITS)
+    program, cfg = model.program, model.configuration
+    total = key_of(program, 'yard.total')
+    cfg = replace(cfg, request=replace(cfg.request, keys=(total,), everything=False))
+    scans = []
+    original = Recorder.formula
+
+    def counted(recorder, name, histories, end, *args, **kwargs):
+        if name == 'yard.triple':
+            scans.append((kwargs.get('start', 0.0), end))
+        return original(recorder, name, histories, end, *args, **kwargs)
+
+    monkeypatch.setattr(Recorder, 'formula', counted)
+    record = run(program, cfg)
+    assert record.failure is None, record.failure
+    triple = record.history(key_of(program, 'yard.triple'))
+    assert [triple.at(t) for t in (0, 1, 3)] == [6, 9, 9]
+    sample = record.history(key_of(program, 'yard.sample#0.observation'))
+    assert sample.pieces[0].t == 3
+    assert [record.history(total).at(t) for t in (0, 1, 3, 7)] == [0, 0, 10, 10]
+    # The first sample needs the two earlier levels. Ringing either bell adds no input to triple.
+    assert [(start, end) for start, end in scans if start < 1] == [(0, 3)]
 
 
 @pytest.mark.parametrize('n', SIZES)

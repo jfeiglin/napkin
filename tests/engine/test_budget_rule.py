@@ -233,6 +233,31 @@ def tank():
 WATER = Key('tank', ('water',))
 
 
+def test_checkpoint_after_a_child_starts_counts_projected_pieces_separately():
+    b = Builder(UNITS)
+    b.entity(
+        'plant',
+        value('count', '', 0),
+        event('driver', after(q(1, 'h'), add(this.count, 1), start(this.child))),
+        event('child', after(q(2, 'h'))),
+        event('watch', after(q(1, 'h'), add(this.count, 1))),
+    )
+    plant = named('plant')
+    b.setup(start(plant.driver), start(plant.watch))
+    program = b.finish()
+    count = Key('plant', ('count',))
+    configuration = Configuration(Request(2, everything=False, keys=(count,), pieces=2))
+    engine = Run(Plan.of(program, configuration), (Breakpoint('plant.watch.step[0]'),))
+    checkpoint = engine.run()
+    # The driver's write and start precede the watch in the same round. Only the projection
+    # has assembled that write. The live run still has one piece counted from setup.
+    assert [piece.value for piece in checkpoint.record.history(count).pieces] == [0, 1]
+    assert engine.recorder._counted['plant.count'] == engine.recorder._total == 1
+    record = engine.resume()
+    assert record == Run(Plan.of(program, configuration)).run()
+    assert record.failure.t == 1 and record.failure.detail('budget') == 2
+
+
 def test_an_edit_after_the_horizon_of_a_request_adds_no_ledger():
     """Row 11: the tank is lowered to 4 L at the stop at 2 h. A request of the water to 1 h within two
     pieces holds the water at 0 h, 10 L, and on its line from 0 h at -2 L/h: two pieces, by hand, and no
