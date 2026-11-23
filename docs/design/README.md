@@ -159,14 +159,14 @@ no handler for an operation must say so, so no operation is half supported witho
 
 ## Archive
 
-The working notes of the rewrite are kept in git at commit `ARCHIVE_SHA` under `scratch/`: the
+The working notes of the rewrite are kept in git at commit `af5428b` under `scratch/`: the
 spec, the plan, the audits and the prototypes. The commits after it do not hold `scratch/`. To read
 one of these files, give its commit and its name to git:
 
 ```sh
-git show ARCHIVE_SHA:scratch/rewrite/spec.md
-git show ARCHIVE_SHA:scratch/rewrite/PLAN.md
-git show ARCHIVE_SHA:scratch/rewrite/g0-decisions.md
+git show af5428b:scratch/rewrite/spec.md
+git show af5428b:scratch/rewrite/PLAN.md
+git show af5428b:scratch/rewrite/g0-decisions.md
 ```
 
 [decisions.md](decisions.md) states each ruling of these notes as it applies today. Where the notes

@@ -63,7 +63,7 @@ class Budget:
     The defaults pass the cases of prototype A3 at 3,000 places with room to spare: there fair
     sharing takes 50 to 170 programs, and the distance method converges on the face that fair sharing
     leaves in 98 to 177 Newton steps (163 at 1,000 places with shortage), with no fallback
-    (`scratch/rewrite/b1/solve/bench.py` at ARCHIVE_SHA). A3's QP took 20,561 iterations on that face."""
+    (`scratch/rewrite/b1/solve/bench.py` at af5428b). A3's QP took 20,561 iterations on that face."""
 
     fair_programs: int = 1000  # the linear programs of the fair-sharing step, over all tiers of a solve
     newton_steps: int = 500  # the Newton steps of each distance stage before the exact fallback

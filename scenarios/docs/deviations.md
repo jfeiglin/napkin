@@ -62,10 +62,10 @@ settings, sweeps, spreads and pairs of comparisons.
 
 A shared name or an equal default of an input does not show that two equations are the same. The
 inventory describes the declarations that the authors wrote. It does not run a simulation. The
-inventory is `scratch/rewrite/audit/catalogue-interface-differences.csv` at commit `ARCHIVE_SHA`.
+inventory is `scratch/rewrite/audit/catalogue-interface-differences.csv` at commit `af5428b`.
 
 The recovery comparison checks the observations whose definitions agree. It is
-`scratch/rewrite/audit/recovery-parity.md` at commit `ARCHIVE_SHA`.
+`scratch/rewrite/audit/recovery-parity.md` at commit `af5428b`.
 [recovery-ports.md](recovery-ports.md) tells how each package came to the current language, and it
 gives the checks of that port. The earlier studies and their briefs are
 at the [pinned revision](https://github.com/jfeiglin/napkin/tree/8488047dbb7eafee1f5582cf59839c6bea0cf8cd/scenarios).
@@ -79,7 +79,7 @@ To make the interface inventory again, do these steps:
 
 1. Make a clean checkout of the earlier commit:
    `git worktree add /path/to/8488047 8488047dbb7eafee1f5582cf59839c6bea0cf8cd`.
-2. Make a checkout of the archive commit: `git worktree add /path/to/archive ARCHIVE_SHA`.
+2. Make a checkout of the archive commit: `git worktree add /path/to/archive af5428b`.
 3. In the checkout of the archive commit, run the script with the Python environment of the current
    repository:
 

@@ -24,12 +24,12 @@ The historical model generated workload, assigned staff across missions and used
 
 ## Verification
 
-The historical interpreter at `8488047` evaluated the retained declarations in isolation under the same supplied observations. Four replays cover reference, zero, sustained elevated and pulsed workloads. Five quantities sampled at ten times give **200 matched readings**. The largest absolute difference was **5.09 × 10⁻¹¹** in the attention index. Both interpreters finished at 219,000 h with a seven-day maximum step. The replay receipt records the full legacy commit, source and extracted fixture hashes, inputs, times and values. [Historical readings](tests/legacy-readings.json) · Reproduction script: `scratch/rewrite/a5/compare_defensive_response.py` at commit `ARCHIVE_SHA`
+The historical interpreter at `8488047` evaluated the retained declarations in isolation under the same supplied observations. Four replays cover reference, zero, sustained elevated and pulsed workloads. Five quantities sampled at ten times give **200 matched readings**. The largest absolute difference was **5.09 × 10⁻¹¹** in the attention index. Both interpreters finished at 219,000 h with a seven-day maximum step. The replay receipt records the full legacy commit, source and extracted fixture hashes, inputs, times and values. [Historical readings](tests/legacy-readings.json) · Reproduction script: `scratch/rewrite/a5/compare_defensive_response.py` at commit `af5428b`
 
 In the pulse replay, volume is 1 for the first year, 5 for the next year and 0.5 afterward. With an adjustment rate of three per year, attention is 0.05 at year 1, 0.145021293 at year 2 and 0.033135083 at year 3. A separate closed-form check tests the transitions and recovery at seven-day and one-day maximum steps. [Regression tests](tests/test_observations.py)
 
 ```sh
 python -m pytest -q scenarios/cyber_learning_loop/defensive_response/tests/test_observations.py
-git show ARCHIVE_SHA:scratch/rewrite/a5/compare_defensive_response.py > compare_defensive_response.py
+git show af5428b:scratch/rewrite/a5/compare_defensive_response.py > compare_defensive_response.py
 python compare_defensive_response.py /path/to/napkin-at-8488047
 ```

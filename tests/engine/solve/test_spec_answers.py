@@ -1,4 +1,4 @@
-"""Every answer that the spec states for a solver (`scratch/rewrite/spec.md` at ARCHIVE_SHA, "An entity owns its
+"""Every answer that the spec states for a solver (`scratch/rewrite/spec.md` at af5428b, "An entity owns its
 solver", "Solver and execution contract" and the acceptance cases), from the selection order.
 
 The expected values are the spec's, worked by hand where it gives them as prose. The library holds a

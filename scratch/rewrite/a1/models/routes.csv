@@ -1,3 +1,0 @@
-id,origin,destination,closes_at_two
-junction_clinic,sites.junction,sites.clinic,false
-garden_junction,sites.garden,sites.junction,true

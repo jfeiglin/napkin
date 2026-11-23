@@ -1,3 +1,0 @@
-captured = this.water / (2 h)
-readonly draining = formula(this.water / (2 h))
-readonly ready: formula(bool) = formula(this.water >= this.minimum)

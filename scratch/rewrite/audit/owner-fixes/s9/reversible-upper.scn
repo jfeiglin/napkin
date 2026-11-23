@@ -1,7 +1,0 @@
-scenario "Two bounded tanks"
-    horizon 1.25 h
-yard:
-    a: L = 1.53662109375 L in [0 L,1.646484375 L]
-    b: L = 0.85986328125 L in [0 L,]
-    flow pipe: this.a <-> this.b
-        request = formula(-0.46875 L/h + (0.75 L/h/h) * t)

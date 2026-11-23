@@ -38,9 +38,9 @@ defensibility stays exact:
 ## What was measured
 
 Prototype P1 measured other libraries and other settings for the two steps. Its scripts and its
-findings (`scratch/rewrite/p1/`, with `FINDINGS.md`) are in the archive at commit `ARCHIVE_SHA`
+findings (`scratch/rewrite/p1/`, with `FINDINGS.md`) are in the archive at commit `af5428b`
 ([docs/design/README.md](../design/README.md#archive)). Read them from that commit, for example
-`git show ARCHIVE_SHA:scratch/rewrite/p1/FINDINGS.md`. The measurements are of commit `48a276c`.
+`git show af5428b:scratch/rewrite/p1/FINDINGS.md`. The measurements are of commit `48a276c`.
 The scripts of the two adopted speedups (`scratch/rewrite/p1/adopted.py` and
 `scratch/rewrite/p1/engine_solves.py`, in the same archive) came after it. The data files of P1 were
 outside the repository and are not part of the archive. The scripts make them again.
@@ -52,7 +52,7 @@ outside the repository and are not part of the archive. The scripts make them ag
   3,000 places a time is the best of three runs. At 30,000 places there is one run, one case at a
   time, stopped at 15 minutes.
 - The problems: the network of A3 as the bench of the solve library forms it
-  (`scratch/rewrite/b1/solve/bench.py` at commit `ARCHIVE_SHA`). The cases are the four cases of A3:
+  (`scratch/rewrite/b1/solve/bench.py` at commit `af5428b`). The cases are the four cases of A3:
   normal need, need x1.45, 1,000 routes down ("damaged"), and need x1.7. Also the problem that the
   engine forms for the same network at its first solve (`tools/bench/port/s5-engine/bench.py`).
 - Each candidate solved the same problem as the step of the library. For the distance step, it is
@@ -153,7 +153,7 @@ tolerances of the steps. All three keep the rules of the selection order, and no
    before.
 
 The new times, with the bench of the solve library (`scratch/rewrite/b1/solve/bench.py` at commit
-`ARCHIVE_SHA`) and `scratch/rewrite/p1/adopted.py` (at the same commit):
+`af5428b`) and `scratch/rewrite/p1/adopted.py` (at the same commit):
 
 | Problem | Objective | Fair sharing | Distance | Before (fair, distance) |
 | --- | --- | --- | --- | --- |
@@ -171,7 +171,7 @@ times. At 3,000 places, the run takes 18.2 s instead of 31.7 s, and the solve li
 of 21.8 s. At 30,000 places, the first solve, at normal supply, takes 166 s (459 fair-sharing
 programs, 25 renewals, 445 + 3 Newton steps). Before, it did not finish in 45 minutes. The second
 solve, with the supply cut to 0.8 at 24 h, is a case of shortage. It did not finish in the 10.6
-minutes left of the 15 (`scratch/rewrite/p1/engine_solves.py` at commit `ARCHIVE_SHA`).
+minutes left of the 15 (`scratch/rewrite/p1/engine_solves.py` at commit `af5428b`).
 
 ## What was deferred
 

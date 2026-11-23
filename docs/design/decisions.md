@@ -7,13 +7,13 @@ the entry says what replaced it.
 
 | Numbers | Source | Date |
 | --- | --- | --- |
-| D0 to D17 | The rulings of gate G0 (`scratch/rewrite/g0-decisions.md` at commit `ARCHIVE_SHA`) | 2026-11-18 |
-| Changes 1 to 29 | "Changes after G0" in `scratch/rewrite/PLAN.md` at commit `ARCHIVE_SHA` | 2026-11-18 to 2026-11-21 |
+| D0 to D17 | The rulings of gate G0 (`scratch/rewrite/g0-decisions.md` at commit `af5428b`) | 2026-11-18 |
+| Changes 1 to 29 | "Changes after G0" in `scratch/rewrite/PLAN.md` at commit `af5428b` | 2026-11-18 to 2026-11-21 |
 | Changes 30 to 33 | The decisions of the last round of the owner | after 2026-11-21 |
 
 An identifier such as `R-A5-05` names a ruling of a prototype. These rulings are in
 `scratch/rewrite/rulings.md` and in the `FINDINGS.md` file of each prototype, at commit
-`ARCHIVE_SHA` ([the archive](README.md#archive)). The words in **bold** type have the meanings
+`af5428b` ([the archive](README.md#archive)). The words in **bold** type have the meanings
 that [the terms](../language/README.md#terms) give. [docs/language/changes.md](../language/changes.md)
 gives what replaced each word of the old language.
 
@@ -542,7 +542,7 @@ What trades precision or robustness for speed is deferred, with its plan, to
 - **Cycles.** The compiler checks cycles on the actual links of the instances. The links are fixed
   when the model compiles (`R-A1-30`). The compiler reports a real cycle as its chain.
 - **Bugs.** Each bug that the audit found has its failing example as a test. The migration checker
-  (`scratch/rewrite/a5/check.py` at commit `ARCHIVE_SHA`) runs the old and the new model to the
+  (`scratch/rewrite/a5/check.py` at commit `af5428b`) runs the old and the new model to the
   horizon. It fails on a difference that the `changed.md` file of the package does not list.
 
 ### Change 20

@@ -1,4 +1,0 @@
-record timing: source_transfer "Applied from another setting."
-    assumption A-TIMING
-    claims:
-        E-REPAIR-STUDY

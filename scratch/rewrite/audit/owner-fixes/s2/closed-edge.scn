@@ -1,3 +1,0 @@
-box:
-    a = formula(1.000000001 h) scale 1 h
-    inside = formula(this.a - 1 h <= 0 h)

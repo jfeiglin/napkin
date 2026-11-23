@@ -1,5 +1,5 @@
 """A record of some values holds what their keyed reads need (the review of `2cd1751`, R05;
-`scratch/rewrite/briefs/audit3b.md` at ARCHIVE_SHA, agent V).
+`scratch/rewrite/briefs/audit3b.md` at af5428b, agent V).
 
 The rule (`napkin/program/record.py`, "What a record holds": a record of only some values holds what
 their values need, by one function of its request and its trace, for each run's record; spec, "Collections, keys and projections"; D10): a value read from a record of it alone

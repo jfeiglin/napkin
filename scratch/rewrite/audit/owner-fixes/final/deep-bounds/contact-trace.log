@@ -1,8 +1,0 @@
-Advance 1.6953124999999987 1.7500000000000002 targets {} rounded None due () y [1.0000000000000004, 4.328125] active {(1, 'max')} branch sides [-1, 1, 0, 0]
-BOUND 1.7500000000000002 np.float64(1.7501000000000002) row 1 direction 1.0 face 4.328125 original 4.328125 end 4.3281249875 Q [2.1736331979390223e-20, -1.2500000000085652e-08, 4.0590659554977864e-20]
-Advance 1.7500000000000002 1.7500000000000002 targets {1: np.float64(4.328125)} rounded None due () y [1.0000000000000004, 4.328125] active set() branch sides [1, -1, 0, 0]
-/Users/jakefeiglin/Documents/ChatGPT/napkin_local/.work/audit-owner-runs/final/mac/deep-s9-red/1553-component.plain.scn Entry(t=1.7500000000000002, round=1, kind='failure', part='', owner='', details=(('message', 'Integration made no progress at a boundary'),))
-Advance 0.8125000000000003 1.6250000000000002 targets {} rounded None due () y [0.7499999999999993, 3.55078125] active {(1, 'max')} branch sides [-1, 1, 0, 0]
-BOUND 1.6250000000000002 np.float64(1.6251000000000002) row 1 direction 1.0 face 3.55078125 original 3.55078125 end 3.5507812375 Q [2.1736331979390223e-20, -1.2500000000085652e-08, 4.0590659554977864e-20]
-Advance 1.6250000000000002 1.6250000000000002 targets {1: np.float64(3.55078125)} rounded None due () y [0.7499999999999994, 3.55078125] active set() branch sides [1, -1, 0, 0]
-/Users/jakefeiglin/Documents/ChatGPT/napkin_local/.work/audit-owner-runs/final/mac/deep-s9-red/437-component.event.scn Entry(t=1.6250000000000002, round=1, kind='failure', part='', owner='', details=(('message', 'Integration made no progress at a boundary'),))

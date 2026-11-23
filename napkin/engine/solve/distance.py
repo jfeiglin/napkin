@@ -8,7 +8,7 @@ in working units on the face that the earlier ranks left, where w_j is one for e
 stage and zero for every other one (the INTERNAL unknowns, and the unknowns of the other stage). The
 criterion is strictly convex in the coordinates of the stage, so their answer is unique.
 
-The method is the dual semismooth Newton method of `scratch/networks/nearest.py` at ARCHIVE_SHA: for each dual y,
+The method is the dual semismooth Newton method of `scratch/networks/nearest.py` at af5428b: for each dual y,
 x(y) = clip(c - A'y / w) is in the box, so only the rows are left to meet; each Newton step solves the
 augmented system of the free coordinates, so the condition of A is not squared, with one factorization
 while the free set stays, and an exact line search (the dual is piecewise quadratic along a step).
@@ -47,7 +47,7 @@ follows the free set, so `qdldl` (OSQP's LDL', Apache-2.0) orders it and analyse
 stage, and each new diagonal is a numeric factorization alone, where SuperLU orders and pivots
 afresh each time; each solve is refined REFINE times against the system, since LDL' does not pivot.
 At 30,000 places at normal need the method then takes its 446 steps in 45 s instead of 342 s
-(`scratch/rewrite/p1/adopted.py` at ARCHIVE_SHA); in prototype P1 its answers were within 6e-7 of SuperLU's. Without pivoting LDL' is not as sure: with
+(`scratch/rewrite/p1/adopted.py` at af5428b); in prototype P1 its answers were within 6e-7 of SuperLU's. Without pivoting LDL' is not as sure: with
 weights up to 1 + RHO and delta = DELTA, a solve's backward error |K x - b| / (|K| |x| + |b|) rose
 to 0.15 on the objective's face of 3,000 places, where SuperLU's stays below 1e-15, and on another
 face its steps, accurate to 1e-12, stalled where SuperLU's converged. So a stage starts by LDL' and
@@ -64,7 +64,7 @@ method did not converge in 1,200 Newton steps; the QP took 38 s and 20,561 itera
 is not a sure answer: on that face at 3,000 places it now ends with an error of HiGHS (a numerical
 failure), and on the fair face of the spec's worked network, three places, it cycles to its
 iteration limit. At 300 and 1,000 places it finishes and agrees with the method to 6.4e-7
-(`scratch/rewrite/b1/solve/bench.py verify` at ARCHIVE_SHA).
+(`scratch/rewrite/b1/solve/bench.py verify` at af5428b).
 """
 
 from __future__ import annotations

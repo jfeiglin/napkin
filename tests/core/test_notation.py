@@ -1,5 +1,5 @@
 """An expression in a message is written as the model writes it (the review of `2cd1751`, R11;
-`scratch/rewrite/briefs/audit3b.md` at ARCHIVE_SHA, agent V).
+`scratch/rewrite/briefs/audit3b.md` at af5428b, agent V).
 
 The rule (spec, "Limits on a runaway run": the diagnostic quotes the gate as the model writes it,
 "waits at `until this.cleared`"; "Execution errors fail the run with the expression, invocation and

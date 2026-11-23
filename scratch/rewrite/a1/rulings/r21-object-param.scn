@@ -1,3 +1,0 @@
-fill = event(target: Tank):
-    after 1 h:
-        target.water += 2 L

@@ -1,2 +1,0 @@
-flow f: link -> SINK
-alloc = priority(link, backup)

@@ -1,9 +1,0 @@
-scenario "Edit before a planned move"
-    horizon 1 h
-box:
-    stock: L = 0 L
-    receipt: L = 0 L
-    send = event():
-        after 1 h:
-            move 5 L from this.stock to this.receipt
-box.send.start()

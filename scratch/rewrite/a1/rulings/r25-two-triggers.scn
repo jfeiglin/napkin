@@ -1,8 +1,0 @@
-refill = event(amount: g):
-    when this.low_on_beans:
-        this.refill.start(50 g)
-    when t >= 3 h:
-        this.refill.start(20 g)
-        reset after 3 h
-    after 0.5 h:
-        this.beans += amount

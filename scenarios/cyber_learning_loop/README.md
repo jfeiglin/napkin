@@ -58,7 +58,7 @@ The pinned interpreter supplied the four workforce headcounts, total workforce a
 The separate defensive-response entry accepts workload and adoption as supplied inputs and has its own 200-reading reference. [Defensive response](defensive_response/README.md)
 
 ```sh
-git show ARCHIVE_SHA:scratch/rewrite/a5/compare_strategic_workforce.py > compare_strategic_workforce.py
+git show af5428b:scratch/rewrite/a5/compare_strategic_workforce.py > compare_strategic_workforce.py
 python compare_strategic_workforce.py /path/to/8488047 > historical-workforce.json
 python scenarios/cyber_learning_loop/tools/strategic_workforce_results.py scenarios/cyber_learning_loop/results
 python -m tools.publish --check --scenario cyber_learning_loop --sample-spreads --jobs 4

@@ -1,3 +1,0 @@
-after 1 h:
-    gap = this.need - this.water
-    this.order += gap

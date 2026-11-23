@@ -1,9 +1,0 @@
-crew:
-    work_state: enum[WAITING, WORKING, DONE] = WAITING
-        "Crew work state"
-    status ok when this.work_state == DONE
-        "Repairs are complete."
-    status degraded when this.work_state == WORKING
-        "Crews are carrying out repairs."
-    status degraded
-        "Crews are waiting for access."

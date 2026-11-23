@@ -1,7 +1,0 @@
-tank:
-    readonly water: L = 8 in [0, 20]
-
-clinic:
-    flow delivery: tank.water -> SINK
-        capacity = 5 L/h
-        request = 3 L/h

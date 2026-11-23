@@ -1,2 +1,0 @@
-x = this.restore.actual_rate
-y = this.link.forward.actual_rate

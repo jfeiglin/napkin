@@ -7,7 +7,7 @@ test_style.py), now without it, with the same roles in its stylesheet's `[role]`
 draw` draws it: the package with its stylesheet beside it (`style.of`, which reads and checks it, as
 `napkin compile` does), its map (`model_map.picture`) and its SVG text (`layout`, `svg`).
 `roles.json` holds each case's map and the SHA-256 of its SVG text as the code before change 23 drew
-them, with the roles in the model (scratch/rewrite/b1/audit3-s/make_expected.py at ARCHIVE_SHA, run on that code).
+them, with the roles in the model (scratch/rewrite/b1/audit3-s/make_expected.py at af5428b, run on that code).
 """
 
 from __future__ import annotations

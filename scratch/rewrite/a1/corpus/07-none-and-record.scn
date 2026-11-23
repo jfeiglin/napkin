@@ -1,7 +1,0 @@
-unserved_volume = formula(sum(Utility.instances.unserved))
-    "Volume currently unserved"
-
-weekly_unserved: people = none @no_cohorts
-    "People continuously without service for a week"
-
-record no_cohorts: assumption "Daily totals do not identify the same people across days."

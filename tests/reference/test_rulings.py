@@ -1,4 +1,4 @@
-"""A test for each ruling that prototype A2 proposed (`scratch/rewrite/a2/FINDINGS.md` at ARCHIVE_SHA), on its own
+"""A test for each ruling that prototype A2 proposed (`scratch/rewrite/a2/FINDINGS.md` at af5428b), on its own
 example. Gate G0 settled them all, so each test now asserts the settled rule; where G0 overturned
 the proposal (R-A2-06, 07, 13, 14, 20, 22) or changed its numbers (R-A2-04, 23), the test asserts
 the decision of G0 and names it. R-A2-17 has more: each owner of a draw that it names. R-A2-09 has

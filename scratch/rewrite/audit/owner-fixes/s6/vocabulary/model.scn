@@ -1,4 +1,0 @@
-scenario "Number fixture"
-    horizon 1 h
-    library "library"
-input duration: hx = 1 hx

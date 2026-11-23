@@ -49,7 +49,7 @@ show capabilities and costs at that time. After G0, the build added the parser, 
 the engine and an independent reference interpreter (`tests/reference/`).
 [docs/engine/verification.md](../engine/verification.md) gives the tests that compare them today.
 
-The scripts and the results of the six prototypes are in `scratch/rewrite/` at commit `ARCHIVE_SHA`
+The scripts and the results of the six prototypes are in `scratch/rewrite/` at commit `af5428b`
 ([the archive](README.md#archive)). The folders are `a1`, `a2`, `a3`, `a4a`, `a4b` and `a5`.
 
 ### The notation
@@ -202,6 +202,6 @@ The seconds of each pair, baseline / candidate:
 | Declared solver, build, plan, run and record | 9.376 / 7.799 | 9.459 / 7.811 | 9.424 / 7.773 |
 
 The table of the campaign, its raw samples, schedules and calibrations are in
-`scratch/rewrite/audit/owner-fixes/final/mac/` at commit `ARCHIVE_SHA`: `final-speed.md`, and
+`scratch/rewrite/audit/owner-fixes/final/mac/` at commit `af5428b`: `final-speed.md`, and
 `final-speed-raw.zip` (SHA-256
 `e32c9df76d73c497db0f5f051bd2ff1791e9135db0347967ffa384064d5009cc`).

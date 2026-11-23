@@ -1,4 +1,0 @@
-box:
-    receive = event(duration: h in [0.0000000005 h, 0 h]):
-        after 1 h
-box.receive.start(0 h)

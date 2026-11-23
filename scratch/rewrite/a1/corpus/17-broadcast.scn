@@ -1,2 +1,0 @@
-after 2 h:
-    this.machines.repair.start(this.repair_times.draw())

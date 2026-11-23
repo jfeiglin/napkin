@@ -1,4 +1,0 @@
-alarm = event():
-    when this.hot:
-        this.cool.start()
-    after 0 h

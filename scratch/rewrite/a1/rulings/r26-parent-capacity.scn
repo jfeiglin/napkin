@@ -1,4 +1,0 @@
-flow restore:
-    flow labor: this.crew.hours -> this.crew.used
-        request = 4 crew_h/h
-    capacity = 1

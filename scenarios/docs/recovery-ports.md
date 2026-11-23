@@ -37,7 +37,7 @@ unit. The sums of the repair queues accept 10⁻⁵ work hours absolute at zero,
 comparison scale of 1,000 work hours. An observation counts only when both the earlier and the new
 run reach the horizon. To make the earlier inputs and values again, do these steps:
 
-1. Make a checkout of the archive commit: `git worktree add /path/to/archive ARCHIVE_SHA`.
+1. Make a checkout of the archive commit: `git worktree add /path/to/archive af5428b`.
 2. In that checkout, run the script `scratch/rewrite/a5/check_water_recovery.py` with a checkout of
    commit `8488047`.
 3. In the current checkout, run the deep tests of the water recovery.
@@ -87,7 +87,7 @@ located switch and 2 L/h at it. Their totals at 2,000 h agree with the independe
 to within 0.000002 L. The same check runs from a saved checkpoint.
 [Cross-method regression](../../tests/engine/test_held_branch_velocity.py)
 
-The script `scratch/rewrite/a5/artifact_parity.py` at commit `ARCHIVE_SHA` compares a run from the
+The script `scratch/rewrite/a5/artifact_parity.py` at commit `af5428b` compares a run from the
 source with five new consumers of the compiled program. Each consumer has only the program and the
 saved configuration of the run in its folder. File access controls refuse the model text and the
 data of the package, also the local units and the evidence. For each reading, the check compares
@@ -108,7 +108,7 @@ hour. [Dashboard](../water_controls_wipe/ui/README.md)
 
 ## Do the migration check of the examples again
 
-The script `scratch/rewrite/a5/paired_migrations.py` at commit `ARCHIVE_SHA` checks the examples. It
+The script `scratch/rewrite/a5/paired_migrations.py` at commit `af5428b` checks the examples. It
 archives both revisions and runs each in its own Python process. It checks the reservoir in
 `examples/`, which is the package that users run. Twelve draws of the piano tuners agreed at 0, 4,380
 and 8,760 hours. Twelve configurations of the reservoir agreed at seven times, and the 24 sampled and
@@ -144,10 +144,10 @@ python scratch/rewrite/audit/port_corpus_results.py regular regular.xml --full-s
 python -m pytest --no-focused -n 10 --maxschedchunk=4 -m deep scenarios tests
 ```
 
-Run the script `scratch/rewrite/audit/port_corpus_results.py` in a checkout of commit `ARCHIVE_SHA`.
+Run the script `scratch/rewrite/audit/port_corpus_results.py` in a checkout of commit `af5428b`.
 
 The speed campaign of six workloads belongs to the earlier engine handoff. Its ratios apply to the
 revisions that its report names. The check on the branch of the packages covered the runs of the
 catalogue, the parity, the publication and the time of the test suite. The report of the engine
 timing and of the measured commits is `scratch/rewrite/audit/engine-finalized-results.md` at commit
-`ARCHIVE_SHA`.
+`af5428b`.

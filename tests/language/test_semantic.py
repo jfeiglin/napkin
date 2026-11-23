@@ -282,7 +282,7 @@ def test_a_square_root_and_a_power_read_the_dimension_and_not_the_spelling():
 
 def test_the_cyber_drafts_square_root_of_two_ratios_compiles():
     """The formula of the cyber draft (scratch/rewrite/a5/translated/now/scenarios/cyber_learning_loop/
-    model.scn, line 840, at ARCHIVE_SHA) with the prelude's `ratio` and `fraction`: the spread is the square root of
+    model.scn, line 840, at af5428b) with the prelude's `ratio` and `fraction`: the spread is the square root of
     two squared spreads, each a ratio."""
     units = library_units(empty_library())
     model = declared(

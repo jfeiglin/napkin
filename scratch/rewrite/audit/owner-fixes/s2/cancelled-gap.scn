@@ -1,3 +1,0 @@
-box:
-    a = formula(1000000000.00000005 h) scale 1 h
-    above = formula(this.a - 1000000000 h > 0 h)

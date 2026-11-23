@@ -1,3 +1,0 @@
-x = formula(2 * z)
-y = formula(x + z)
-dy_dz = y.diff(z)
