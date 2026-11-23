@@ -274,6 +274,9 @@ setting and stop by name in another.
 
 ## Speed
 
-[The solver speed plan](../scoping/solver-speed.md) holds the measurements of the solve library, the
-three speedups that change no answer (one `==` row for a stock at both bounds, LDL' by `qdldl`, fair
-sharing in parts), and the work that is deferred.
+[The solver speed plan](../scoping/solver-speed.md) holds the measurements of the solve library and
+the work that is deferred. It also tells the three speedups that change no answer:
+
+- one `==` row for a stock at both bounds;
+- LDL' by `qdldl` in the distance method;
+- fair sharing in parts.
