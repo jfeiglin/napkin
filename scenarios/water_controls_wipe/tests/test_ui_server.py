@@ -59,12 +59,8 @@ def test_a_frame_from_the_server_is_the_views_frame_of_the_same_run(served):
     status, body = get(port, f'/api/places/{key}/runs/{run}')
     assert status == 200
     record = napkin.run(model.program, model.configure(run))
-    assert json.loads(body) == view.frame(model, record, run)
-    status, body = get(port, f'/api/places/{key}/runs/{run}?hour=2.25')
-    assert status == 200
-    assert json.loads(body) == view.frame(model, record, run, 2.25)
-    for bad in ('-1', 'NaN', 'abc', '3000', '2&hour=3'):
-        assert get(port, f'/api/places/{key}/runs/{run}?hour={bad}')[0] == 400
+    assert json.loads(body) == json.loads(json.dumps(view.frame(model, record, run)))
+    assert get(port, f'/api/places/{key}/runs/{run}?hour=2')[0] == 400
 
 
 def test_it_refuses_what_it_does_not_serve(served):

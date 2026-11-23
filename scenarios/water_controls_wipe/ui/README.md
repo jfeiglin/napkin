@@ -1,29 +1,66 @@
-# Water service recovery dashboard
+# The live view of the water case
 
-Select a place on the map or from the menu, choose an authored response run, and view its modeled service history. The whole-area view shows residents with interrupted service or an advisory, the volume of unmet demand and cumulative hospital service constraints. The regional support runs also show dispatch workload, supplemental water delivered and the household emergency-water deficit. Selecting one utility shows its service share and cumulative delivered water.
+![Washington, DC under the delayed response: the reader opens the water systems and moves the time slider. The stored water goes down, the boil-water advisories start, and then the controls come back.](media/live-view.gif)
 
-The chart and playback use six-hour observations. Enter a fractional hour and choose **Read** for a direct measurement at that time. Every value is read from the same completed engine Record for that run. Units and the model revision travel with the readings. A simulation that stops produces its diagnostic. Historical publications at `8488047` describe the earlier scenario.
+The live view shows one run of one place of the water case. The page has three parts:
 
-![Standard response in Lumberton at hour 24](media/recovery-dashboard.png)
+- **The header** shows the place, the run and six totals of the run:
+  - the most people without normal water at one time;
+  - the time until all people have normal water again;
+  - the time until the last boil-water advisory ends;
+  - the person-days without normal water;
+  - the economic loss;
+  - the facility-hours with critical care short of water.
+- **The main area** shows the map of the 16 places or the water systems of the place. The view of the water
+  systems shows one row for each system. The row shows what its plants can make, what it buys and its
+  stored water. It also shows the mode of the system, its homes and its hospitals. The lines on the left
+  show the sales between the systems. The chart below shows the people without normal water and the
+  people under a boil-water advisory.
+- **The panel on the right** selects the place, the view and the response. The slider sets the time, and
+  **Play** moves the time through the story. The list shows the moments of the run, in the words of the
+  model.
 
-## Start the dashboard
+Each number and each word comes from the model of the place, from its evidence or from the record of the
+run. The page calculates nothing. The view does not change the model. To change an input, use the model
+and the edit tools of napkin.
 
-Use the repository's Python environment and Node.js 20 or later. From the checkout root, run
+## Start the live view
 
-```sh
-python -B -m scenarios.water_controls_wipe.ui setup
-python -B -m scenarios.water_controls_wipe.ui serve
-```
+You need the Python environment of the repository and Node.js 20 or later. Do these steps at the root of
+the checkout:
 
-Open [the local dashboard](http://localhost:8765/). The server binds to the local computer. `--port` changes its port. `--jobs` sets the maximum worker count. Each place's program compiles once per worker. Requests for response runs are evaluated on demand and may reuse the run store. Use `dev` for live frontend reloads or `test` to run the frontend unit tests.
+1. Install the packages of the page:
+
+   ```sh
+   python -B -m scenarios.water_controls_wipe.ui setup
+   ```
+
+2. Build the page if it changed, and start the server:
+
+   ```sh
+   python -B -m scenarios.water_controls_wipe.ui serve
+   ```
+
+3. Open [the live view](http://localhost:8765/).
+
+The server answers only on this computer. `--port` sets its port. `--jobs` sets the number of worker
+processes. Each worker compiles a place one time. The server calculates a run when the page asks for it.
+A run that the run store holds comes back immediately. A run that stops shows its failure message.
+
+Other commands:
+
+- `dev` serves the page with live reload.
+- `test` runs the unit tests of the page.
 
 ## Local API
 
 | GET route | Result |
-|---|---|
-| `/api/places` | Available service areas |
-| `/api/places/{place}` | Utility names, response options, horizon and program revision |
-| `/api/places/{place}/runs/{run}` | Readings at six-hour intervals and the exact horizon |
-| `/api/places/{place}/runs/{run}?hour=2.25` | Exact recorded values at 2.25 h |
+| --- | --- |
+| `/api/places` | The places, with their number of systems, people and hospitals |
+| `/api/places/{place}` | The systems, the sales between them, the hospitals, the runs and the words of the outputs |
+| `/api/places/{place}/runs/{run}` | The totals, the moments and the series of the run until its story ends |
 
-The early, standard and delayed named responses share the same incident scope for each place. This read-only interface evaluates those configurations. Use Napkin’s model and edit tools for new recovery inputs.
+The story of a run ends when the service, the advisories and the controls of each system are stable. The
+series stop at that time, and the totals are the values at the horizon. The state "Before the attack"
+is not in the record: the view shows the values that the model declares at the start, with full stores
+and the normal use.
