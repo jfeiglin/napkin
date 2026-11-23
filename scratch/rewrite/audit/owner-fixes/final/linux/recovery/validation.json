@@ -1,0 +1,44 @@
+{
+  "control_matches_xdist": true,
+  "named_nodes": 7,
+  "phase_records": 20,
+  "outcomes": {
+    "test_fail": [
+      "failed",
+      1
+    ],
+    "test_pass": [
+      "passed",
+      1
+    ],
+    "test_setup": [
+      "failed",
+      1
+    ],
+    "test_skip": [
+      "skipped",
+      1
+    ],
+    "test_teardown": [
+      "failed",
+      1
+    ],
+    "test_xfail": [
+      "xfailed",
+      1
+    ],
+    "test_xpass": [
+      "xpassed",
+      1
+    ]
+  },
+  "duplicate_properties_preserved": true,
+  "existing_ledger_refused": true,
+  "controller_SIGTERM_exit": -15,
+  "durable_after_SIGTERM": {
+    "test_interrupted.py::test_done": "passed",
+    "test_interrupted.py::test_red": "failed"
+  },
+  "unfinished_nodes_identified": 1,
+  "integrity_check_after_SIGTERM": "ok"
+}
