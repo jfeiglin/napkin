@@ -4,7 +4,7 @@ Water service, stored supplies and restoration work in Cape May County, New Jers
 
 The people that the water systems of Cape May County, New Jersey serve, the hospitals that those systems supply and the businesses that need public water there.
 
-Model revision `24763edeb99dd481be89d5d0629341a7781a11903b6d081915c5cba6793c91fa`. Readings are instantaneous, without reporting lags. All times are in hours.
+Model revision `282698360f44cd5d304e3a6fac4fb533151b4f5a5d2534fbbb00bcb3b3c92bca`. Readings are instantaneous, without reporting lags. All times are in hours.
 
 ## early
 

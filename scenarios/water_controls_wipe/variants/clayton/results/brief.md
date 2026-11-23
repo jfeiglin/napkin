@@ -44,7 +44,7 @@ Readings at 2160 h. [Run readings and evidence](readings.md).
 | people_interrupted_now | people | 0 | 0 | 0 | — |
 | people_under_advisory | people | 0 | 0 | 0 | — |
 | restored_share | fraction | 1 | 1 | 0 | 0 |
-| emergency_water_deficit | Mgal | 0.0124322 | 0.0124323 | 0 | 0 |
+| emergency_water_deficit | Mgal | 0.0124323 | 0.0124323 | 0 | 0 |
 | hospital_hours_constrained | facility_hours | 0 | 0 | 0 | — |
 | work_remaining | work_h | 0 | 0 | 0 | — |
 | people_followed | people | 298374 | 298374 | 0 | 0 |
@@ -69,7 +69,7 @@ Readings at 2160 h. [Run readings and evidence](readings.md).
 | people_interrupted_now | people | 0 | 0 | 0 | — |
 | people_under_advisory | people | 0 | 0 | 0 | — |
 | restored_share | fraction | 1 | 1 | 0 | 0 |
-| emergency_water_deficit | Mgal | 0.0124322 | 0.0124323 | 0 | 0 |
+| emergency_water_deficit | Mgal | 0.0124323 | 0.0124323 | 0 | 0 |
 | hospital_hours_constrained | facility_hours | 0 | 0 | 0 | — |
 | work_remaining | work_h | 0 | 0 | 0 | — |
 | people_followed | people | 298374 | 298374 | 0 | 0 |

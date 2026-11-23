@@ -4,7 +4,7 @@ Water service, stored supplies and restoration work in Auburn, Washington after 
 
 The people that the water system of Auburn, Washington serves, the hospitals that it supplies and the businesses that need public water there.
 
-Model revision `73e86ec37883a4d77dda4a3c8a16d978e0c763280a7cf11546300b9d80ac88d1`. Readings are instantaneous, without reporting lags. All times are in hours.
+Model revision `2aefe7745e47de8ec0377bc6b9c63bd600be328f7d535d15cf35e5c36a4235a3`. Readings are instantaneous, without reporting lags. All times are in hours.
 
 ## early
 

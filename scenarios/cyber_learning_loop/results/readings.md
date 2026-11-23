@@ -284,7 +284,7 @@ Model revision `ea1c53d1cfaad7a008e26781a25f2348029181d5c6301d090cc69521434bbc47
 | analysts.available | 219000 | 2692.6 | people*years/ratio/year | adoption_path, shared_capacity, pool_accounts, defensive_capacity, dispersion_basis, review_work, hardening_basis, remediation_basis, national_staff, learning_basis, defensive_uptake, observation, spread_basis |
 | analysts.defensive_share | 219000 | 0.1 | 1/ratio | adoption_path, defensive_capacity, hardening_basis, remediation_basis, defensive_uptake, observation |
 | surveillance_program.staff | 219000 | 37008.5 | people*fraction | review_allocation, national_staff, mission_accounts |
-| effects_program.staff | 219000 | 3526.54 | people*fraction | mission_accounts, review_allocation, national_staff, surge_budget |
+| effects_program.staff | 219000 | 3526.55 | people*fraction | mission_accounts, review_allocation, national_staff, surge_budget |
 | surveillance_program.capacity | 219000 | 2507.3 | people*years/year/fraction/fraction | adoption_path, shared_capacity, pool_accounts, defensive_capacity, dispersion_basis, review_work, hardening_basis, remediation_basis, mission_accounts, review_allocation, national_staff, surge_budget, learning_basis, defensive_uptake, observation, spread_basis |
 | effects_program.capacity | 219000 | 238.922 | people*years/year/fraction/fraction | adoption_path, shared_capacity, pool_accounts, defensive_capacity, dispersion_basis, review_work, hardening_basis, remediation_basis, mission_accounts, review_allocation, national_staff, surge_budget, learning_basis, defensive_uptake, observation, spread_basis |
 | learning.retained | 219000 | 0.199172 | ratio | review_allocation, learning_basis |
