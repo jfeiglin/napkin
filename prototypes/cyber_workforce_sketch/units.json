@@ -1,0 +1,45 @@
+{
+  "labor_h": {
+    "dimensions": {
+      "people": 1,
+      "time": 1
+    },
+    "scale": 1,
+    "description": "One person-hour of available or expended labor."
+  },
+  "operation": {
+    "dimensions": {
+      "operation": 1
+    },
+    "scale": 1,
+    "description": "One expected operation in a mission-level account."
+  },
+  "asset": {
+    "dimensions": {
+      "asset": 1
+    },
+    "scale": 1,
+    "description": "One active collection asset in the aggregate register."
+  },
+  "material": {
+    "dimensions": {
+      "material": 1
+    },
+    "scale": 1,
+    "description": "One illustrative unit of collected material."
+  },
+  "capability": {
+    "dimensions": {
+      "capability": 1
+    },
+    "scale": 1,
+    "description": "One distinct capability in an inventory."
+  },
+  "practice": {
+    "dimensions": {
+      "practice": 1
+    },
+    "scale": 1,
+    "description": "One unit of retained task-specific practice."
+  }
+}

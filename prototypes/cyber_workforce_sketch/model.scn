@@ -1,0 +1,459 @@
+scenario "CNE and CNA workforce and pipeline accounts — illustrative sketch"
+    summary "How do task productivity, retained practice and finite hours change aggregate work and queues?"
+    horizon 25 years
+    resolution 90 days
+    scope "Two national mission accounts. All workload, effort, capacity and timing assumptions are illustrative."
+
+# Read the file in order: workforce, inventory, operational states, then the
+# quarterly close and external demand. Every cne_* and cna_* state below is a
+# different entity. Stocks of operations, assets and material have separate units.
+# Work and learning multipliers can be set independently on each staffed task.
+sketch:
+    # Leave both off until the basis of practice is chosen. Turn either on to explore it.
+    input practice_from_hours = false @illustration
+    input practice_from_output = false @illustration
+    assert not (this.practice_from_hours and this.practice_from_output) @accounting
+
+WorkforcePool:
+    input yearly_hours = 1000 labor_h in [0 labor_h,] @illustration
+    hours: labor_h = 0 labor_h in [0 labor_h,] @accounting
+    expired_hours: labor_h = 0 labor_h @accounting
+    issued_hours: labor_h = 0 labor_h @accounting
+    spent_hours = formula(this.issued_hours - this.expired_hours - this.hours) @accounting
+    issue_budget = event(): @illustration
+        when t >= 0 h:
+            this.issue_budget.start()
+            reset after 1 year
+        after 0 h:
+            # Close the previous account. Only task spending earns output.
+            this.expired_hours += this.hours
+            this.hours = 0 labor_h
+            if t < 25 years:
+                this.hours = this.yearly_hours
+                this.issued_hours += this.yearly_hours
+
+workforce_rd: WorkforcePool
+    yearly_hours = 1000 labor_h @illustration
+workforce_operators: WorkforcePool
+    yearly_hours = 600 labor_h @illustration
+workforce_collection: WorkforcePool
+    yearly_hours = 360 labor_h @illustration
+workforce_analysts: WorkforcePool
+    yearly_hours = 600 labor_h @illustration
+
+# Each inventory counts distinct capabilities. The CNA classification has two
+# internal buckets so a release can preserve an existing CNE dependency.
+CapabilityPool:
+    permitted_use: enum[SHARED, CNE_ONLY, CNA_ONLY] = SHARED
+    input opening_balance = 4 capability in [0 capability,] @illustration
+    on_shelf: capability = this.opening_balance in [0 capability,] @accounting
+    in_cne_use: capability = 0 capability in [0 capability,] @accounting
+    cna_only: capability = 0 capability in [0 capability,] @accounting
+    under_both: capability = 0 capability in [0 capability,] @accounting
+    burned: capability = 0 capability in [0 capability,] @accounting
+    in_cna_use = formula(this.cna_only + this.under_both) @accounting
+    stock_total = formula(this.on_shelf + this.in_cne_use + this.in_cna_use + this.burned) @accounting
+
+    # Estimate service available to each mission as a rate. A shared unit
+    # supplies one unit of capacity in total. Its fixed split is a scenario
+    # assumption. Exclusive commitments stay with their mission until release.
+    input service_per_unit = 1 operation/capability/year in [0 operation/capability/year,] @illustration
+    input shared_cne_fraction = 0.5 fraction in [0, 1] @illustration
+    assignable = formula(this.on_shelf + this.under_both)
+    cne_fraction = formula(1 if this.permitted_use == CNE_ONLY else 0 if this.permitted_use == CNA_ONLY else this.shared_cne_fraction)
+    cne_capacity = formula((this.in_cne_use + this.assignable * this.cne_fraction) * this.service_per_unit)
+    cna_capacity = formula((this.cna_only + this.assignable * (1 - this.cne_fraction)) * this.service_per_unit)
+
+    # Producing one inventory family is one task. Its practice and uplift are local.
+    input rd_allocation = 4 labor_h/week in [0 labor_h/week,] @illustration
+    input base_yield = 0.05 capability/labor_h in [0 capability/labor_h,] @illustration
+    input ai_work = 1 ratio in [0,] @illustration
+    input ai_learning = 1 ratio in [0,] @illustration
+    input half_life = 1 year in [1 h,] @illustration
+    input hour_practice = 0.1 practice/labor_h in [0 practice/labor_h,] @illustration
+    input output_practice = 1 practice/capability in [0 practice/capability,] @illustration
+    # Nonnegative inflow and proportional decay keep this stock nonnegative.
+    knowledge: practice = 0 practice @accounting
+    knowledge_factor = formula(1 + this.knowledge / (5 practice + this.knowledge)) @illustration
+    full_output = formula(this.rd_allocation * this.base_yield * this.ai_work * this.knowledge_factor) @accounting
+    practice_rate = formula(this.rd_allocation * this.hour_practice if sketch.practice_from_hours else this.full_output * this.output_practice if sketch.practice_from_output else 0 practice/h) @illustration
+    flow forget: this.knowledge -> SINK @accounting
+        request = formula(ln(2) * this.knowledge / this.half_life)
+    produce = event(): @accounting
+        # A single served fraction ties actual labor, output, and practice together.
+        flow production:
+            flow labor: workforce_rd.hours -> SINK
+                request = formula(this.rd_allocation)
+            flow inventory: SOURCE -> this.on_shelf
+                request = formula(this.full_output)
+            flow learning: SOURCE -> this.knowledge
+                request = formula(this.practice_rate * this.ai_learning)
+        after 25 years
+
+    # External aggregate observations use the number whose first/last use by
+    # the named mission changed. Eligibility errors remain visible in rejected.
+    rejected: capability = 0 capability in [0 capability,] @accounting
+    record_first_use = event(mission: enum[CNE, CNA], other_active: bool, amount: capability in [0 capability,]): @accounting
+        after 0 h:
+            if (mission == CNE and this.permitted_use == CNA_ONLY) or (mission == CNA and this.permitted_use == CNE_ONLY) or (other_active and this.permitted_use != SHARED):
+                this.rejected += amount
+            else:
+                switch mission:
+                    CNE:
+                        if other_active:
+                            move amount from this.cna_only to this.under_both
+                        else:
+                            move amount from this.on_shelf to this.in_cne_use
+                    CNA:
+                        if other_active:
+                            move amount from this.in_cne_use to this.under_both
+                        else:
+                            move amount from this.on_shelf to this.cna_only
+
+    record_last_use = event(mission: enum[CNE, CNA], other_active: bool, amount: capability in [0 capability,]): @accounting
+        after 0 h:
+            switch mission:
+                CNE:
+                    if other_active:
+                        move amount from this.under_both to this.cna_only
+                    else:
+                        move amount from this.in_cne_use to this.on_shelf
+                CNA:
+                    if other_active:
+                        move amount from this.under_both to this.in_cne_use
+                    else:
+                        move amount from this.cna_only to this.on_shelf
+
+    # The report supplies the number of active CNE assets that lost their
+    # dependency. Distinct capabilities and affected assets use different units.
+    record_burn = event(previous: enum[SHELF, CNE, CNA, BOTH], amount: capability in [0 capability,], affected_assets: asset in [0 asset,]): @accounting
+        after 0 h:
+            if affected_assets > 0 asset and (amount == 0 capability or (previous != CNE and previous != BOTH)):
+                this.rejected += amount
+            else:
+                switch previous:
+                    SHELF:
+                        move amount from this.on_shelf to this.burned
+                    CNE:
+                        move amount from this.in_cne_use to this.burned
+                    CNA:
+                        move amount from this.cna_only to this.burned
+                    BOTH:
+                        move amount from this.under_both to this.burned
+                move affected_assets from cne_collection_active.assets to cne_collection_active.lost_to_burn
+
+initial_access_pool: CapabilityPool
+lateral_movement_pool: CapabilityPool
+collection_pool: CapabilityPool
+    permitted_use = CNE_ONLY
+effects_pool: CapabilityPool
+    permitted_use = CNA_ONLY
+
+initial_access_pool.produce.start()
+lateral_movement_pool.produce.start()
+collection_pool.produce.start()
+effects_pool.produce.start()
+
+# Every mission state has its own queue and task parameters. Expected work
+# accrues throughout the quarter. The close posts the measured quantity to
+# the next account. An unfinished case stays in its existing queue.
+OperationalState:
+    operations: operation = 0 operation in [0 operation,] @illustration
+    pending_post: operation = 0 operation in [0 operation,] @accounting
+    posted_total: operation = 0 operation @accounting
+    input staffing = 60 labor_h/year in [0 labor_h/year,] @illustration
+    input baseline_yield = 0.1 operation/labor_h in [0 operation/labor_h,] @illustration
+    input handling_time = 1 month in [1 h,] @illustration
+    input ai_work = 1 ratio in [0,] @illustration
+    input ai_learning = 1 ratio in [0,] @illustration
+    input half_life = 2 years in [1 h,] @illustration
+    knowledge: practice = 1 practice @illustration
+    knowledge_factor = formula(1 + this.knowledge / (5 practice + this.knowledge)) @illustration
+    yield_per_hour = formula(this.baseline_yield * this.ai_work * this.knowledge_factor)
+    resource_capacity: formula(operation/year) = formula(0 operation/year)
+    full_output = formula(min(this.operations / this.handling_time, min(this.staffing * this.yield_per_hour, this.resource_capacity)))
+    labor_claim = formula(this.full_output / this.yield_per_hour if this.yield_per_hour > 0 else 0 labor_h/year)
+    practice_rate = formula(this.labor_claim * (0.01 practice/labor_h) if sketch.practice_from_hours else this.full_output * (0.1 practice/operation) if sketch.practice_from_output else 0 practice/year)
+    flow forget: this.knowledge -> SINK @accounting
+        request = formula(ln(2) * this.knowledge / this.half_life)
+
+    accrue_work = event(): @accounting
+        # Finite operator hours can reduce the actual amount below the claim.
+        # Labor, completed work and practice are served at the same fraction.
+        flow work:
+            flow hours: workforce_operators.hours -> SINK
+                request = formula(this.labor_claim)
+            flow completions: this.operations -> this.pending_post
+                request = formula(this.full_output)
+            flow learning: SOURCE -> this.knowledge
+                request = formula(this.practice_rate * this.ai_learning)
+        after 25 years
+
+    post = event(destination: OperationalState): @accounting
+        after 0 h:
+            this.posted_total += this.pending_post
+            move this.pending_post from this.pending_post to destination.operations
+
+# A planning queue has its own task event on each instance. Analyst hours are
+# the primary input; a fixed share of operator time is charged for staff review.
+# Each task uses one coupled flow so every leg shares the same served fraction.
+PlanningOperationalState:
+    operations: operation = 0 operation in [0 operation,] @illustration
+    destination: OperationalState
+    input operator_hours_per_analyst_hour = 0.2 ratio in [0,] @illustration
+    input hours_requested = 0 labor_h/year in [0 labor_h/year,] @illustration
+    input baseline_yield = 0.1 operation/labor_h in [0 operation/labor_h,] @illustration
+    input ai_work = 1 ratio in [0,] @illustration
+    input ai_learning = 1 ratio in [0,] @illustration
+    input half_life = 2 years in [1 h,] @illustration
+    knowledge: practice = 1 practice @illustration
+    knowledge_factor = formula(1 + this.knowledge / (5 practice + this.knowledge)) @illustration
+    # A small queue still takes time to handle. Restrict actual work to the
+    # backlog that can be processed this period and to its staffing allowance.
+    input handling_time = 1 month in [1 h,] @illustration
+    yield_per_hour = formula(this.baseline_yield * this.ai_work * this.knowledge_factor)
+    claim = formula(min(this.hours_requested, this.operations / (this.handling_time * this.yield_per_hour)) if this.yield_per_hour > 0 else 0 labor_h/year)
+    full_output = formula(this.claim * this.yield_per_hour)
+    practice_rate = formula(this.claim * (0.01 practice/labor_h) if sketch.practice_from_hours else this.full_output * (0.1 practice/operation) if sketch.practice_from_output else 0 practice/year)
+    flow forget: this.knowledge -> SINK @accounting
+        request = formula(ln(2) * this.knowledge / this.half_life)
+
+    # The same fraction of every leg is served. Empty queues or exhausted
+    # hours reduce labor used, case transfers and credited learning together.
+    plan = event(): @accounting
+        flow activity:
+            flow labor: workforce_analysts.hours -> SINK
+                request = formula(this.claim)
+            flow operator_review: workforce_operators.hours -> SINK
+                request = formula(this.claim * this.operator_hours_per_analyst_hour)
+            flow completed: this.operations -> this.destination.operations
+                request = formula(this.full_output)
+            flow learn: SOURCE -> this.knowledge
+                request = formula(this.practice_rate * this.ai_learning)
+        after 25 years
+
+# CNE operational states. Each queue draws on its own share of staff time
+# and the mission capacity of the appropriate resource family.
+cne_proposed: PlanningOperationalState
+    destination = cne_planned
+    title "CNE operations proposed — planning queue"
+    operations = 30 operation @illustration
+    hours_requested = 90 labor_h/year @illustration
+    baseline_yield = 0.12 operation/labor_h @illustration
+cne_planned: OperationalState
+    staffing = 85 labor_h/year @illustration
+    resource_capacity = formula(initial_access_pool.cne_capacity)
+    title "CNE operations planned"
+    operations = 14 operation @illustration
+cne_access_established: OperationalState
+    staffing = 65 labor_h/year @illustration
+    resource_capacity = formula(lateral_movement_pool.cne_capacity)
+    title "CNE operations with access established"
+    operations = 8 operation @illustration
+cne_positioned: OperationalState
+    staffing = 45 labor_h/year @illustration
+    resource_capacity = formula(collection_pool.cne_capacity)
+    title "CNE operations positioned for collection"
+    operations = 5 operation @illustration
+cne_proposed.plan.start()
+
+# These two OperationalState entities use stocks of assets and material.
+# Their different units and task events require concrete declarations.
+cne_collection_active:
+    assets: asset = 4 asset in [0 asset,] @illustration
+    setup_completed: operation = 0 operation @accounting
+    retired_assets: asset = 0 asset @accounting
+    lost_to_burn: asset = 0 asset @accounting
+    input assets_per_setup = 1 asset/operation in [0 asset/operation,] @illustration
+    post_setups = event(): @accounting
+        after 0 h:
+            this.assets += cne_positioned.pending_post * this.assets_per_setup
+            cne_positioned.posted_total += cne_positioned.pending_post
+            move cne_positioned.pending_post from cne_positioned.pending_post to this.setup_completed
+    record_retirement = event(reported: asset in [0 asset,]): @accounting
+        after 0 h:
+            move min(reported, this.assets) from this.assets to this.retired_assets
+    input hours_requested = 120 labor_h/year in [0 labor_h/year,] @illustration
+    input baseline_yield = 0.4 material/labor_h in [0 material/labor_h,] @illustration
+    input ai_work = 1 ratio in [0,] @illustration
+    input ai_learning = 1 ratio in [0,] @illustration
+    input half_life = 2 years in [1 h,] @illustration
+    knowledge: practice = 1 practice @illustration
+    knowledge_factor = formula(1 + this.knowledge / (5 practice + this.knowledge)) @illustration
+    claim = formula(min(this.hours_requested, this.assets * (18 labor_h/asset/year)))
+    full_output = formula(this.claim * this.baseline_yield * this.ai_work * this.knowledge_factor)
+    practice_rate = formula(this.claim * (0.01 practice/labor_h) if sketch.practice_from_hours else this.full_output * (0.1 practice/material) if sketch.practice_from_output else 0 practice/year)
+    flow forget: this.knowledge -> SINK @accounting
+        request = formula(ln(2) * this.knowledge / this.half_life)
+    collect_material = event(): @accounting
+        flow activity:
+            flow labor: workforce_collection.hours -> SINK
+                request = formula(this.claim)
+            flow completed: SOURCE -> cne_material_waiting.material_waiting
+                request = formula(this.full_output)
+            flow learn: SOURCE -> this.knowledge
+                request = formula(this.practice_rate * this.ai_learning)
+        after 25 years
+
+cne_material_waiting:
+    material_waiting: material = 20 material in [0 material,] @illustration
+    input hours_requested = 150 labor_h/year in [0 labor_h/year,] @illustration
+    input baseline_yield = 0.22 material/labor_h in [0 material/labor_h,] @illustration
+    input ai_work = 1 ratio in [0,] @illustration
+    input ai_learning = 1 ratio in [0,] @illustration
+    input half_life = 2 years in [1 h,] @illustration
+    knowledge: practice = 1 practice @illustration
+    knowledge_factor = formula(1 + this.knowledge / (5 practice + this.knowledge)) @illustration
+    # A small queue still takes time to handle. Restrict actual work to the
+    # backlog that can be processed this period and to its staffing allowance.
+    input handling_time = 1 month in [1 h,] @illustration
+    yield_per_hour = formula(this.baseline_yield * this.ai_work * this.knowledge_factor)
+    claim = formula(min(this.hours_requested, this.material_waiting / (this.handling_time * this.yield_per_hour)) if this.yield_per_hour > 0 else 0 labor_h/year)
+    full_output = formula(this.claim * this.yield_per_hour)
+    practice_rate = formula(this.claim * (0.01 practice/labor_h) if sketch.practice_from_hours else this.full_output * (0.1 practice/material) if sketch.practice_from_output else 0 practice/year)
+    flow forget: this.knowledge -> SINK @accounting
+        request = formula(ln(2) * this.knowledge / this.half_life)
+    process_material = event(): @accounting
+        flow activity:
+            flow labor: workforce_collection.hours -> SINK
+                request = formula(this.claim)
+            flow completed: this.material_waiting -> cne_intelligence_processed.material_processed
+                request = formula(this.full_output)
+            flow learn: SOURCE -> this.knowledge
+                request = formula(this.practice_rate * this.ai_learning)
+        after 25 years
+
+cne_intelligence_processed:
+    material_processed: material = 0 material in [0 material,] @accounting
+
+cne_collection_active.collect_material.start()
+cne_material_waiting.process_material.start()
+
+# CNA operational states. These are different instances from the CNE ones,
+# including where the mission labels look alike. The ready register can hold
+# operations over several reporting periods. Assessment is a staffed queue.
+cna_proposed: PlanningOperationalState
+    destination = cna_planned
+    operator_hours_per_analyst_hour = 0.35 ratio @illustration
+    title "CNA operations proposed — planning queue"
+    operations = 16 operation @illustration
+    hours_requested = 65 labor_h/year @illustration
+    baseline_yield = 0.10 operation/labor_h @illustration
+cna_planned: OperationalState
+    staffing = 65 labor_h/year @illustration
+    resource_capacity = formula(initial_access_pool.cna_capacity)
+    title "CNA operations planned"
+    operations = 7 operation @illustration
+cna_access_established: OperationalState
+    staffing = 55 labor_h/year @illustration
+    resource_capacity = formula(lateral_movement_pool.cna_capacity)
+    title "CNA operations with access established"
+    operations = 5 operation @illustration
+cna_positioned: OperationalState
+    staffing = 45 labor_h/year @illustration
+    resource_capacity = formula(effects_pool.cna_capacity * (1 - external.ready_capacity_share))
+    title "CNA operations positioned"
+    operations = 3 operation @illustration
+cna_ready: OperationalState
+    staffing = 35 labor_h/year @illustration
+    resource_capacity = formula(min(effects_pool.cna_capacity * external.ready_capacity_share, external.opportunities))
+    title "CNA operations ready for use"
+    operations = 9 operation @illustration
+cna_awaiting_assessment:
+    title "CNA operations used and awaiting assessment"
+    operations: operation = 12 operation in [0 operation,] @illustration
+    post_used = event(): @accounting
+        after 0 h:
+            cna_ready.posted_total += cna_ready.pending_post
+            move cna_ready.pending_post from cna_ready.pending_post to this.operations
+    input hours_requested = 85 labor_h/year in [0 labor_h/year,] @illustration
+    input baseline_yield = 0.06 operation/labor_h in [0 operation/labor_h,] @illustration
+    input ai_work = 1 ratio in [0,] @illustration
+    input ai_learning = 1 ratio in [0,] @illustration
+    input half_life = 2 years in [1 h,] @illustration
+    knowledge: practice = 1 practice @illustration
+    knowledge_factor = formula(1 + this.knowledge / (5 practice + this.knowledge)) @illustration
+    # A small queue still takes time to handle. Restrict actual work to the
+    # backlog that can be processed this period and to its staffing allowance.
+    input handling_time = 1 month in [1 h,] @illustration
+    yield_per_hour = formula(this.baseline_yield * this.ai_work * this.knowledge_factor)
+    claim = formula(min(this.hours_requested, this.operations / (this.handling_time * this.yield_per_hour)) if this.yield_per_hour > 0 else 0 labor_h/year)
+    full_output = formula(this.claim * this.yield_per_hour)
+    practice_rate = formula(this.claim * (0.01 practice/labor_h) if sketch.practice_from_hours else this.full_output * (0.1 practice/operation) if sketch.practice_from_output else 0 practice/year)
+    flow forget: this.knowledge -> SINK @accounting
+        request = formula(ln(2) * this.knowledge / this.half_life)
+    assess = event(): @accounting
+        flow activity:
+            flow labor: workforce_analysts.hours -> SINK
+                request = formula(this.claim)
+            flow completed: this.operations -> cna_assessed.operations
+                request = formula(this.full_output)
+            flow learn: SOURCE -> this.knowledge
+                request = formula(this.practice_rate * this.ai_learning)
+        after 25 years
+
+cna_assessed:
+    title "CNA operations assessed"
+    operations: operation = 0 operation in [0 operation,] @accounting
+
+cna_proposed.plan.start()
+cna_awaiting_assessment.assess.start()
+
+# All seven state tasks accrue expected work under the same fixed budget
+# policy. The engine allocates the actual operator hours among these tasks
+# and the operator share of planning. There is no fixed number of completions.
+OperationalState.instances.accrue_work.start()
+
+# Incoming proposals, asset retirement and use opportunities are external.
+# Opportunities bound the ready queue independently of available labor.
+external:
+    input cne_intake = 10 operation in [0 operation,] @illustration
+    input cna_intake = 8 operation in [0 operation,] @illustration
+    input cne_retirements = 2 asset in [0 asset,] @illustration
+    input opportunities = 8 operation/year in [0 operation/year,] @illustration
+    input ready_capacity_share = 0.25 fraction in [0, 1] @illustration
+    annual_demand = event(): @illustration
+        when t >= 1 year:
+            this.annual_demand.start()
+            reset after 1 year
+        after 0 h:
+            cne_proposed.operations += this.cne_intake
+            cna_proposed.operations += this.cna_intake
+            cne_collection_active.record_retirement.start(this.cne_retirements)
+
+accounts:
+    close_quarter = event(): @accounting
+        when t >= 3 months:
+            this.close_quarter.start()
+            reset after 3 months
+        after 0 h:
+            cne_planned.post.start(cne_access_established)
+            cne_access_established.post.start(cne_positioned)
+            cne_collection_active.post_setups.start()
+            cna_planned.post.start(cna_access_established)
+            cna_access_established.post.start(cna_positioned)
+            cna_positioned.post.start(cna_ready)
+            cna_awaiting_assessment.post_used.start()
+
+# Four aggregate observations: CNE use, shared use, clean release by CNA,
+# and a reported burn that affects two remaining CNE assets.
+inventory_example:
+    observations = event(): @illustration
+        sample_exists: bool = false
+        after 1 month:
+            sample_exists = initial_access_pool.on_shelf >= 1 capability
+            if sample_exists:
+                initial_access_pool.record_first_use.start(CNE, false, 1 capability)
+        after 1 month:
+            if sample_exists:
+                initial_access_pool.record_first_use.start(CNA, true, 1 capability)
+        after 1 month:
+            if sample_exists:
+                initial_access_pool.record_last_use.start(CNA, true, 1 capability)
+        after 1 month:
+            if sample_exists:
+                initial_access_pool.record_burn.start(CNE, 1 capability, min(2 asset, cne_collection_active.assets))
+inventory_example.observations.start()
+
+record illustration: assumption "Illustrative opening balances, rates, multipliers, timing and synthetic reports."
+record accounting: identity "A transfer debits and credits the same quantity. Work and practice use actual labor."
