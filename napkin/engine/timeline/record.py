@@ -132,6 +132,25 @@ FAILURES = (ExpressionError, ArithmeticError, ValueError, LookupError, Simulatio
 
 _piece_time = attrgetter('t')
 
+
+def _formula_reads(node):
+    return sorted(set(nodes.names(node)) - {'t'})
+
+
+def _restart_point(start, since, histories, reads, anchors=()):
+    """The last boundary of the formula's own grid at or before the earliest change."""
+    if since <= start:
+        return start
+    boundary = max((at for at in anchors if start <= at <= since), default=start)
+    for name in reads:
+        history = histories.get(name)
+        if history is not None:
+            i = bisect_right(history.pieces, since, key=_piece_time)
+            if i:
+                boundary = max(boundary, history.pieces[i - 1].t)
+    return boundary
+
+
 DEGREE = 8
 # The points of a fit on [-1, 1], and the points between them at which a fit is checked, with the
 # start of the piece. The end of a piece is the start of the next, whose value can jump there.
@@ -863,17 +882,7 @@ class Recorder:
                 value.key, found if start == 0 else tuple(p for p in found if p.t >= start) or found
             )
         elif owner is None and name not in run.frozen:
-            # The prefix before the changed input is already committed. Refresh only the
-            # open interval; a pause and its continuation use the same incoming polynomial.
-            pieces = self.formula(name, histories, end, start=max(since, start))
-            prior = self._histories.get(name)
-            kept = [] if prior is None else prior.pieces
-            if self._private is not None and name not in self._private:
-                kept = list(kept)
-                self._private.add(name)
-            del kept[bisect_left(kept, since, key=_piece_time) :]
-            self._extend(kept, pieces)
-            return History(value.key, kept)
+            return self._formula_tail(name, end, start, since)
         else:
             pieces = self.formula(name, histories, end, start=start)
         if name in run.frozen or (owner is not None and value.kind == RATE):
@@ -885,6 +894,23 @@ class Recorder:
                 final = run.frozen.get(name, 0.0)
                 pieces = [piece for piece in pieces if piece[0] < finish] + [(finish, final, 0.0)]
         return self._history(value.key, pieces)
+
+    def _formula_tail(self, name, end, start, since, *, reads=None, point=None, anchors=None):
+        """Keep the prefix preceding the restart boundary and replace the remainder."""
+        value = self.plan.values[name]
+        inputs = _formula_reads(value.node) if reads is None else reads
+        boundary = _restart_point(start, since, self._histories, inputs, anchors or ())
+        pieces = self.formula(
+            name, self._histories, end, reads=reads, start=boundary, point=point, anchors=anchors
+        )
+        prior = self._histories.get(name)
+        kept = [] if prior is None else prior.pieces
+        if self._private is not None and name not in self._private:
+            kept = list(kept)
+            self._private.add(name)
+        del kept[bisect_left(kept, boundary, key=_piece_time) :]
+        self._extend(kept, pieces)
+        return History(value.key, kept)
 
     def record(self, end, failure=None, pause=None, *, ongoing=False):
         """The run's committed histories and trace up to the stop or horizon."""
@@ -1074,7 +1100,7 @@ class Recorder:
         if timed is None:
             timed = compute is None and point is None and 't' in nodes.names(node)
         if reads is None:
-            reads = sorted(set(nodes.names(node)) - {'t'})
+            reads = _formula_reads(node)
         reads = [read for read in reads if read in histories]
         authored = compute is None and point is None
         layers = None  # built only if a numeric authored expression actually moves
