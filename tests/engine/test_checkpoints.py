@@ -417,12 +417,12 @@ def bounds_of(made):
 
 @pytest.mark.parametrize(
     ('numerics', 'expect_contact'),
-    [(Numerics(), False), (Numerics(rtol=1e-9, atol_factor=1e-10), True)],
-    ids=['default-band-entry', 'tight-physical-contact'],
+    [(Numerics(rtol=1e-7, atol_factor=1e-8), False), (Numerics(), True)],
+    ids=['wide-band-entry', 'default-physical-contact'],
 )
 def test_a_component_that_rests_on_its_bound_at_a_stop_is_restored_on_it(tmp_path, numerics, expect_contact):
     """The stopped tank has the same active bound after restore. Both stages see a zero drain.
-    At the default tolerance the trigger fires on band entry. At the tight setting the solver
+    At the wider tolerance the trigger fires on band entry. At the default setting the solver
     reaches the physical bound first."""
     case = emptying()
     configuration = replace(case.configuration, numerics=numerics)

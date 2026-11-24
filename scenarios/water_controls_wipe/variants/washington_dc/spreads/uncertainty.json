@@ -1,6 +1,6 @@
 {
   "schema_version": "0.0.1",
-  "model_hash": "a9c12f5d9fed92c86260ccfa1b2a568e6e5e49424c6d8eec21e10ac647421fa1",
+  "model_hash": "8e0d7d97dc060bc124ddecb01c6429aaa539f292512331b78beadebae47fb148",
   "set": {
     "uncertainty.enabled": true,
     "uncertainty.controls_capacity": "pert(20 work_h/h, 40 work_h/h, 80 work_h/h)",

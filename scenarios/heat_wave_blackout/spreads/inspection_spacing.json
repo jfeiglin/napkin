@@ -1,6 +1,6 @@
 {
   "schema_version": "0.0.1",
-  "model_hash": "b4c49d653555ee8dc1aae224a34881d1c5beb07d3f7f3fd09bd9e6f9c5d415b5",
+  "model_hash": "cee3575356ec75a1c9216f91ceddfbbfc64ec55abb2b24900577850263c382f8",
   "set": {
     "incident.sample_reports": true,
     "incident.interval_range": "pert(2 h, 4 h, 6 h)",

@@ -26,8 +26,8 @@ Two numeric operands `a` and `b` compare equal when their difference is inside t
 max(rtol, atol_factor) × max(scale, |a|, |b|)
 ```
 
-- The default value of `rtol` is 1e-7. The default value of `atol_factor` is 1e-8.
-  The larger value, 1e-7, sets the comparison factor.
+- The default value of `rtol` is 1e-9. The default value of `atol_factor` is 1e-10.
+  The larger value, 1e-9, sets the comparison factor.
 - `scale` is the floor of the comparison, in the unit of the operands. The engine compares both
   operands and their floor in the canonical unit of their dimension.
 - A quantity gives its declared `scale` as its floor. A quantity with no `scale` gives the size of
@@ -50,22 +50,22 @@ record fixture: assumption "A fixture."
 wait: h = 0 h  @fixture
 fine: h = 0 h scale 0.001 h  @fixture
 long: day = 0 day  @fixture
-below = formula(wait < 0.0000001 h)
-fine_below = formula(fine < 0.0000001 h)
-long_below = formula(long < 0.000001 h)
-wait_below = formula(wait < 0.000001 h)
-literals = formula(1 h > 0.9999999 h)
-closer = formula(1 h > 0.999999899999999999 h)
+below = formula(wait < 0.000000001 h)
+fine_below = formula(fine < 0.000000001 h)
+long_below = formula(long < 0.00000001 h)
+wait_below = formula(wait < 0.00000001 h)
+literals = formula(1 h > 0.999999999 h)
+closer = formula(1 h > 0.999999998999999999 h)
 ```
 
 | Reading | Value | Why |
 | --- | --- | --- |
-| `below` | `false` | The gap equals the band of 1e-7 h. A gap on the edge is inside the band. |
-| `fine_below` | `true` | The scale is 0.001 h. The gap of 1e-7 h exceeds the band of 1e-10 h. |
-| `long_below` | `false` | One day is 24 h. The gap of 1e-6 h is inside the band of 2.4e-6 h. |
-| `wait_below` | `true` | The gap of 1e-6 h exceeds the band of 1e-7 h. |
-| `literals` | `false` | The larger operand is 1 h. The gap equals the band of 1e-7 h. |
-| `closer` | `true` | The exact decimal gap exceeds 1e-7 h. |
+| `below` | `false` | The gap equals the band of 1e-9 h. A gap on the edge is inside the band. |
+| `fine_below` | `true` | The scale is 0.001 h. The gap of 1e-9 h exceeds the band of 1e-12 h. |
+| `long_below` | `false` | One day is 24 h. The gap of 1e-8 h is inside the band of 2.4e-8 h. |
+| `wait_below` | `true` | The gap of 1e-8 h exceeds the band of 1e-9 h. |
+| `literals` | `false` | The larger operand is 1 h. The gap equals the band of 1e-9 h. |
+| `closer` | `true` | The exact decimal gap exceeds 1e-9 h. |
 
 ## How a floor goes through an expression
 
@@ -246,8 +246,8 @@ The configuration of a run holds its numerical settings. A model sets only the l
 
 | Setting | Default | What it sets |
 | --- | ---: | --- |
-| `rtol` | 1e-7 | Sets the relative tolerance for integration. It also affects the comparison factor. |
-| `atol_factor` | 1e-8 | Sets the absolute tolerance for a stock as a fraction of its scale. It also affects the comparison factor. |
+| `rtol` | 1e-9 | Sets the relative tolerance for integration. It also affects the comparison factor. |
+| `atol_factor` | 1e-10 | Sets the absolute tolerance for a stock as a fraction of its scale. It also affects the comparison factor. |
 | `max_step` | 1 h | The longest step of integration. `resolution` sets it for the default run. |
 | `max_evaluations` | 2,000,000 | The most evaluations of the rates in one run |
 | `crossing` | 1e-8 h | The tolerance in time of a crossing, and the least time between two moments that the engine tells apart |
