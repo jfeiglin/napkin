@@ -72,7 +72,7 @@ from ..errors import SimulationError
 from .chance import Chance
 from .checkpoints import Breaks, Stopped
 from .collections import dynamic_value, index_of, kept, looked_up, reduced
-from .contacts import Placements
+from .contacts import Placements, contact_batch
 from .moment import Clock, Defined, Moment, quantity, span
 from .occurrences import Occurrences
 from .plan import (
@@ -1165,7 +1165,7 @@ class Run:
                 apart = min(instance.separate_contacts(at, through), default=math.inf)
                 if apart <= through:
                     through = math.nextafter(apart, -math.inf)
-                faces = Placements.from_bounds(self.bounds, instance.contacts_at(at, through))
+                _, faces = contact_batch(self.bounds, instance.contacts_at(at, through))
                 faces.include(levels)
                 if faces:
                     levels = self.stock_state.place(faces, at)
@@ -1211,18 +1211,16 @@ class Run:
             self.arrival_limits = cutoffs
             self.occurrences.carried(self.now, moment)
             self.now = moment
-            self.contacts = tuple(
-                sorted(
-                    {
-                        event
-                        for way in self.ways.instances
-                        if independent
-                        for event in way.contacts_at(moment, cutoffs.get(way, threshold))
-                    }
-                )
+            self.contacts, faces = contact_batch(
+                self.bounds,
+                (
+                    event
+                    for way in self.ways.instances
+                    if independent
+                    for event in way.contacts_at(moment, cutoffs.get(way, threshold))
+                ),
             )
             self.ways.opening(moment)
-            faces = Placements.from_bounds(self.bounds, self.contacts)
             self.bound_at = dict(faces)
             levels, changed, crossings = self.triggers.arrival_at(moment, faces)
             if self.consumed:

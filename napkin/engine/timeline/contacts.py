@@ -1,6 +1,7 @@
 """The bound values reached by the contacts of an installed segment."""
 
 import heapq
+from operator import itemgetter
 
 
 class Placements(dict):
@@ -29,13 +30,19 @@ class Placements(dict):
             for other in levels.others.get(name, ()):
                 self.add(name, other)
 
-    @classmethod
-    def from_bounds(cls, bounds, events):
-        levels = cls()
-        for at, name, kind in events:
-            if kind in ('lower bound', 'upper bound'):
-                levels.add(name, bounds[name][kind == 'upper bound'], at=at)
-        return levels
+
+def contact_batch(bounds, events):
+    """Apply and report coalesced contacts in stock or flow key order.
+
+    Each row retains its located time. Within one key, the surface and then the
+    located time distinguish different contacts in the same batch.
+    """
+    contacts = tuple(sorted(set(events), key=itemgetter(1, 2, 0)))
+    levels = Placements()
+    for at, name, kind in contacts:
+        if kind in ('lower bound', 'upper bound'):
+            levels.add(name, bounds[name][kind == 'upper bound'], at=at)
+    return contacts, levels
 
 
 def bound_values(bounds, events):
