@@ -211,6 +211,33 @@ class Binding(NamedTuple):
     definition: expr.Node | None = None
 
 
+def _operand_walk(roots, walks):
+    """Compile the scale operations on immutable nodes. Visit right operands first, as before.
+
+    A reference or a choice has a live dependency. Its own instruction selects that
+    dependency during evaluation. A policy and its row views share these walks.
+    """
+    cached = walks.get(roots)
+    if cached is not None:
+        return cached
+    steps, seen = [], set()
+    pending = [(node, None) for node in roots]
+    while pending:
+        node, parts = pending.pop()
+        if node in seen:
+            continue
+        if parts is None and not isinstance(node, (expr.Ref, expr.IfElse)):
+            parts = _scale_operands(node)
+            if parts:
+                pending.append((node, parts))
+                pending.extend((child, None) for child in parts)
+                continue
+        seen.add(node)
+        steps.append((node, parts))
+    compiled = walks[roots] = tuple(steps)
+    return compiled
+
+
 class Comparisons:
     """The scale of a numeric operand in the canonical units of this evaluation.
 
@@ -223,6 +250,7 @@ class Comparisons:
         self.units, self.factor, self.named = units, factor, named
         self.floors = {}
         self.literal_gaps = {}
+        self._operand_walks = {}
         self.concrete_definitions = False
         self._literal_reference = None
 
@@ -231,6 +259,7 @@ class Comparisons:
         before installing it, so its literal value is shared with all other reads of that concrete
         name in this epoch. A general binding may use template names inside the definition too."""
         row = Comparisons(units, self.factor, lambda name: self._binding(resolve(name)))
+        row._operand_walks = self._operand_walks
         if self.concrete_definitions:
             row._literal_reference = lambda name: self.literal_value(expr.ref(resolve(name)))
         return row
@@ -276,54 +305,45 @@ class Comparisons:
         return controls
 
     def operands(self, roots, read):
-        """The unit and comparison scale for each operand.
-
-        Use an explicit stack through inline and named expressions alike. A choice
-        asks for its condition and visits only the arm that supplied the value.
-        """
-        found, definitions, choices = {}, {}, {}
-        pending = list(roots)
+        """Read each operand's scale in the current binding and selected branch."""
+        roots = tuple(roots)
+        found = {}
+        walks = self._operand_walks
+        pending = [(iter(_operand_walk(roots, walks)), None)]
         while pending:
-            node = pending[-1]
-            if node in found:
-                pending.pop()
-                continue
-            if isinstance(node, expr.Ref):
-                if node not in definitions:
-                    definitions[node] = self._binding(node.name)
-                binding = definitions[node]
-                unit, own = binding.unit, binding.floor
-                if isinstance(own, SelectedScale):
-                    own = read(own)
-                    definitions[node] = binding._replace(floor=own)
-                if isinstance(own, expr.Node):
-                    if own not in found:
-                        pending.append(own)
+            steps, waiting = pending.pop()
+            if waiting is not None:
+                node, source, unit = waiting
+                basis = found[source]
+                found[node] = basis if unit is None else _Scale(unit, basis.floor, basis.terms)
+
+            for node, parts in steps:
+                if node in found:
+                    continue
+                if parts is not None:
+                    found[node] = self._operation(node, [found[part] for part in parts], read)
+                    continue
+                if isinstance(node, expr.Ref):
+                    binding = self._binding(node.name)
+                    source = binding.floor
+                    if isinstance(source, SelectedScale):
+                        source = read(source)
+                    if not isinstance(source, expr.Node):
+                        own = Decimal(source) if isinstance(source, str) else source
+                        found[node] = _Scale(binding.unit, own, {node: own})
                         continue
-                    basis = found[own]
-                    result = _Scale(unit, basis.floor, basis.terms)
+                    unit = binding.unit
                 else:
-                    own = Decimal(own) if isinstance(own, str) else own
-                    result = _Scale(unit, own, {node: own})
-            elif isinstance(node, expr.IfElse):
-                if node not in choices:
-                    choices[node] = node.body if read(node.test) else node.orelse
-                selected = choices[node]
-                if selected not in found:
-                    pending.append(selected)
-                    continue
-                result = found[selected]
-            else:
-                parts = _scale_operands(node)
-                missing = [part for part in parts if part not in found]
-                if missing:
-                    pending.extend(missing)
-                    continue
-                args = [found[part] for part in parts]
-                result = self._operation(node, args, read)
-            found[node] = result
-            pending.pop()
-        return [found[n] for n in roots]
+                    source = node.body if read(node.test) else node.orelse
+                    unit = None  # the selected arm supplies its own unit
+
+                # Finish this reference or choice after its live dependency. The remaining
+                # instructions keep their position, even through long definition chains.
+                pending.append((steps, (node, source, unit)))
+                if source not in found:
+                    pending.append((iter(_operand_walk((source,), walks)), None))
+                break
+        return [found[node] for node in roots]
 
     def _operation(self, node, args, read):
         quantities = [item for item in args if item.terms is not None]
