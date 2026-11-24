@@ -1,12 +1,16 @@
 """Assertions for a run continued from a breakpoint and the corresponding uninterrupted run."""
 
+from collections import defaultdict
 from dataclasses import fields, is_dataclass
 from itertools import pairwise
 from math import inf, isfinite, nextafter
 from numbers import Integral, Real
 
+import pytest
+
 from napkin.engine.timeline.record import Reader
 from napkin.program.checkpoint import Checkpoint
+from tests.engine.band_contacts import band_preemptions, decision_identity, paired_fire_details
 from tests.engine.decision_trace import decisions
 from tests.engine.record_jumps import moved_jumps, public_jump, short_piece_windows
 
@@ -36,18 +40,31 @@ def _compare(a, b, scales, path, scale=1.0):
         raise AssertionError((path, a, b))
 
 
-def _entries(left, right, scales):
-    prior = None
+def _entries(left, right, scales, horizon):
+    shifts = defaultdict(set)
     for a, b in zip(left, right, strict=True):
-        assert (a.round, a.kind, a.owner, a.part) == (b.round, b.kind, b.owner, b.part)
-        if prior is not None:
-            assert (prior[0] == a.t) == (prior[1] == b.t), (a, b)
-        prior = a.t, b.t
-        _compare(a.t, b.t, scales, (a.part, 'time'))
+        assert decision_identity(a) == decision_identity(b), (a, b)
+        times = [(a.t, b.t)]
+        if a.kind == 'contact':
+            times.append((a.detail('located'), b.detail('located')))
+        for old, new in times:
+            assert abs(old - new) <= 1e-6 * horizon, (a.part, old, new)
+            shifts[old].add(new)
         if a.kind == 'draw':
             assert a.details == b.details
+        elif a.kind == 'contact':
+            # The identity contains the surface. The two clocks were checked above.
+            def observations(entry):
+                details = dict(entry.details)
+                details.pop('located')
+                details['near'] = tuple((origin, gap, band) for origin, _, gap, band in details['near'])
+                return tuple(details.items())
+
+            _compare(observations(a), observations(b), scales, ('contact', a.part))
         else:
-            _compare(a.details, b.details, scales, (a.kind, a.part))
+            left_details, right_details = paired_fire_details(a, b)
+            _compare(left_details, right_details, scales, (a.kind, a.part))
+    return shifts
 
 
 def _scales(reader):
@@ -64,6 +81,7 @@ def assert_trace_prefix(program, configuration, straight, paused):
         decisions(straight.trace)[: len(prefix)],
         prefix,
         _scales(Reader(straight, program)),
+        straight.manifest.horizon,
     )
 
 
@@ -93,8 +111,14 @@ def assert_resume_parity(program, configuration, straight, resumed, *, sample_ti
     assert a.manifest == b.manifest
     _compare(a.end, b.end, scales, 'record cutoff')
     trace_a, trace_b = decisions(a.trace), decisions(b.trace)
-    _entries(trace_a, trace_b, scales)
-    event_times = {x.t: y.t for x, y in zip(trace_a, trace_b, strict=True)}
+    omissions = band_preemptions(trace_a, trace_b, ar, br, numerics.crossing)
+    skipped = {'before': set(), 'after': set()}
+    for case in omissions:
+        skipped[case.contact_side].update(case.contact_indices)
+    trace_a = [e for i, e in enumerate(trace_a) if i not in skipped['before']]
+    trace_b = [e for i, e in enumerate(trace_b) if i not in skipped['after']]
+    event_times = _entries(trace_a, trace_b, scales, a.manifest.horizon)
+    births = {x.owner: (x.t, y.t) for x, y in zip(trace_a, trace_b, strict=True) if x.kind == 'start'}
     _compare(a.failure, b.failure, scales, 'failure')
 
     through = min(a.end, b.end)
@@ -105,9 +129,20 @@ def assert_resume_parity(program, configuration, straight, resumed, *, sample_ti
         assert bool(left.pieces) == bool(right.pieces), key
         if not left.pieces:
             continue
-        assert left.pieces[0].t == right.pieces[0].t, (key, 'coverage start')
-        boundaries = {float(p.t) for h in (left, right) for p in h.pieces if p.t <= through}
-        times = sorted(boundaries | {float(through)})
+        first_times = left.pieces[0].t, right.pieces[0].t
+        begin = max(first_times)
+        if first_times[0] != first_times[1]:
+            assert births.get(key.owner) == first_times, (key, 'coverage start', first_times)
+            low = max(0.0, min(first_times) - numerics.crossing)
+            if low < min(first_times):
+                for history in (left, right):
+                    with pytest.raises(LookupError):
+                        history.at(low)
+                if a.manifest.names(key):
+                    _compare(ar.value(key, low), br.value(key, low), scales, (key, low))
+            begin = min(through, begin + numerics.crossing)
+        boundaries = {float(p.t) for h in (left, right) for p in h.pieces if begin <= p.t <= through}
+        times = sorted(boundaries | {float(begin), float(through)})
         probes = set(times) | {t for t in sample_times if times[0] <= t <= through}
         for start, end in pairwise(times):
             probes.add(nextafter(end, -inf))

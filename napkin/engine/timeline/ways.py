@@ -72,6 +72,8 @@ def _moves(connected):
 class Ways:
     """The instances of the ways of one run (see the module)."""
 
+    _check_continuation = None  # Verification can check the dense derivative against fresh rates.
+
     def __init__(self, run):
         self.run, self.plan = run, run.plan
         self.sets = {}  # set id -> (Connected, its instance)
@@ -223,6 +225,19 @@ class Ways:
             met.update(instance.cut(t) or ())
         return met
 
+    def observe(self, t, limits=None, through=None):
+        """Advance the incoming prefixes. Only ordinary arrivals snap the contacts due here."""
+        changed = set()
+        for way in self.cut_order():
+            bound = limits.get(way, through) if limits is not None else None
+            if isinstance(way, Sparse):
+                changed.update(way.observe(t, bound) or ())
+            elif bound is not None:
+                changed.update(way.arrive(t, bound))
+            else:
+                changed.update(way.cut(t) or ())
+        return changed
+
     def switched(self, t):
         """The switches of rates that the states of the ways reached at time t, where every instance
         stands (`cut`): the flows that must rebuild at the settling. Each
@@ -302,6 +317,57 @@ class Ways:
         return found + list(connected.results) + list(connected.stores)
 
     # ---- rebuilding sets -------------------------------------------------------------------------
+
+    def restart_at_moment(self, affected, made, changed_names, joined, left):
+        """Replace the region found by Moment.settle. Other installed Radau groups may continue."""
+        run, t = self.run, self.run.now
+        check = self._check_continuation
+        if check is not None:
+            # Retired ways are marked dead. A replacement at the same time is a different object.
+            previous = tuple(self.instances)
+        stay = set()
+        if affected or made or left:
+            for key in affected:
+                changed_names.update(self._given(self.sets[key][0]))
+            values = self.retire(affected, t)
+            values.update(run.bound_at)
+            values.update(run.written)
+            for connected in made:
+                changed_names.update(self._given(connected))
+                for store in connected.stores:
+                    stay.add(store)
+                    if store not in values:
+                        values[store] = float(run.value(store))
+                    if store not in self.plan.moving:
+                        self.plan.moving.add(store)
+                        self.plan.log.append(('moving', store))
+            for store, value in values.items():
+                if store not in stay:
+                    run.hold(store, value)
+            for flow in left:
+                run.flow_left(flow)
+            for flow in joined:
+                if flow not in left:
+                    run.tolerate(self.plan.flows[flow])
+        run.settled()
+        # The opening contacts have already supplied the incoming placements. Retiring a
+        # group removed its pending physical contacts. Expire its watched predictions before
+        # installing any outgoing steps, including steps that publish a new rate immediately.
+        run.contacts = ()
+        run.triggers.invalidate(changed_names)
+        if made:
+            self.build(made, values, t)
+        run.bound_at = {}
+        if check is not None:
+            for way in previous:
+                if (
+                    isinstance(way, Sparse)
+                    and way.alive
+                    and way.stores
+                    and (way.pending is not None or way.solver is not None)
+                ):
+                    check(way, t)
+        return stay
 
     def retire(self, ids, t):
         """The sets `ids` leave their instances at time t; gives the values of their stores there, in

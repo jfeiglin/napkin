@@ -28,8 +28,8 @@ of a run reads is here, or is made again from what is here by the same code:
   and each declared solver's program and basis
   (`solve.Solver`) with its last problem (a digest) and answer.
 
-At each moment the engine starts the Radau solver again (`sparse.Sparse.cut`). A live solver can
-reuse its last step size. A restored solver selects its first step. Both runs make the same
+An unaffected live Radau solver can continue its step across a moment. At a restart the live
+solver can reuse its last step size. A restored solver selects its first step. Both runs make the same
 decisions in the same order. The values agree closely. Inside a long step, the relative
 difference can exceed `rtol`. The engine also starts a new moving-solver segment
 (`declared.MovingDeclared.cut`), renews the HiGHS instance with its basis (`solve.Solver.renew`),
@@ -185,8 +185,14 @@ def at_stop(run):
     """Project the incoming record and physical end states into checkpoint data. The live ways
     keep their pending segments. A restored run installs the end states after its held stages."""
     run.ways.sample_at_stop(run.now)
-    if not run.arriving or run.saved_arrival is not None:
+    if run.saved_arrival is not None:
         return run.recorder, run.saved_arrival
+    # A later round can stop with a dense step still installed. If the way already
+    # stands at the stop, its serialized state contains the accepted prefix.
+    if not run.arriving and not any(
+        isinstance(way, Sparse) and way.pending is not None and way.t < run.now for way in run.ways.instances
+    ):
+        return run.recorder, None
     projected = copy(run)
     projected.stock_state = copy(run.stock_state)
     projected.stock_state.run = projected
@@ -228,6 +234,9 @@ def at_stop(run):
     ways.sets = {key: (connected, memo[id(way)]) for key, (connected, way) in run.ways.sets.items()}
     projected.arrival_limits = {memo[id(way)]: end for way, end in run.arrival_limits.items()}
     projected.finish_arrival()
+    for way in ways.instances:
+        if isinstance(way, Sparse):
+            way.cut(run.now)
     deltas = []
     levels = {}
     for k, (live, preview) in enumerate(zip(run.ways.instances, projected.ways.instances, strict=True)):
@@ -491,7 +500,7 @@ def _instance(instance):
     incoming = getattr(instance, 'arrival_rates', None)
     if instance.resting is not None and getattr(instance, 'pending', None) is not None:
         end = instance.run.now
-        if instance.amounts.through < end:
+        if instance.amounts.through < end or (isinstance(instance, Sparse) and instance.pending[0] < end):
             left = instance.incoming_rates(math.nextafter(end, -math.inf))
             incoming = end, {name: left(name) for name in instance.resting.incident}
     fields += (

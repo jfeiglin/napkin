@@ -96,7 +96,9 @@ compute it more precisely, it marks it. A condition whose answer was decided by 
 with sides that differ by no more than their comparison band, now
 and an instant later (`AFTER`), was decided within tolerance of its threshold: its trace entry has the
 detail `near`, one (origin, comparison, difference, tolerance) for each such comparison that decides
-its answer (`moment.near_ties`), the difference and the tolerance in canonical units. Sides that move
+its answer (`moment.near_ties`), the difference and the tolerance in canonical units. A firing
+also records `band_entry` for a deciding comparison whose answer would change with zero band.
+It keeps that row in `near` even when the sides move apart immediately after the firing. Sides that move
 through the boundary, as at a crossing, differ by more an instant later: the answer then follows from
 when they cross, and is no near-tie. So are marked:
 
@@ -176,7 +178,7 @@ class Triggers:
         self.run, self.plan = run, run.plan
         self.states = [State(trigger) for trigger in run.plan.triggers]
         self.contacts = []  # (time, watched key, version)
-        self.witnesses = {}  # watched key -> (raw physical time, condition, comparison operands)
+        self.witnesses = {}  # watched key -> (time, condition, physical crossings, band-entry reads)
         self.windows = []  # (time, watched key, version): the end of the window of a prediction
         self.version = {}  # watched key -> the version of its prediction
         self.readers = {}  # engine name -> the watched keys that read it
@@ -265,7 +267,7 @@ class Triggers:
 
         return lazily(node, read, self.plan.units, t)
 
-    def near(self, node, origin, t):
+    def near(self, node, origin, t, *, firing=None):
         """The near-ties of a condition that holds at time t (see the module): sides within the
         tolerance of what they read, now and an instant later."""
 
@@ -277,6 +279,10 @@ class Triggers:
                 return 0.0
             return signed_gap(a, b)
 
+        def band_entry(left, right, a, b):
+            witness = self.run.consumed.get((firing, nodes.text(left), nodes.text(right), a, b))
+            return witness is None or witness[1] != t
+
         return near_ties(
             node,
             origin,
@@ -284,6 +290,7 @@ class Triggers:
             self.run.frozen,
             lambda side: self.side(side, t),
             later,
+            band_entry=band_entry if firing is not None else None,
         )
 
     def gap_band(self, left, right, t, gap=None):
@@ -339,7 +346,11 @@ class Triggers:
             if state.armed and state.blocked_at != t:
                 close = []
                 if self._truth(trigger.test, t, True, close):
-                    fires.append((state, self.near(trigger.test, trigger.origin, t)))
+                    near = self.near(trigger.test, trigger.origin, t)
+                    band_entry = (
+                        self.near(trigger.test, trigger.origin, t, firing=trigger.key) if close else ()
+                    )
+                    fires.append((state, near, band_entry))
                 elif close:
                     self.miss(trigger)
         releases = []
@@ -349,8 +360,8 @@ class Triggers:
             if self.holds(node):
                 releases.append((live, step.origin, self.near(node, step.origin, t)))
         self.check()
-        for state, near in fires:
-            self.fire(state, near)
+        for state, near, band_entry in fires:
+            self.fire(state, near, band_entry)
         for live, origin, near in releases:
             if live.waiting:
                 if near:
@@ -382,7 +393,7 @@ class Triggers:
                     self.missed[(entry.part, entry.owner)] = entry.detail('near')
         return self.missed
 
-    def fire(self, state, near):
+    def fire(self, state, near, band_entry):
         """A firing: the captures in written order, the start of the event, the reset; `near` are the
         near-ties of its condition as the conditions read it. A draw of the firing is keyed by its
         number (`chance.py`). Its rates are those of the preceding sharing, also after an earlier firing started a flow."""
@@ -394,7 +405,7 @@ class Triggers:
             value, direct, dependencies = moment.argument(node, tx)
             run.env[name] = value
             tx.captures[name] = {name: direct, **dependencies}
-        tx.near = near
+        tx.near = (*near, *(tie for tie in band_entry if tie not in near))
         moment.execute(trigger.body, tx, trigger.scope)
         state.armed, state.firings = False, state.firings + 1
         if trigger.reset is not None and trigger.reset[0] == 'after':
@@ -407,7 +418,10 @@ class Triggers:
                 raise SimulationError(f'{trigger.origin}: reset after {shown}, which is no duration')
             state.rearm_at = run.clock.later(run.now, duration)
         del run.chance.firing[trigger.key]
-        run.recorder.entry(run.now, 'fire', trigger.origin, trigger.member, **tx.details())
+        details = tx.details()
+        if band_entry:
+            details['band_entry'] = band_entry
+        run.recorder.entry(run.now, 'fire', trigger.origin, trigger.member, **details)
         self._missed().pop((trigger.origin, trigger.member), None)
         moment.again = True
         moment.commit(tx)
@@ -458,16 +472,24 @@ class Triggers:
         return any(name in self.readers for name in names)
 
     def predict_all(self):
-        """The next contact of every watched condition, from now."""
+        """Predict from the settled state once all rounds, gate changes and rearms are complete."""
         self.contacts, self.windows, self.version, self.readers = [], [], {}, {}
         self.witnesses.clear()
         for key, node in self.watched():
             self._watch(key, node)
 
+    def invalidate(self, names):
+        """Expire predictions that read a changed name, including contacts on surviving trajectories."""
+        keys = {key for name in names for key in self.readers.get(name, ())}
+        for key in keys:
+            self.version[key] += 1
+            self.witnesses.pop(key, None)
+        return keys
+
     def predict(self, names):
         """The next contact again of the watched conditions that read `names`, and of those whose
         window has ended."""
-        keys = {key for name in names for key in self.readers.get(name, ())}
+        keys = self.invalidate(names)
         windows, now = self.windows, self.run.now
         while windows and windows[0][0] <= now:
             _, key, version = heapq.heappop(windows)
@@ -490,9 +512,9 @@ class Triggers:
         reads = self.plan.reads_now(self.plan.expansion(node))
         for name in set(reads.leaves) | set(reads.formulas):
             self.readers.setdefault(name, set()).add(key)
-        at, until, witnesses = self._next(node, strict=key[0] != 'assert')
-        if witnesses:
-            self.witnesses[key] = at, node, witnesses
+        at, until, witnesses, band_reads = self._next(node, strict=key[0] != 'assert')
+        if witnesses or band_reads:
+            self.witnesses[key] = at, node, witnesses, band_reads
         else:
             self.witnesses.pop(key, None)
         if math.isfinite(at):
@@ -548,6 +570,7 @@ class Triggers:
         run = self.run
         now, earliest, window = run.now, math.inf, math.inf
         witnesses = []
+        band_reads = set()
         node = walked(self._reachable(node))
         atoms = self._atoms(node)
         moving_atoms = []
@@ -628,10 +651,13 @@ class Triggers:
             if root is not None and root <= earliest:
                 if root < earliest:
                     witnesses.clear()
+                    band_reads.clear()
                 earliest = root
                 if physical:
                     witnesses.append((left, right))
-        return earliest, window, tuple(witnesses)
+                else:
+                    band_reads.update(moving)
+        return earliest, window, tuple(witnesses), band_reads
 
     def _reachable(self, node):
         """Remove a held short-circuit prefix for this prediction. A discrete write
@@ -689,7 +715,7 @@ class Triggers:
     def separate_contacts(self, t, through):
         """Witnesses inside the time window whose stock cannot join this moment."""
         if self.next_contact() <= through:
-            for at, _, pairs in self.witnesses.values():
+            for at, _, pairs, _ in self.witnesses.values():
                 if (
                     at != t
                     and self.run.clock.within(at, t)
@@ -697,13 +723,17 @@ class Triggers:
                 ):
                     yield at
 
-    def levels_at(self, t, levels):
-        """Physical crossings on the incoming state that can actually fire a watched condition.
-        An arm of a false conjunction, a mere near approach and a rearming pass move no stock."""
+    def arrival_at(self, t, levels):
+        """Give the physical placements and the moving names that reached a comparison band.
+        A band entry can change the outgoing rates even when the stock keeps its balance."""
+        changed, crossings = set(), []
         if self.next_contact() > self.run.clock.apart(t):
-            return levels
-        for key, (at, test, pairs) in self.witnesses.items():
-            if key[0] not in ('when', 'gate') or not self.run.clock.within(at, t):
+            return levels, changed, crossings
+        for key, (at, test, pairs, band_reads) in self.witnesses.items():
+            if not self.run.clock.within(at, t) or at > self.run.arrival_through:
+                continue
+            changed.update(band_reads)
+            if not pairs or key[0] not in ('when', 'gate'):
                 continue
             if key[0] == 'when' and not self.states[key[1]].armed:
                 continue
@@ -712,7 +742,16 @@ class Triggers:
             for left, right in pairs:
                 if at == t or self.anchor(None, left, right, t, at):
                     self.anchor(levels, left, right, t, at)
-        return levels
+                    if key[0] == 'when':
+                        crossings.append((self.states[key[1]].plan.key, left, right, at))
+        return levels, changed, crossings
+
+    def landed(self, crossings, t):
+        """Keep the accepted operands of each physically located firing threshold at this moment.
+        A later stage can change either operand before the firing reads it."""
+        for firing, left, right, at in crossings:
+            key = (firing, nodes.text(left), nodes.text(right), self.side(left, t), self.side(right, t))
+            self.run.consumed[key] = at, t
 
     def anchor(self, levels, left, right, t, located):
         """The single-store level implied by a contact, or verification of a multi-store contact.

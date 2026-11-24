@@ -177,7 +177,7 @@ class Run:
         self.contacts = ()
         self.arrival_limits = {}
         self.arrival_through = 0.0
-        self.consumed = {}  # resolved operands -> (located time, canonical moment) of grouped switches
+        self.consumed = {}  # switch operands or a watched firing's landed operands -> (located time, moment)
         self.bound_at = {}
         self.changed, self.moved = set(), set()
         self.joined, self.left = [], []  # the flows that join and that leave at this moment
@@ -1177,8 +1177,8 @@ class Run:
                     readers -= self.ways.followers  # these sets follow each smooth step of their suppliers
                 if readers or (jumped and self.triggers.reads_any(changed)):
                     # The instance settled its event itself: no stage is due at its time.
-                    self.ways.cut(at)
-                    return at, changed, set(), self.ways.switched(at)
+                    aligned = self.ways.observe(at)
+                    return at, changed | aligned, set(), self.ways.switched(at)
                 flows = [
                     name.rsplit('.', 1)[0] for name in rates if name.rsplit('.', 1)[0] in self.plan.flows
                 ]
@@ -1224,7 +1224,7 @@ class Run:
             self.ways.opening(moment)
             faces = Placements.from_bounds(self.bounds, self.contacts)
             self.bound_at = dict(faces)
-            levels = self.triggers.levels_at(moment, faces)
+            levels, changed, crossings = self.triggers.arrival_at(moment, faces)
             if self.consumed:
                 self.consumed = {pair: times for pair, times in self.consumed.items() if max(times) >= moment}
             if self.contacts or not independent:
@@ -1240,13 +1240,14 @@ class Run:
                     (name, level) for name, level in decided.items() if name not in self.bound_at
                 )
                 self.moved.update(self.bound_at)
+            self.triggers.landed(crossings, moment)
             self.arriving = True
             self.bare = (
                 moment == self.plan.horizon
                 and not self.contacts
                 and not self._besides(before, moment, contact)
             )
-            return moment, set(), set(), set()
+            return moment, changed, set(), set()
 
     def consumed_in(self, surfaces, t):
         """Located switches of this set still consumed at t, including on a rebuilt or restored set."""
@@ -1279,8 +1280,7 @@ class Run:
             return
         t = self.now
         through = self.arrival_through if self.contacts else t
-        for way in self.ways.cut_order():
-            self.moved.update(way.arrive(t, self.arrival_limits.get(way, through)))
+        self.moved.update(self.ways.observe(t, self.arrival_limits, through))
         self.moved.update(self.ways.switched(t))
         self.now = t
 

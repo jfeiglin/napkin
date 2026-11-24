@@ -921,13 +921,18 @@ class Moment:
     def settle(self):
         """Build again the sets that the round touched (see the module); gives the stores of the
         sets that it built."""
-        run, ways, plan, t = self.run, self.run.ways, self.plan, self.run.now
+        run, ways = self.run, self.run.ways
         self.phase = 'settle'
         run.finish_arrival()
-        joined, left = list(run.joined), set(run.left)
-        joining = set(joined)
         names = run.changed_names()
-        touched = ways.touched_by(names | set(run.written))
+        joined, left = list(run.joined), set(run.left)
+        touched, made = self._region(names, joined, left)
+        return ways.restart_at_moment(touched, made, names, joined, left)
+
+    def _region(self, names, joined, left):
+        """Find all connected sets affected by this round before retiring any installation."""
+        run, ways, plan = self.run, self.run.ways, self.plan
+        touched = ways.touched_by(names)
         ends = set()
         for flow in [*joined, *left]:
             for connection in plan.flows[flow].connections:
@@ -936,9 +941,7 @@ class Moment:
         touched |= {ways.set_of[flow] for flow in left if flow in ways.set_of}
         waiting, run.waiting = run.waiting, []
         if not touched and not joined and not waiting:
-            run.contacts, run.bound_at = (), {}
-            run.settled()
-            return set()
+            return touched, ()
         moving_before = ways.set_of
         while True:
             # Sets that integrate together share one numerical trajectory. Rebuild the
@@ -979,29 +982,7 @@ class Moment:
             if not extra:
                 break
             touched |= extra
-        values = ways.retire(touched, t)
-        values.update(run.bound_at)
-        values.update(run.written)
-        for connected in made:
-            for store in connected.stores:
-                if store not in values:
-                    values[store] = float(run.value(store))
-                if store not in plan.moving:
-                    plan.moving.add(store)
-                    plan.log.append(('moving', store))
-        stay = {store for connected in made for store in connected.stores}
-        for store, value in values.items():
-            if store not in stay:
-                run.hold(store, value)
-        for flow in left:
-            run.flow_left(flow)
-        for flow in region:
-            if flow in joining:
-                run.tolerate(plan.flows[flow])
-        run.settled()
-        ways.build(made, values, t)
-        run.contacts, run.bound_at = (), {}
-        return stay
+        return touched, made
 
     def splits(self, stores):
         """Mark each split of who is served that the settling decided within tolerance (see the
@@ -1086,7 +1067,9 @@ def _listed(names):
     return shown if len(names) <= 3 else f'{shown} and {len(names) - 3} more'
 
 
-def near_ties(node, origin, plan, frozen, side, later=None, *, comparisons=None, definition=None):
+def near_ties(
+    node, origin, plan, frozen, side, later=None, *, comparisons=None, definition=None, band_entry=None
+):
     """The near-ties of a condition (see the module): (origin, comparison, difference, tolerance) of
     each numeric comparison that decides its answer, through boolean formulas, whose sides differ by
     no more than the band of their two values, and with `later`, still do an instant later. `side(node)`
@@ -1096,7 +1079,9 @@ def near_ties(node, origin, plan, frozen, side, later=None, *, comparisons=None,
     decide are kept: every term of a true `and` or of a false `or`, since each one turned the other
     way would turn the answer; else only the term that stopped it; of a chain of comparisons, every
     link of a true one, else the link that fails. A membership is evaluated (a reversed interval
-    fails by name), then read as its chain `lo <= x <= hi`."""
+    fails by name), then read as its chain `lo <= x <= hi`. With `band_entry`, give only the
+    individual links whose answer depends on using the band at this instant and whose observed
+    operands the firing did not reach at a physical crossing."""
 
     comparisons = plan.units.comparisons if comparisons is None else comparisons
     definition = plan.values.get if definition is None else definition
@@ -1143,6 +1128,16 @@ def near_ties(node, origin, plan, frozen, side, later=None, *, comparisons=None,
                     return False, []
                 continue
             difference, band = comparisons.gap_band(left, right, a, b, side)
+            answer = against(op, difference, band)
+            if band_entry is not None:
+                tie = []
+                if answer != against(op, difference, 0) and band_entry(left, right, a, b):
+                    comparison = nodes.notation(nodes.compare((op,), (left, right)))
+                    tie.append((origin, comparison, recorded_number(difference), recorded_number(band)))
+                if not answer:
+                    return False, tie
+                ties += tie
+                continue
             exact_count = (
                 any(
                     isinstance(part, nodes.Ref)
@@ -1163,7 +1158,7 @@ def near_ties(node, origin, plan, frozen, side, later=None, *, comparisons=None,
                 and (later is None or against('eq', later(left, right), band))
                 else []
             )
-            if not against(op, difference, band):
+            if not answer:
                 return False, tie
             ties += tie
         return True, ties

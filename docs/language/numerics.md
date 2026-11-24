@@ -229,6 +229,10 @@ case and marks it.
   the tolerance, in canonical units.
 - The entry `fire` of the trace marks a firing. The entry `miss` marks a trigger that came near and
   did not fire. The entry `release` marks a gate that released.
+- If a trigger fires because a comparison is inside its band, the `fire` entry also has a
+  `band_entry` detail. It gives the deciding comparison, its signed difference and its band.
+  The firing keeps this evidence even if the value leaves the band immediately after it fires.
+  For example, a draining stock can have a small positive balance when its empty-stock trigger fires.
 - Sides that cross through the boundary are no near-tie. The time of the crossing decides.
 - `napkin run` gives a summary of the near-ties under its table ([cli.md](../cli.md)).
 
@@ -261,6 +265,9 @@ The engine chooses its own steps. A run that needs finer steps sets `max_step`.
 - If you resume from a checkpoint without an edit, the run makes the same decisions in the same
   order as the uninterrupted run. The recorded values agree closely. The solver can take different
   steps. Inside a long step, the relative difference between two readings can exceed `rtol`.
+  A firing inside the band can stop a stock before it reaches a bound. In that case, only the run
+  that reaches the bound records that contact and the flow switches it causes. The firing in the
+  other run records the remaining difference and the band. All later decisions must agree.
   [Breakpoints, checkpoints and edits](events.md#breakpoints-checkpoints-and-edits).
 - A budget of a solver counts work, never seconds. A run that succeeds on one machine succeeds on
   another ([flows-and-solvers.md](flows-and-solvers.md#budgets)).

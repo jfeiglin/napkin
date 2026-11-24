@@ -57,16 +57,16 @@ def _jumps(history, scale):
 
 
 def moved_jumps(first_history, second_history, *, crossing, scale, event_times=None):
-    """Match isolated transitions with the same direction or the same categorical change.
+    """Pair isolated transitions at the two instants of the same matched decision.
 
-    The two times must lie within the crossing tolerance or be the times of the same
-    trace decision. Both runs must have exactly one jump in the closed window.
-    The caller checks the values of both histories at both outer edges of the window.
+    A fitted seam can differ from its own decision time by the crossing tolerance.
+    The caller checks the values on both exterior edges of the paired window.
     """
     events = event_times or {}
     a = list(_jumps(first_history, scale))
     b = list(_jumps(second_history, scale))
     ta, tb = [j.time for j in a], [j.time for j in b]
+    anchors = sorted(events)
     pairs = []
     for first in a:
         t = first.time
@@ -74,12 +74,13 @@ def moved_jumps(first_history, second_history, *, crossing, scale, event_times=N
         at = bisect_left(tb, t)
         if at < len(b) and tb[at] == t:
             continue
-        candidates = set(range(bisect_left(tb, t - crossing), bisect_right(tb, t + crossing)))
-        linked = events.get(t)
-        if linked is not None:
-            j = bisect_left(tb, linked)
-            if j < len(b) and tb[j] == linked:
-                candidates.add(j)
+        candidates = set()
+        for origin in anchors[bisect_left(anchors, t - crossing) : bisect_right(anchors, t + crossing)]:
+            targets = events[origin]
+            for linked in (targets,) if _number(targets) else targets:
+                candidates.update(
+                    range(bisect_left(tb, linked - crossing), bisect_right(tb, linked + crossing))
+                )
         candidates = [j for j in candidates if first.transition(scale) == b[j].transition(scale)]
         if len(candidates) != 1:
             continue
@@ -88,9 +89,6 @@ def moved_jumps(first_history, second_history, *, crossing, scale, event_times=N
         # No intervening discontinuity can be hidden by alignment. A second
         # matching jump in the other direction makes the pairing ambiguous.
         if any(bisect_right(times, match.high) - bisect_left(times, match.low) != 1 for times in (ta, tb)):
-            continue
-        near = a[bisect_left(ta, second.time - crossing) : bisect_right(ta, second.time + crossing)]
-        if any(j.time != t and j.transition(scale) == first.transition(scale) for j in near):
             continue
         pairs.append(match)
     return tuple(pairs)

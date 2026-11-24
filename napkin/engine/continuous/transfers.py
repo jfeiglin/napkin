@@ -287,8 +287,25 @@ _WEIGHTS = np.linalg.inv(np.vander(C, increasing=True))
 _FULL = (np.array([1.0, 0.5, 1 / 3]) @ _WEIGHTS).tolist()
 
 
-def radau_amount(step, end, single):
+def _interval_moments(start, end, width, degree):
+    """Integrals of 1, x, ... on a subinterval without subtracting nearly equal powers."""
+    powers = [1.0]
+    for n in range(1, degree + 1):
+        powers.append(end**n + start * powers[-1])
+    return width * np.array(powers) / np.arange(1, degree + 2)
+
+
+def radau_amount(step, end, single, *, start=None):
     x = (end - step.t_old) / step.h
+    if start is not None and start != step.t_old:
+        a = (start - step.t_old) / step.h
+        width = (end - start) / step.h
+        if single is not None:
+            row, sign = single
+            q0, q1, q2 = step.Q[row]
+            return sign * width * (q0 + (x + a) * q1 + (x * x + x * a + a * a) * q2)
+        weights = _interval_moments(a, x, width, 2) @ _WEIGHTS
+        return step.h * sum(w * rate for w, rate in zip(weights, step.leg_rates))
     if single is not None:
         row, sign = single
         q0, q1, q2 = step.Q[row]
@@ -298,7 +315,7 @@ def radau_amount(step, end, single):
     return step.h * (weights[0] * a + weights[1] * b + weights[2] * c)
 
 
-def checked_amount(step, end, rate_at, rtol, absolute_rates):
+def checked_amount(step, end, rate_at, rtol, absolute_rates, *, start=None):
     """Control the error of physical rates hidden in a store's net derivative.
 
     Six existing nodes on adjacent accepted Radau steps integrate a fifth-degree
@@ -307,31 +324,37 @@ def checked_amount(step, end, rate_at, rtol, absolute_rates):
     Refine the actual allocated rates on the accepted trajectory where the two
     estimates disagree. A tiny leg has its own error budget even beside a large leg.
     """
-    amount = radau_amount(step, end, None)
-    if end == step.t_old:
+    start = step.t_old if start is None else start
+    amount = radau_amount(step, end, None, start=start)
+    if end == start:
         return amount
     x = (end - step.t_old) / step.h
     if step.prior_rates is None or not 0.125 <= step.prior_rates[0] / step.h <= 8:
         # A restart, or two disparate step sizes, cannot support an accurate
         # two-step interpolant. Check the omitted node on this step alone.
-        estimated = (
-            step.h * x * (rate_at(step.t_old) - sum(w * r for w, r in zip(_WEIGHTS[0], step.leg_rates)))
+        estimated = (end - start) * (
+            rate_at(step.t_old) - sum(w * r for w, r in zip(_WEIGHTS[0], step.leg_rates))
         )
     else:
         previous_h, previous = step.prior_rates
         nodes = np.concatenate(((C - 1) * (previous_h / step.h), C))
         powers = np.arange(1, 7)
-        weights = np.linalg.solve(np.vander(nodes, increasing=True).T, x**powers / powers)
+        integrals = (
+            x**powers / powers
+            if start == step.t_old
+            else _interval_moments((start - step.t_old) / step.h, x, (end - start) / step.h, 5)
+        )
+        weights = np.linalg.solve(np.vander(nodes, increasing=True).T, integrals)
         higher = step.h * sum(weight * rate for weight, rate in zip(weights, (*previous, *step.leg_rates)))
         estimated = higher - amount
-    tolerance = np.maximum(absolute_rates * (end - step.t_old) + rtol * np.abs(amount), np.finfo(float).tiny)
+    tolerance = np.maximum(absolute_rates * (end - start) + rtol * np.abs(amount), np.finfo(float).tiny)
     if np.all(np.abs(estimated) <= tolerance) and np.all(amount >= -tolerance):
         return np.maximum(amount, 0)
     # Normalize each connection separately so a weak circulation never inherits
     # the numerical budget of a much larger inter-store transfer.
     result, _, info = quad_vec(
         lambda t: rate_at(t) / tolerance,
-        step.t_old,
+        start,
         end,
         epsabs=0.5,
         epsrel=0,
