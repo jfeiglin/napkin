@@ -211,6 +211,11 @@ class Binding(NamedTuple):
     definition: expr.Node | None = None
 
 
+class _FixedFloor(NamedTuple):
+    value: float | Decimal
+    controls: tuple
+
+
 class Comparisons:
     """The scale of a numeric operand in the canonical units of this evaluation.
 
@@ -221,6 +226,7 @@ class Comparisons:
 
     def __init__(self, units, factor=DEFAULT_FACTOR, named=None):
         self.units, self.factor, self.named = units, factor, named
+        self.fixed = None
         self.floors = {}
         self.literal_gaps = {}
         self.concrete_definitions = False
@@ -370,10 +376,22 @@ class Comparisons:
         return _Scale(unit, own, {node: own} if quantities else None)
 
     def floor(self, left, right, read=None):
-        key = left, right
+        key = self.factor, left, right
         cached = self.floors.get(key)
-        if cached is not None:
+        if cached is not None and not isinstance(cached, _FixedFloor):
             return cached
+        controls = {}
+        if cached is not None:
+            if read is None:
+                raise UnresolvedScale(cached.controls[0][0])
+            # A reader may also collect evidence. Replay the controls in order, and
+            # leave the old branch as soon as a different input selects a new one.
+            for node, previous in cached.controls:
+                controls[node] = read(node)
+                if controls[node] != previous:
+                    break
+            else:
+                return cached.value
         dynamic = False
 
         def point(node):
@@ -385,18 +403,23 @@ class Comparisons:
                     raise UnresolvedScale
                 dynamic = True
                 return node.choose(lambda name: read(expr.ref(name)))
-            if not expr.names(node):
+            names = expr.names(node)
+            if not names:
                 return value(node, {}, self.units)
             if read is None:
                 raise UnresolvedScale(node)
+            if self.fixed is not None and all(self.fixed(name) for name in names):
+                if node not in controls:
+                    controls[node] = read(node)
+                return controls[node]
             dynamic = True
             return read(node)
 
-        operands = self.operands(key, point)
+        operands = self.operands((left, right), point)
         contributors = [item for item in operands if item.terms is not None] or operands
         result = max(item.floor for item in contributors)
         if not dynamic:
-            self.floors[key] = result
+            self.floors[key] = _FixedFloor(result, tuple(controls.items())) if controls else result
         return result
 
     def frozen_floor(self, name, read):

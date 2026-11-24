@@ -86,6 +86,33 @@ def test_a_configured_band_applies_to_formulas_and_guards(reader, precision, equ
     assert values(b.finish(), cfg, ['answer', 'flag'], reader) == [equal, int(equal)]
 
 
+def test_sampled_runs_of_one_program_keep_their_own_comparison_floor():
+    """Both arms hold 5e-11 L. Only the fine arm puts that value above the band at zero."""
+    from napkin.program.build import draw, ifelse, input_, uniform
+    from napkin.program.config import SAMPLED
+
+    def program():
+        b = Builder(UNITS)
+        signal = ifelse(this.roll > 0.5, this.fine, this.coarse)
+        tank = b.entity(
+            'tank',
+            input_('roll', '', draw(uniform(0, 1))),
+            value('fine', 'L', 5e-11, scale=0.001),
+            value('coarse', 'L', 5e-11, scale=1),
+            value('flag', BOOL, False),
+            event('check', after(q(1, 'h'), assign(this.flag, True), when=signal > q(0, 'L'))),
+        )
+        b.setup(start(tank.check))
+        return b.finish()
+
+    configs = [Configuration(Request(1), mode=SAMPLED, seed=seed) for seed in (0, 3)]
+    shared = program()
+    records = [run(shared, cfg) for cfg in configs]
+    assert all(record.failure is None for record in records)
+    assert [record.history(Key('tank', ('flag',))).at(1) for record in records] == [False, True]
+    assert records == [run(program(), cfg) for cfg in configs]
+
+
 @pytest.mark.parametrize('reader', ['engine', 'reference'])
 def test_a_membership_whose_ends_compare_equal_is_valid(reader):
     b = Builder(UNITS)

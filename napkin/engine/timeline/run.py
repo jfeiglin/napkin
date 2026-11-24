@@ -80,6 +80,7 @@ from .plan import (
     DECLARED,
     DESCRIBED,
     DYNAMIC,
+    FIXED,
     FORMULA,
     LEGS,
     LOOKUP,
@@ -151,6 +152,7 @@ class Run:
         self.settings = run_settings(plan.numerics, self.cap)
         self.recorder = Recorder(plan, {}, {})
         self.recorder.run = self
+        plan.units.comparisons.fixed = self._fixed_input
         self.now = 0.0  # also carries the time of a numerical trial for diagnostics
         self.accepted = 0.0  # the physical cutoff chosen by the timeline
         self.env = {'t': 0.0}  # the values of the start, and later each value held between moments
@@ -194,6 +196,13 @@ class Run:
         self.moment = Moment(self)
 
     # ---- the start --------------------------------------------------------------------------------
+
+    def _fixed_input(self, name):
+        """An immutable field or a draw captured in this run's starting values."""
+        value = self.plan.values.get(name)
+        if value is not None:
+            return value.kind in FIXED
+        return name in self.plan.draws and name in self.recorder.constants
 
     def _missing(self, name):
         """The names that a reduction or a keyed read needs and that are not known yet: the tests of
