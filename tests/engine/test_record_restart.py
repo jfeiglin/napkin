@@ -2,12 +2,29 @@
 
 from math import exp
 
+import numpy as np
+import pytest
+
 from napkin.engine.timeline import Plan, Run, read
-from napkin.engine.timeline.record import Recorder
+from napkin.engine.timeline.record import Recorder, fitted
 from napkin.program.build import Builder, add, after, call, event, formula, named, q, start, t, this, value
 from napkin.program.config import Configuration, Numerics, Request
 from napkin.program.record import Key
 from tests.engine.record_history_oracle import check_history_rebuilds
+
+
+def test_fit_preserves_held_linear_and_curved_columns():
+    def values(times):
+        return np.column_stack((np.full_like(times, 11), 2 - 3 * times, times**2 + 1))
+
+    held, line, curved = fitted(values, 2.0, 4.0, np.full(3, 1e-12))
+    assert held == [(2.0, 11.0, 0.0)]
+    for pieces, expected_degree, expected in ((line, 1, -7.0), (curved, 8, 10.0)):
+        (piece,) = pieces
+        at, opening, shape = piece
+        assert at == 2.0
+        assert len(shape.coefficients) == expected_degree + 1
+        assert opening + shape.increase(3.0 - at) == pytest.approx(expected, rel=1e-12)
 
 
 def curve_program():

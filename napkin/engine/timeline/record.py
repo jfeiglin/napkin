@@ -162,6 +162,10 @@ DEGREE = 8
 # start of the piece. The end of a piece is the start of the next, whose value can jump there.
 _NODES = np.cos(np.pi * (np.arange(DEGREE + 1) + 0.5) / (DEGREE + 1))[::-1]
 _CHECKS = np.cos(np.pi * np.arange(1, DEGREE + 2) / (DEGREE + 1))[::-1]
+# The same interpolation and checks apply to every column of sampled values.
+_FIT_MATRIX = np.linalg.inv(chebyshev.chebvander(_NODES, DEGREE))
+_CHECK_MATRIX = chebyshev.chebvander(_CHECKS, DEGREE)
+_LEFT_ROW = chebyshev.chebvander(-1.0, DEGREE)[0]
 # A piece shorter than this, in hours, is not cut again: it holds what the fit gives.
 SHORTEST = 1e-9
 # A fit holds a value to its tolerance, or to this part of its largest size in the piece, which
@@ -194,14 +198,13 @@ def fitted(values, start, end, tolerance):
     while pending:
         a, b = pending.pop()
         nodes = values(_times(a, b, _NODES))
-        coefficients = chebyshev.chebfit(_NODES, nodes, DEGREE)
+        coefficients = _FIT_MATRIX @ nodes
         allowed = np.maximum(tolerance, RELATIVE * np.max(np.abs(nodes), axis=0))
         if b - a > SHORTEST and cuts < MOST:
             checks = values(_times(a, b, _CHECKS))
             first = checks[0]
             allowed = np.maximum(allowed, RELATIVE * np.max(np.abs(checks), axis=0))
-            made = chebyshev.chebval(_CHECKS, coefficients).T
-            made = made - chebyshev.chebval(-1.0, coefficients) + first
+            made = (_CHECK_MATRIX @ coefficients) - (_LEFT_ROW @ coefficients) + first
             if np.any(np.abs(made - checks) > allowed):
                 middle = 0.5 * (a + b)
                 pending += [(middle, b), (a, middle)]
@@ -214,7 +217,7 @@ def fitted(values, start, end, tolerance):
             constant &= np.all(checks == first, axis=0)
         for k, at in enumerate(found):
             if constant[k]:
-                # Least squares can give an identically held threshold a nonzero fitted slope.
+                # Interpolation roundoff can give an identically held threshold a nonzero slope.
                 at.append((a, float(first[k]), 0.0))
                 continue
             series = coefficients[:, k] if coefficients.ndim > 1 else coefficients
