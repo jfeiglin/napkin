@@ -151,6 +151,12 @@ def _restart_point(start, since, histories, reads, anchors=()):
     return boundary
 
 
+def _freeze_pieces(pieces, finish, value):
+    """The outgoing piece at the finish holds the value captured by the run."""
+    del pieces[bisect_left(pieces, finish, key=lambda piece: piece[0]) :]
+    pieces.append((finish, value, 0.0))
+
+
 DEGREE = 8
 # The points of a fit on [-1, 1], and the points between them at which a fit is checked, with the
 # start of the piece. The end of a piece is the start of the next, whose value can jump there.
@@ -410,6 +416,8 @@ class Recorder:
         self._private = None
         self._moving = set()
         self._histories = {}
+        self._flow_reads = {}  # contributors when an endpoint sum was last assembled
+        self._event_ends = {}  # fitted event histories: None while live, else their assembled finish
         self._raw_positions = {}
         self._counted = {}
         self._total = 0
@@ -701,6 +709,8 @@ class Recorder:
         # An occurrence start only adds names and readers to the committed history.
         if self._indexed_version != plan.version:
             self._histories.clear()
+            self._flow_reads.clear()
+            self._event_ends.clear()
             self._raw_positions.clear()
             self._moving.clear()
             self._counted.clear()
@@ -781,6 +791,8 @@ class Recorder:
             return self
         view = copy(self)
         view._histories = dict(self._histories)
+        view._flow_reads = dict(self._flow_reads)
+        view._event_ends = dict(self._event_ends)
         view._counted = dict(self._counted)
         view._private = set()
         view.fits = copy(self.fits)
@@ -852,6 +864,10 @@ class Recorder:
             return self._history(None, [(t, t, 0.0) for t in times if t <= end])
         if name in plan.defined:
             return self._history(value.key, self._defined(name, histories, end))
+        finish = None
+        if name in run.frozen or (owner is not None and value.kind == RATE):
+            active = histories[f'{owner}.active'].pieces
+            finish = next((piece.t for piece in active if piece.value is False), None)
         if value.kind == RATE:
             # Re-shares supply the point at each switch, key and write. Between those
             # points the amount follows its request and capacity as they move.
@@ -874,7 +890,7 @@ class Recorder:
         elif value.kind == LOOKUP:
             pieces = self._lookup(name, histories, end)
         elif value.kind == DYNAMIC:
-            pieces = self._dynamic(name, histories, end)
+            return self._dynamic_history(name, histories, end, since)
         elif isinstance(value.node, nodes.Ref) and value.node.name in histories and name not in run.frozen:
             # A formula that names another value has its history.
             found = histories[value.node.name].pieces
@@ -884,27 +900,36 @@ class Recorder:
         elif owner is None and name not in run.frozen:
             return self._formula_tail(name, end, start, since)
         else:
-            pieces = self.formula(name, histories, end, start=start)
-        if name in run.frozen or (owner is not None and value.kind == RATE):
+            if finish is not None and self._event_ends.get(name) == finish and since >= finish:
+                return histories[name]
+            # A live alias can borrow its source's pieces. Its first fit at retirement
+            # starts at the occurrence's own beginning, just like a cold restore.
+            if name not in self._event_ends:
+                since = start
+            history = self._formula_tail(name, end, start, since, finish=finish)
+            self._event_ends[name] = finish
+            return history
+        if finish is not None:
             # A checkpoint can follow the finish in the same round, before the set is
             # retired. Its occurrence's rate history already ends at zero there.
-            active = histories[f'{owner}.active'].pieces
-            finish = next((piece.t for piece in active if piece.value is False), None)
-            if finish is not None:
-                final = run.frozen.get(name, 0.0)
-                pieces = [piece for piece in pieces if piece[0] < finish] + [(finish, final, 0.0)]
+            _freeze_pieces(pieces, finish, run.frozen.get(name, 0.0))
         return self._history(value.key, pieces)
 
-    def _formula_tail(self, name, end, start, since, *, reads=None, point=None, anchors=None):
+    def _formula_tail(self, name, end, start, since, *, reads=None, point=None, anchors=None, finish=None):
         """Keep the prefix preceding the restart boundary and replace the remainder."""
         value = self.plan.values[name]
         inputs = _formula_reads(value.node) if reads is None else reads
+        if finish is not None:
+            end = min(end, finish)
+            since = min(since, end)
         boundary = _restart_point(start, since, self._histories, inputs, anchors or ())
         pieces = self.formula(
             name, self._histories, end, reads=reads, start=boundary, point=point, anchors=anchors
         )
+        if finish is not None:
+            _freeze_pieces(pieces, finish, self.run.frozen[name])
         prior = self._histories.get(name)
-        kept = [] if prior is None else prior.pieces
+        kept = [] if prior is None or boundary == start else prior.pieces
         if self._private is not None and name not in self._private:
             kept = list(kept)
             self._private.add(name)
@@ -1050,7 +1075,7 @@ class Recorder:
             boolean,
         )
 
-    def _dynamic(self, name, histories, end):
+    def _dynamic_history(self, name, histories, end, since):
         """The pieces of a dynamic read from the histories of what its members project and of the
         fields that say when each is a member."""
         plan = self.plan
@@ -1065,7 +1090,20 @@ class Recorder:
             members = plan.members_at(dynamic.source, value, t)
             return dynamic_value(dynamic, members, plan, value, t, plan.units)
 
-        return self.formula(name, histories, end, sorted(plan.dynamic_reads(name)), point=point)
+        reads = tuple(sorted(plan.dynamic_reads(name)))
+        if (
+            dynamic.source[0] == 'flows'
+            and dynamic.op == 'sum'
+            and dynamic.steps == ('actual_rate',)
+            and dynamic.keep is None
+        ):
+            # The dynamic sum is defined from zero, including its empty collection.
+            if self._flow_reads.get(name) != reads:
+                since = 0.0
+            history = self._formula_tail(name, end, 0.0, since, reads=reads, point=point)
+            self._flow_reads[name] = reads
+            return history
+        return self._history(plan.values[name].key, self.formula(name, histories, end, reads, point=point))
 
     def formula(
         self,

@@ -197,6 +197,8 @@ def at_stop(run):
     recorder.run = projected
     recorder._private = set()
     recorder._histories = dict(recorder._histories)
+    recorder._flow_reads = dict(recorder._flow_reads)
+    recorder._event_ends = dict(recorder._event_ends)
     recorder._dirty = set(recorder._dirty)
     recorder._moving = set(recorder._moving)
     recorder._raw_positions = dict(recorder._raw_positions)
