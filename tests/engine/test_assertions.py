@@ -1,6 +1,6 @@
 """Assertions over state (spec, "Assertions and their timing"; R-A2-15; `triggers.Triggers.check`).
 
-An assertion that reads state is checked after every round, just after every moment, and at each
+An assertion that reads state is checked after every round and at each
 contact with its boundary that the engine finds between moments: a store that leaves its asserted
 interval between two scheduled events fails the run at the time that it leaves. An assertion over
 inputs is checked once, at the start. The expected times are the closed forms of lines and of an
@@ -14,16 +14,20 @@ import math
 import pytest
 
 from napkin.engine import run
+from napkin.engine.timeline import Plan, Run
 from napkin.program.build import (
     SINK,
+    SOURCE,
     Builder,
     add,
     after,
     assertion,
     assign,
+    endpoint,
     event,
     flow,
     formula,
+    ifelse,
     input_,
     named,
     q,
@@ -32,7 +36,7 @@ from napkin.program.build import (
     this,
     value,
 )
-from napkin.program.config import Configuration, Request
+from napkin.program.config import Configuration, Numerics, Request
 from tests.reference.errors import NotCovered
 from tests.reference.from_program import run_of
 
@@ -67,7 +71,7 @@ def test_a_store_that_leaves_its_interval_between_moments_fails_when_it_leaves()
     record, oracle = tank(this.water >= q(5, 'L'), after(q(7, 'h'), assign(this.water, q(10, 'L'))))
     assert record.failure.t == pytest.approx(5)
     message = record.failure.detail('message')
-    assert 'tank.assert[0]: the assertion does not hold for tank just after t = 5 h' in message
+    assert 'tank.assert[0]: the assertion does not hold for tank at t = 5 h' in message
     assert 'just after t = 5 h' in str(oracle)
 
 
@@ -101,10 +105,66 @@ def test_an_assertion_on_a_curve_fails_where_its_store_crosses():
     assert 'the assertion does not hold for tank' in record.failure.detail('message')
 
 
-def test_an_assertion_that_fails_just_after_the_horizon_fails_the_run():
-    """The horizon is a moment too: the tank holds 5 L at 5 h and falls below it just after."""
+def test_an_assertion_still_inside_its_band_at_the_horizon_holds():
+    """At 5 h the stock is at raw equality. It leaves the closed band after the horizon."""
     record, oracle = tank(this.water >= q(5, 'L'), after(q(7, 'h')), horizon=5)
-    assert record.failure.t == pytest.approx(5) and oracle is not None
+    assert record.failure is None and record.end == 5
+    assert oracle is not None  # the exact-arithmetic oracle has no comparison band
+
+
+@pytest.mark.parametrize('factor', [1e-9, 1e-7], ids=['tight', 'wide'])
+@pytest.mark.parametrize('method', ['component', 'sparse'])
+def test_a_leak_breaks_an_inclusive_assertion_only_at_the_band_exit(factor, method):
+    b = Builder(UNITS)
+    settings = {'outflow': endpoint(capacity=q(10, 'L/h'))} if method == 'sparse' else {}
+    b.entity(
+        'vat',
+        value('stock', 'L', 1000, lower=0, **settings),
+        flow(
+            'leak',
+            this.stock,
+            SINK,
+            request=formula(ifelse(this.stock > q(10, 'L'), q(1, 'L/h'), q(0, 'L/h'))),
+        ),
+        assertion(this.stock >= q(999.999, 'L')),
+    )
+    numeric = Numerics(rtol=factor, atol_factor=factor / 10)
+    program = b.finish()
+    live = Run(Plan.of(program, Configuration(Request(2), numerics=numeric)))
+    record = live.run()
+    assert live.ways.sets[live.ways.set_of['vat.stock']][0].way == method
+    exit_time = (1000 - 999.999) + factor * 999.999
+    assert record.failure is not None and 'vat.assert[0]' in record.failure.detail('message')
+    assert abs(record.failure.t - exit_time) <= numeric.crossing
+
+
+@pytest.mark.parametrize('factor', [1e-9, 1e-7], ids=['tight', 'wide'])
+@pytest.mark.parametrize('cross_zero', [False, True], ids=['growing-band', 'shrinking-then-growing-band'])
+def test_a_constant_gap_can_cross_a_moving_comparison_band(factor, cross_zero):
+    # The gap stays at 1 L. In the second case the two stocks pass through zero.
+    # Equality holds at both ends of the run and fails inside it.
+    rate = round(1 / factor)
+    initial = -2 * rate if cross_zero else 0
+    b = Builder(UNITS)
+    b.entity(
+        'vat',
+        value('a', 'L', initial + 1),
+        value('b', 'L', initial),
+        flow('fill_a', SOURCE, this.a, request=q(rate, 'L/h')),
+        flow('fill_b', SOURCE, this.b, request=q(rate, 'L/h')),
+        assertion(this.a == this.b if cross_zero else this.a > this.b),
+    )
+    numeric = Numerics(rtol=factor, atol_factor=factor / 10)
+    record = run(b.finish(), Configuration(Request(4), numerics=numeric))
+    exit_time = 1 if cross_zero else (1 / factor - 1) / rate
+    assert record.failure is not None and 'vat.assert[0]' in record.failure.detail('message')
+    assert abs(record.failure.t - exit_time) <= numeric.crossing
+
+
+def test_a_strict_assertion_can_fail_at_the_settled_horizon():
+    record, _ = tank(this.water > q(0, 'L'), after(q(5, 'h'), assign(this.water, q(0, 'L'))), horizon=5)
+    assert record.failure is not None and record.failure.t == 5
+    assert 'tank.assert[0]' in record.failure.detail('message')
 
 
 def test_an_assertion_over_inputs_is_checked_once_at_the_start():

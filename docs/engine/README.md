@@ -108,8 +108,9 @@ The plan (`napkin/engine/timeline/plan.py`) reads the program once for each conf
   that set: it has a higher level.
 - **Events and triggers.** Each trigger of each member is known from the start. An occurrence gets
   its values under its id, such as `tank.receive#0.remaining`.
-- **Assertions.** An assertion that reads only inputs is checked once at the start. An assertion over
-  state is checked after every round, just after every moment and between moments.
+- **Assertions.** The engine checks an assertion over inputs once at the start. It checks an
+  assertion over state after each settled round and when a comparison in it changes between
+  moments. This includes the settled state at the horizon.
 
 ## Connected sets and methods
 

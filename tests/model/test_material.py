@@ -198,26 +198,34 @@ def test_an_assertion_of_a_sum_holds_while_the_flows_keep_their_stores():
 
 
 def test_an_assertion_of_a_sum_fails_when_a_flow_takes_from_its_stores():
-    """A leak of 1 person an hour from the waiting users leaves the books 0.001 person short at
-    0.001 h. The engine finds the contact within the tolerance of the books, 1e-10 of their size of
-    1000 people, which the leak crosses in 1e-7 h."""
+    """The 1 person/h leak crosses the lower threshold and then the lower edge of its band."""
     leak = SERVE + '    flow leak: this.waiting -> SINK\n        request = 1 person/h\n'
     model = compile_text(SERVICE.format(parts=leak) + BOOKS, UNITS)
     record = run(model.program, model.configuration)
-    assert record.failure is not None and record.failure.t == pytest.approx(0.001, abs=2e-7)
+    factor = max(model.configuration.numerics.rtol, model.configuration.numerics.atol_factor)
+    exit_time = 0.001 + factor * (USERS - 0.001)
+    assert (
+        record.failure is not None
+        and abs(record.failure.t - exit_time) <= model.configuration.numerics.crossing
+    )
     assert 'assert[0]: the assertion does not hold' in record.failure.detail('message')
 
 
 def test_an_assertion_of_a_sum_of_stores_on_lines_is_certified_by_its_ends():
     """Where the serve holds its rate, 5 people an hour, the sum of the stores is a line between
-    moments: the leak's contact is its root, 0.001 h."""
+    moments. The 1 person/h leak leaves the lower comparison band at the same time."""
     held = '    flow serve: this.waiting -> this.served\n        request = 5 person/h\n'
     leak = held + '    flow leak: this.waiting -> SINK\n        request = 1 person/h\n'
     model = compile_text(SERVICE.format(parts=held) + BOOKS, UNITS)
     assert run(model.program, model.configuration).failure is None
     model = compile_text(SERVICE.format(parts=leak) + BOOKS, UNITS)
     record = run(model.program, model.configuration)
-    assert record.failure is not None and record.failure.t == pytest.approx(0.001, rel=1e-9)
+    factor = max(model.configuration.numerics.rtol, model.configuration.numerics.atol_factor)
+    exit_time = 0.001 + factor * (USERS - 0.001)
+    assert (
+        record.failure is not None
+        and abs(record.failure.t - exit_time) <= model.configuration.numerics.crossing
+    )
 
 
 def test_a_sum_of_stores_whose_total_moves_both_ways_fails_where_it_leaves_its_range():
@@ -225,7 +233,7 @@ def test_a_sum_of_stores_whose_total_moves_both_ways_fails_where_it_leaves_its_r
     falls by the other, and the engine certifies it step by step (change 20). By hand, waiting =
     1000 e^(0.05 t) and served = 1000 (e^(0.05 t) - 1) - t, so the total less the users is
     2000 (e^(0.05 t) - 1) - t, which leaves the range of 0.001 person, widened by the comparison's
-    tolerance of 1e-7, at its first root: about 1.0102e-5 h."""
+    band at its upper edge."""
     both = (
         SERVE
         + '    flow fill: SOURCE -> this.waiting\n        request = formula(this.waiting / 10 h)\n'
@@ -233,6 +241,9 @@ def test_a_sum_of_stores_whose_total_moves_both_ways_fails_where_it_leaves_its_r
     )
     model = compile_text(SERVICE.format(parts=both) + BOOKS, UNITS)
     record = run(model.program, model.configuration)
-    root = float(mpmath.findroot(lambda t: 2000 * (mpmath.exp(0.05 * t) - 1) - t - (0.001 + 1e-7), 1e-5))
+    numeric = model.configuration.numerics
+    # The total is the larger operand at the upper edge: total - (users + 0.001) = factor * total.
+    excess = (USERS + 0.001) / (1 - max(numeric.rtol, numeric.atol_factor)) - USERS
+    root = float(mpmath.findroot(lambda t: 2000 * mpmath.expm1(0.05 * t) - t - excess, 1e-5))
     assert record.failure is not None
-    assert float(record.failure.t) == pytest.approx(root, abs=1e-8)
+    assert abs(record.failure.t - root) <= numeric.crossing

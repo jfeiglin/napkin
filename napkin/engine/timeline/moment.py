@@ -58,7 +58,7 @@ At a time, rounds. One round is:
    gates go on: the consequences of a further round, which settles them (spec: "New consequences
    due at the same timestamp start a further round"). Each firing reads the rates of this settling,
    including after an earlier firing started another occurrence. Once the rounds of the time are
-   done, each assertion must hold just after it as well.
+   done, the watches locate changes of the assertions on the outgoing trajectories.
 
 Another round follows at the same time while a stage is due there or a condition acted. The setup is
 round zero: its statements commit as one stage, the sets start, and the triggers get their first
@@ -478,7 +478,6 @@ class Moment:
         self.phase = 'between'
         run.limit = run.clock.apart(run.discrete())
         run.triggers.predict_all()
-        run.triggers.check(after=True)
 
     def _round_limit(self, t, limit):
         started = Counter(

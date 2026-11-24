@@ -535,15 +535,20 @@ assert plant.rate <= 5 L/h  @fixture
 | What the assertion reads | When the engine checks it |
 | --- | --- |
 | Only inputs and other values fixed for the run | Once, after the engine assembles the inputs |
-| A value that changes | After every round, after every moment, and at each contact between moments |
+| A value that changes | After every settled round and at each change of its comparison between moments, up to and including the horizon |
 
 - A stock that leaves its asserted interval between two scheduled times fails the run at the time
   that it leaves.
 - A tolerance is a closed interval: `assert hours + used in [total - 0.001 work_h, total + 0.001 work_h]`.
 - An assertion reads values inside their comparison band as equal ([numerics.md](numerics.md)).
 - An assertion makes no draw.
-- Between moments, the engine watches an assertion as it watches a trigger. A strict comparison is
-  valid in an assertion, because the first instant at which it fails exists.
+- Between moments, the engine locates the first time the assertion becomes false, to the crossing
+  tolerance. If the operands become equal, the engine continues to watch the edges of their band.
+  A strict comparison can fail when the operands enter the band. An inclusive comparison can fail
+  when they leave it. An assertion observes the stock at this time without changing its balance.
+- An operand's magnitude can change the band while the assertion is under observation. If the
+  floor itself depends on a continuously moving condition that the engine cannot certify, the
+  run stops with the name of that condition.
 - An assertion needs a `record` declaration ([evidence.md](evidence.md#the-evidence-rule)).
 
 ## Breakpoints, checkpoints and edits

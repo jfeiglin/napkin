@@ -23,11 +23,9 @@ and a delay that reads a rate waits for the next settling
 (`chance.py`).
 
 **An assertion over state** (spec, "Assertions and their timing"; R-A2-15) must hold after every
-round, on its settled state, within the tolerance of what it reads, and just after every moment
-(`check`): a value that leaves its asserted interval at a moment fails there. Between moments it is
-watched as a condition is, so a contact with its boundary is a moment, just after which it fails; a
-strict comparison is watched too, since the first instant at which an assertion fails exists for
-either form.
+round on its settled state, within the tolerance of what it reads. Between moments its watch
+locates changes at the edges of the comparison band, through the inclusive horizon. Each contact
+checks the complete assertion on the settled state. An assertion makes no stock placement.
 
 **Reading a condition.** Numeric operands within the band of their own scales compare equal
 (docs/design/decisions.md, change 29). This applies to stored and moving values alike. A boolean
@@ -426,20 +424,13 @@ class Triggers:
         moment.again = True
         moment.commit(tx)
 
-    def check(self, after=False):
-        """The assertions over state on the settled state (spec, "Assertions and their timing"):
-        after a round, each must hold within the tolerance of what it reads; just after a moment,
-        each must hold an instant later (as a trigger is read just after, with no band), so a value
-        that leaves its asserted interval at a moment fails there."""
+    def check(self):
+        """Check each complete assertion on the settled state, including a predicted band exit."""
         t = self.run.now
         for origin, member, node in self.plan.checks:
-            if after:
-                holds, when = self.holds(node, t + AFTER), f'just after t = {t:g} h'
-            else:
-                holds, when = self.holds(node), f'at t = {t:g} h'
-            if not holds:
+            if not self.holds(node):
                 owner = f' for {member}' if member else ''
-                raise SimulationError(f'{origin}: the assertion does not hold{owner} {when}')
+                raise SimulationError(f'{origin}: the assertion does not hold{owner} at t = {t:g} h')
 
     def next_timer(self):
         """The earliest time after now at which a disarmed trigger rearms, or None."""
@@ -571,7 +562,7 @@ class Triggers:
         now, earliest, window = run.now, math.inf, math.inf
         witnesses = []
         band_reads = set()
-        node = walked(self._reachable(node))
+        node = walked(self._reachable(node, assertion=not strict))
         atoms = self._atoms(node)
         moving_atoms = []
         for atom in atoms:
@@ -601,7 +592,7 @@ class Triggers:
                 continue
             try:
                 start = self.path_side(left, now) - self.path_side(right, now)
-                linear = (
+                linear = strict and (
                     self._linear(moving)
                     and _affine(left, moving, self.plan)
                     and _affine(right, moving, self.plan)
@@ -609,6 +600,16 @@ class Triggers:
                 end = self.side(left, until) - self.side(right, until) if linear else None
             except (TypeError, ValueError):
                 continue  # sides that are no numbers
+            if not strict:
+                # Assertions observe the logical comparison, including at equality on entry.
+                # A change in an atom schedules a settled read of the complete assertion.
+                # It supplies no physical crossing or stock placement.
+                until = min(until, self.plan.horizon)
+                if until > now:
+                    root = self._assertion_contact(left, op, right, moving, now, until, float(start))
+                    if root is not None:
+                        earliest = min(earliest, root)
+                continue
             if linear and start == end:
                 continue
             if strict and (op in _CLOSED) != positive:
@@ -659,7 +660,46 @@ class Triggers:
                     band_reads.update(moving)
         return earliest, window, tuple(witnesses), band_reads
 
-    def _reachable(self, node):
+    def _assertion_contact(self, left, op, right, moving, now, until, start):
+        """Watch the logical edge. With two moving operands the band can turn while their
+        difference stays constant. Its width is the maximum of five affine sides: the floor
+        width and the two signs of each operand times the factor. For a gap within an edge,
+        one side that covers it is enough until that side ceases to do so. For a gap outside
+        the edge, any side can admit it. A change schedules a fresh read of the whole assertion."""
+        comparisons = self.plan.units.comparisons
+
+        def floor_control(node):
+            changing = self.moving_reads(node, through_rates=False)
+            if any(not self.run.ways.held_rate(name) for name in changing):
+                raise SimulationError(
+                    f'the first contact of {nodes.notation(left)} {_SPELLING[op]} {nodes.notation(right)} '
+                    f'cannot be certified: its comparison floor reads {nodes.notation(node)}, which moves '
+                    'between moments'
+                )
+            return self.side(node, now)
+
+        fixed = comparisons.band_floor(left, right, floor_control)
+        # If just one operand moves, each signed edge is monotone in that operand for a factor < 1.
+        if comparisons.factor < 1 and (not self.moving_reads(left) or not self.moving_reads(right)):
+            return self._contact(left, op, right, moving, now, until, start)
+        sides = [(fixed, nodes.const(fixed))]
+        for operand in (left, right):
+            value = float(self.path_side(operand, now))
+            for factor in (comparisons.factor, -comparisons.factor):
+                sides.append((factor * value, nodes.binary('mul', nodes.const(factor), operand)))
+        gap = nodes.binary('sub', left, right)
+        largest = max(sides, key=lambda item: item[0])
+        first = None
+        for edge in _EDGES[op]:
+            distance, residual = (start, gap) if edge == 'high' else (-start, nodes.unary('neg', gap))
+            for width, side in [largest] if distance <= largest[0] else sides:
+                limit = min(until, first) if first is not None else until
+                at = self._contact(residual, 'le', side, moving, now, limit, distance - width, zero_band=True)
+                if at is not None:
+                    first = at
+        return first
+
+    def _reachable(self, node, assertion=False):
         """Remove a held short-circuit prefix for this prediction. A discrete write
         rebuilds the prediction from the original expression and its full dependencies."""
         if isinstance(node, nodes.Ref):
@@ -670,13 +710,27 @@ class Triggers:
                 and found.boolean
                 and node.name not in self.run.frozen
             ):
-                return (yield self._reachable(found.node))
+                return (yield self._reachable(found.node, assertion))
+        if assertion and isinstance(node, nodes.Unary) and node.op == 'not':
+            return nodes.unary('not', (yield self._reachable(node.operand, assertion)))
+        if assertion and isinstance(node, nodes.IfElse):
+            test = yield self._reachable(node.test, assertion)
+            if self.holds(test):
+                return nodes.if_else(test, (yield self._reachable(node.body, assertion)), nodes.const(False))
+            return nodes.if_else(test, nodes.const(False), (yield self._reachable(node.orelse, assertion)))
         if not isinstance(node, nodes.BoolOp):
             return node
         decides = node.op == 'or'
         for i, operand in enumerate(node.values):
-            part = yield self._reachable(operand)
+            part = yield self._reachable(operand, assertion)
             if self.moving_reads(part) or self._moving_lookups(part):
+                if assertion:
+                    active = [part]
+                    for other in node.values[i + 1 :]:
+                        if self.holds(active[-1]) == decides:
+                            break
+                        active.append((yield self._reachable(other, assertion)))
+                    return nodes.boolean(node.op, active) if len(active) > 1 else part
                 if i == 0 and part == operand:
                     return node
                 remaining = (part, *node.values[i + 1 :])
@@ -846,7 +900,9 @@ class Triggers:
         op = {-1: 'ge', 0: 'eq', 1: 'le'}[outgoing]
         return self._contact(left, op, right, moving, now, until, start, outgoing=outgoing)
 
-    def _contact(self, left, op, right, moving, now, until, start, outgoing=None, physical=False):
+    def _contact(
+        self, left, op, right, moving, now, until, start, outgoing=None, physical=False, *, zero_band=False
+    ):
         """The first time in (now, until] at which a comparison of values on curves can change its
         answer, read within its band, or None: step by step, each piece of a step skipped, decided by
         its ends, or halved (see the module). `start` is its difference now."""
@@ -854,7 +910,9 @@ class Triggers:
         # needs the incoming continuation through the horizon's coincidence band.
         horizon = self.plan.horizon
         if now < horizon < until:
-            at = self._contact(left, op, right, moving, now, horizon, start, outgoing, physical)
+            at = self._contact(
+                left, op, right, moving, now, horizon, start, outgoing, physical, zero_band=zero_band
+            )
             if at is not None:
                 return at
             start = self.side(left, horizon) - self.side(right, horizon)
@@ -865,7 +923,7 @@ class Triggers:
         widths = {}
 
         def width(t):
-            if outgoing or physical:
+            if outgoing or physical or zero_band:
                 return 0.0
             if t not in widths:
                 widths[t] = float(self.gap_band(left, right, t)[1])
