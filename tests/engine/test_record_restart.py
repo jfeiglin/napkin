@@ -1,11 +1,12 @@
 """Refreshing a curved global formula twice at one moment preserves its fitted pieces."""
 
-from math import exp
+from math import exp, nextafter
 
 import numpy as np
 import pytest
 
 from napkin.engine.timeline import Plan, Run, read
+from napkin.engine.timeline import record as recording
 from napkin.engine.timeline.record import Recorder, fitted
 from napkin.program.build import Builder, add, after, call, event, formula, named, q, start, t, this, value
 from napkin.program.config import Configuration, Numerics, Request
@@ -87,3 +88,63 @@ def test_refreshing_a_curve_twice_at_a_moment_keeps_its_exact_pieces(monkeypatch
     assert record.history(Key('plant', ('curve',))).pieces == checks[2][1]
     assert reference.updates >= 4
     assert not reference.closed_spans
+
+
+def test_a_bend_one_float_before_a_moment_uses_the_moment_boundary(monkeypatch):
+    moment = 1.0
+    root = nextafter(moment, 0.0)
+    builder = Builder({'h': {'time': 1}})
+    builder.entity(
+        'plant',
+        value('offset', '', 0),
+        value('reading', '', formula(this.offset + call('max', root - t / q(1, 'h'), 0))),
+        event('tick', after(q(moment, 'h'), add(this.offset, 10))),
+    )
+    builder.setup(start(named('plant').tick))
+    key = Key('plant', ('reading',))
+    plan = Plan.of(builder.finish(), Configuration(Request(2, everything=False, keys=(key,))))
+
+    # Observe the root before the recorder chooses which fit boundaries to keep.
+    located = []
+    locate = recording.crossing_time
+
+    def observe(gap, lo, hi, *, accepted):
+        found = locate(gap, lo, hi, accepted=accepted)
+        if found is not None:
+            located.append((found, gap(found)))
+        return found
+
+    monkeypatch.setattr(recording, 'crossing_time', observe)
+    result = Run(plan).run()
+    assert result.failure is None
+    assert (root, 0.0) in located
+    history = result.history(key)
+    assert [p.t for p in history.pieces if abs(p.t - moment) <= plan.numerics.crossing] == [moment]
+    assert history.at(0.5) == pytest.approx(root - 0.5, abs=plan.numerics.atol_factor, rel=0)
+    assert history.at(root) == pytest.approx(0, abs=plan.numerics.atol_factor, rel=0)
+    assert history.at(moment) == history.at(2) == 10
+
+
+def test_a_formula_keeps_both_input_boundaries_around_a_short_transition():
+    builder = Builder({'h': {'time': 1}})
+    builder.entity(
+        'plant',
+        value('recovery', '', 0),
+        value('loss', '', formula(this.recovery + 1)),
+    )
+    program = builder.finish()
+    live = Run(Plan.of(program, Configuration(Request(2))))
+    live.prepare()
+    begin = 1.0
+    landed = begin + live.plan.numerics.crossing / 4
+    # Supply the short moving piece and the value posted at its end directly to the recorder.
+    live.recorder.add_pieces('plant.recovery', [(begin, 5.0, 2.0), (landed, 12.0, 0.0)])
+    record = live.recorder.record(2, ongoing=True)
+
+    loss = record.history(Key('plant', ('loss',)))
+    assert [p.t for p in loss.pieces if begin <= p.t <= landed] == [begin, landed]
+    times = (begin, nextafter(landed, begin), landed, nextafter(landed, 2.0))
+    expected = (6.0, 6.0 + 2.0 * (times[1] - begin), 13.0, 13.0)
+    assert tuple(loss.at(t) for t in times) == pytest.approx(expected, rel=live.plan.numerics.atol_factor)
+    (public,) = read(record, program, ('plant.loss',), times)
+    assert tuple(public.values) == expected

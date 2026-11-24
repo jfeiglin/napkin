@@ -233,16 +233,26 @@ def fitted(values, start, end, tolerance):
     return [sorted(pieces, key=lambda piece: piece[0]) for pieces in found]
 
 
-def _bend_times(layers, operand, start, end, tolerance):
+def _fit_boundaries(start, end, added, crossing):
+    """Keep both fixed endpoints. Between them, keep the earliest distinct added boundaries."""
+    kept = [start]
+    for at in sorted(set(added)):
+        if at - kept[-1] > crossing and end - at > crossing:
+            kept.append(at)
+    kept.append(end)
+    return kept
+
+
+def _bend_times(layers, operand, start, end, tolerance, crossing):
     """Roots of numeric branch surfaces inside a piece, inner decisions before their users.
 
     The difference between two smooth operands can cross zero twice. Fit that difference,
     split at its turning points, and locate each change of sign against the actual operands.
     Sampling only the selected result can miss an entire narrow min/max arm.
     """
-    cuts = {start, end}
+    roots = set()
+    bounds = [start, end]
     for layer in layers:
-        bounds = sorted(cuts)
         for left, right in layer:
 
             def gap(t):
@@ -286,12 +296,15 @@ def _bend_times(layers, operand, start, end, tolerance):
                                 continue
                             root = crossing_time(gap, lo, hi, accepted=(first, last))
                             if root is not None and a < root < b:
-                                cuts.add(root)
+                                roots.add(root)
                 except FAILURES:
                     # An inactive branch need not have a value here. The ordinary fit
                     # still reports any failure of the selected expression.
                     continue
-    return sorted(cuts)
+        bounds = _fit_boundaries(start, end, roots, crossing)
+    # The search endpoints may themselves be optional moment ends. The caller decides
+    # which of those ends and these roots to retain between the actual fixed boundaries.
+    return sorted(roots)
 
 
 def _line_number(value):
@@ -347,7 +360,8 @@ class Fits:
         """Known boundaries strictly inside an interval that needs a curve."""
         return self.ends[bisect_right(self.ends, start) : bisect_left(self.ends, end)]
 
-    def pieces(self, name, start, end, fit):
+    def cached(self, name, start, end, fit):
+        """Reuse a completed fit or root search over this exact interval."""
         key = (name, start, end)
         if key not in self.closed:
             self.closed[key] = fit()
@@ -1151,14 +1165,15 @@ class Recorder:
                 return evaluate(node, env, plan.units)
 
         boolean = value.boolean if boolean is None else boolean
-        times = {float(start), *(anchors or ())}
+        openings = {float(start), *(anchors or ())}
         for read in reads:
             pieces = histories[read].pieces
             left = bisect_left(pieces, start, key=_piece_time)
             right = bisect_right(pieces, end, lo=left, key=_piece_time)
-            times.update(piece.t for piece in pieces[left:right])
-        times = sorted(times)
-        bounds = [*times, max(end, times[-1])]
+            openings.update(piece.t for piece in pieces[left:right])
+        times = sorted(openings)
+        bounds = [*times, end]
+        crossing = plan.numerics.crossing
         readers = {read: _reader(histories[read]) for read in reads}
         holders = {read: _holder(histories[read]) for read in reads}
 
@@ -1203,45 +1218,48 @@ class Recorder:
             return bool(found) if boolean else float(found)
 
         scale = self.run.own_scale(name) if not discrete else 1.0
-        crossing = plan.numerics.crossing
+        def operand(expression, t):
+            return evaluate(expression, environment(t), plan.units)
+
+        def tolerance_at(t):
+            begin = first if t == a else tried(t)
+            size = scale if isinstance(begin, Unavailable) else max(scale, abs(float(begin)))
+            return np.array([plan.numerics.atol_factor * size])
+
         pieces = []
         for (a, b), first in zip(pairwise(bounds), firsts):
             held = b <= a or (not timed and all(holders[read](a) for read in reads))
             if held:
                 pieces.append((a, cast(first), 0.0))
                 continue
-            for c, d in pairwise([a, *self.fits.intervals(a, b), b]):
+            moments = self.fits.intervals(a, b)
+            added = list(moments)
+            if layers is None:
+                pairs = dict.fromkeys(
+                    pair
+                    for branch in (nodes.breadth_first(node) if authored and not discrete else ())
+                    if isinstance(branch, nodes.Call) and branch.function in ('min', 'max', 'clip', 'abs')
+                    for pair in switch_pairs(branch)
+                )
+                layers = switch_layers(tuple(pairs), {})
+            if layers:
+                def find_roots():
+                    return _bend_times(layers, operand, c, d, tolerance_at(c), crossing)
 
+                for c, d in pairwise([a, *moments, b]):
+                    added.extend(self.fits.cached(('roots', name), c, d, find_roots))
+
+            for lo, hi in pairwise(_fit_boundaries(a, b, added, crossing)):
                 def fit():
-                    nonlocal layers
-                    begin = first if c == a else tried(c)
+                    begin = first if lo == a else tried(lo)
                     if discrete:
-                        return _switches(lambda time: cast(tried(time)), c, d, cast(begin), crossing)
-                    size = scale if isinstance(begin, Unavailable) else max(scale, abs(float(begin)))
-                    tolerance = np.array([plan.numerics.atol_factor * size])
-                    if layers is None:
-                        pairs = dict.fromkeys(
-                            pair
-                            for branch in (nodes.breadth_first(node) if authored else ())
-                            if isinstance(branch, nodes.Call)
-                            and branch.function in ('min', 'max', 'clip', 'abs')
-                            for pair in switch_pairs(branch)
-                        )
-                        layers = switch_layers(tuple(pairs), {})
-                    if not layers:
-                        return _numbers(at, tried, c, d, begin, tolerance, crossing)
+                        return _switches(lambda time: cast(tried(time)), lo, hi, cast(begin), crossing)
+                    # Each moment span sets the tolerance for all of its fitted branches.
+                    i = bisect_right(moments, lo)
+                    origin = moments[i - 1] if i else a
+                    return _numbers(at, tried, lo, hi, begin, tolerance_at(origin), crossing)
 
-                    def operand(expression, t):
-                        return evaluate(expression, environment(t), plan.units)
-
-                    pieces = []
-                    for lo, hi in pairwise(_bend_times(layers, operand, c, d, tolerance)):
-                        pieces.extend(
-                            _numbers(at, tried, lo, hi, begin if lo == c else tried(lo), tolerance, crossing)
-                        )
-                    return pieces
-
-                pieces.extend(self.fits.pieces(name, c, d, fit))
+                pieces.extend(self.fits.cached(name, lo, hi, fit))
         return pieces
 
     def _defined(self, name, histories, end):
