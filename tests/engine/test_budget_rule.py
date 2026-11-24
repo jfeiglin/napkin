@@ -431,7 +431,8 @@ def test_history_budget_stops_work_at_the_first_excess_piece(monkeypatch):
 @pytest.mark.parametrize('first_stage', [None, 1, 10])
 def test_a_clock_formula_exhausts_its_budget_on_the_first_completed_span(first_stage):
     """The first completed span is [0,1] with hourly stages, otherwise [0,10].
-    The former needs one piece. The latter splits [0,1.25] into halves."""
+    The former needs one piece. With the default fit tolerance, the first piece
+    of the longer span covers [0,1.25]."""
     from napkin.program.build import call, t
 
     b = Builder(UNITS)
@@ -459,7 +460,7 @@ def test_a_clock_formula_exhausts_its_budget_on_the_first_completed_span(first_s
     request = Request(10, everything=False, keys=(key,), pieces=1)
     made = Run(Plan.of(b.finish(), Configuration(request)))
     record = made.run()
-    cutoff = 1 if first_stage == 1 else 0.625
+    cutoff = 1 if first_stage == 1 else 1.25
     assert record.failure is not None and record.failure.t == cutoff
     assert record.failure.round == (1 if ticks else 0)
     assert record.history(key).pieces[0].curve.length == cutoff

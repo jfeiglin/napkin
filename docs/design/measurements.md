@@ -205,3 +205,21 @@ The table of the campaign, its raw samples, schedules and calibrations are in
 `scratch/rewrite/audit/owner-fixes/final/mac/` at commit `af5428b`: `final-speed.md`, and
 `final-speed-raw.zip` (SHA-256
 `e32c9df76d73c497db0f5f051bd2ff1791e9135db0347967ffa384064d5009cc`).
+
+## A stock at its bound
+
+An experiment made a trigger wait for the solver to report that a stock reached its bound.
+A tank started with 1 L. Its outflow rate was its remaining volume divided by 1 h. Its exact
+volume stays positive at every finite time. At `rtol = 1e-6` and `atol_factor = 1e-7`, the
+polynomial inside a Radau step reached zero at 24.767623278 h. The empty-tank event fired.
+The exact volume at that time was 1.7521e-11 L.
+
+The same experiment covered 24 water runs and six displayed values per run. Each absolute
+tolerance factor was one tenth of the relative tolerance. At `rtol = 1e-7`, all 144 displayed
+values matched the contact experiment at `rtol = 1e-9`. At `rtol = 1e-6`, eight Cape May runs
+showed an economic loss of $36,000. The tight setting showed $35,000 in each run.
+
+In another test, a stock stayed 1e-12 L above its lower bound. The trigger waited for contact.
+The same comparison in a stage guard and a public formula returned true, and a flow switch let
+1 L move. A design that uses bound contacts must give triggers, stage guards, solver switches
+and historical readers the same answer at the same time and round.

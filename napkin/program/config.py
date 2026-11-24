@@ -101,8 +101,8 @@ class Numerics:
     tolerance in time of a crossing (h), which is also the time between two moments that the engine
     tells apart."""
 
-    rtol: float = 1e-9
-    atol_factor: float = 1e-10
+    rtol: float = 1e-7
+    atol_factor: float = 1e-8
     max_step: float = 1.0
     max_evaluations: int = 2_000_000
     crossing: float = 1e-8

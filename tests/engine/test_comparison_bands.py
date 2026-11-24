@@ -27,6 +27,13 @@ from tests.reference.from_program import run_of, value_at
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}, 'mL': ({'volume': 1}, Fraction(1, 1000))}
 
 
+def band_samples(configuration, scale):
+    """Return gaps half a band and two bands from zero, in the unit of the supplied scale."""
+    numerics = configuration.numerics
+    band = max(numerics.rtol, numerics.atol_factor) * scale
+    return band / 2, 2 * band
+
+
 def values(program, configuration, names, reader):
     keys = [Key('tank', (name,)) for name in names]
     if reader == 'reference':
@@ -40,16 +47,15 @@ def values(program, configuration, names, reader):
 
 @pytest.mark.parametrize('reader', ['engine', 'reference'])
 def test_declared_scales_govern_a_comparison_in_both_orders(reader):
-    """A 1e-12 L signal differs from literal zero by a billion of its own bands.
-    A separately declared coarse peer has a 1e-9 L band. The finer fallback for
-    an unscaled mL value is 1e-12 L. An alias keeps its target's scale."""
+    """The sample exceeds its own band and the band for one mL, and lies inside the coarse peer's band."""
+    _, sample_l = band_samples(Configuration(Request(1)), 0.001)
     b = Builder(UNITS)
     b.entity(
         'tank',
-        value('signal', 'L', 1e-12, scale=1e-12),
+        value('signal', 'L', sample_l, scale=sample_l),
         value('alias', 'L', formula(this.signal)),
         value('coarse', 'L', 0),
-        value('drop', 'mL', 5e-8),
+        value('drop', 'mL', 1000 * sample_l),
         value('fine', BOOL, formula(this.signal == q(0, 'L'))),
         value('backwards', BOOL, formula(q(0, 'L') == this.alias)),
         value('peers', BOOL, formula(this.signal == this.coarse)),
@@ -177,21 +183,23 @@ def test_sparse_template_filters_each_member_at_its_own_scale(through_choice):
     from napkin.engine.timeline.sparse import Sparse
     from napkin.program.build import endpoint, flow, ifelse, input_
 
+    cfg = Configuration(Request(1))
+    _, sample_l = band_samples(cfg, 0.001)
     b = Builder(UNITS)
     supply = b.entity('supply', value('stock', 'L', 100, lower=0))
     extra = ()
     signal = this.signal
     if through_choice:
         extra = (
-            value('coarse', 'L', 5e-11, scale=1),
-            value('fine', 'L', 5e-11, scale=0.001),
+            value('coarse', 'L', sample_l, scale=1),
+            value('fine', 'L', sample_l, scale=0.001),
             value('selected', 'L', formula(ifelse(this.resolution > q(0.1, 'L'), this.coarse, this.fine))),
         )
         signal = this.selected + q(0, 'L')
     cell = b.template(
         'Cell',
         input_('resolution', 'L', 1),
-        value('signal', 'L', 5e-11, scale=this.resolution),
+        value('signal', 'L', sample_l, scale=this.resolution),
         *extra,
         value('water', 'L', 1, lower=0, inflow=endpoint(capacity=q(12, 'L/h'))),
         flow(
@@ -203,7 +211,6 @@ def test_sparse_template_filters_each_member_at_its_own_scale(through_choice):
     )
     b.table('cells', cell, [{'resolution': x} for x in (1, 0.001, 1, 0.001)])
     program = b.finish()
-    cfg = Configuration(Request(1))
     timeline = Run(Plan.of(program, cfg))
     assert all(isinstance(way, Sparse) for way in timeline.prepare()[2])
     record = run(program, cfg)
@@ -226,11 +233,13 @@ def test_two_declared_solvers_keep_their_concrete_rows_comparison_scales():
         solver,
     )
 
+    config = Configuration(Request(1))
+    _, sample_l = band_samples(config, 0.001)
     b = Builder(UNITS)
     cell = b.template(
         'Cell',
         input_('resolution', 'L', 1),
-        value('signal', 'L', 5e-11, scale=this.resolution),
+        value('signal', 'L', sample_l, scale=this.resolution),
         value('limit', 'L/h', formula(ifelse(this.signal == q(0, 'L'), q(1, 'L/h'), q(7, 'L/h')))),
         value('water', 'L', 0),
         flow('fill', SOURCE, this.water, request=q(10, 'L/h')),
@@ -244,7 +253,7 @@ def test_two_declared_solvers_keep_their_concrete_rows_comparison_scales():
         ),
     )
     b.table('cells', cell, [{'resolution': 1}, {'resolution': 0.001}])
-    program, config = b.finish(), Configuration(Request(1))
+    program = b.finish()
     record = run(program, config)
     oracle, failure = run_of(program, config)
     assert record.failure is None and failure is None
@@ -288,18 +297,20 @@ def test_a_solver_locals_inverted_domain_uses_its_own_band(reader):
 
 @pytest.mark.parametrize('reader', ['engine', 'reference'])
 def test_a_redefined_alias_reads_the_scale_of_its_definition_at_the_requested_time(reader):
-    """Both quantities hold 5e-11 L. The old alias has a 1e-9 L band and the new one 1e-12 L."""
+    """The same sample lies inside the old alias's coarse band and outside the new fine band."""
+    cfg = Configuration(Request(1))
+    _, sample_l = band_samples(cfg, 0.001)
     b = Builder(UNITS)
     b.entity(
         'tank',
-        value('coarse', 'L', 5e-11, scale=1),
-        value('fine', 'L', 5e-11, scale=0.001),
+        value('coarse', 'L', sample_l, scale=1),
+        value('fine', 'L', sample_l, scale=0.001),
         value('alias', 'L', formula(this.coarse)),
         value('zero', BOOL, formula(this.alias == q(0, 'L'))),
         event('change', after(q(1, 'h'), assign(this.alias, formula(this.fine)))),
     )
     b.setup(start(named('tank').change))
-    program, cfg = b.finish(), Configuration(Request(1))
+    program = b.finish()
     key = Key('tank', ('zero',))
     if reader == 'reference':
         oracle, failure = run_of(program, cfg)
@@ -314,16 +325,17 @@ def test_a_redefined_alias_reads_the_scale_of_its_definition_at_the_requested_ti
 
 @pytest.mark.parametrize('reader', ['engine', 'reference'])
 def test_a_starting_predicate_reads_a_later_fields_declared_scale(reader):
-    """The boolean initializes first. The 1e−12 L band of the later field excludes zero."""
+    """The boolean initializes first. The later field’s fine band separates its sample from zero."""
     from napkin.program.build import input_
 
+    _, sample_l = band_samples(Configuration(Request(1)), 0.001)
     b = Builder(UNITS)
     b.entity(
         'tank',
         value('fine_zero', BOOL, this.fine == q(0, 'L')),
         value('coarse_zero', BOOL, this.coarse == q(0, 'L')),
-        value('fine', 'L', 5e-11, scale=this.resolution),
-        value('coarse', 'mL', 5e-8, scale=this.wide),
+        value('fine', 'L', sample_l, scale=this.resolution),
+        value('coarse', 'mL', 1000 * sample_l, scale=this.wide),
         input_('resolution', 'L', 0.001),
         input_('wide', 'L', 1),
     )
@@ -375,16 +387,18 @@ def test_a_fine_concentration_keeps_its_scale_in_inline_and_named_arithmetic(rea
 
 @pytest.mark.parametrize('reader', ['engine', 'reference'])
 def test_a_rescaled_quantity_and_its_literal_threshold_keep_the_same_band(reader):
-    """2e-12 L is twice the 1e-12 L band. Scaling both sides by 1e-3
-    gives a 2e-15 L signal and 1e-15 L band; either writing distinguishes it."""
+    """Both rescalings preserve the signal’s distance from zero and its distance from the threshold in bands."""
+    inside_l, outside_l = band_samples(Configuration(Request(1)), 0.001)
+    # Multiplication by 0.001 and the conversion from L to mL cancel in the numeric threshold.
+    threshold_ml = outside_l - inside_l
     b = Builder(UNITS)
     b.entity(
         'tank',
-        value('signal', 'L', 2e-12, scale=0.001),
+        value('signal', 'L', outside_l, scale=0.001),
         value('small', 'mL', formula(0.001 * this.signal)),
         value('multiply', BOOL, formula(this.small > q(0, 'mL'))),
         value('divide', BOOL, formula(q(0, 'L') < this.signal / 1000)),
-        value('scaled_inside', BOOL, formula(this.small <= q(1.5e-12, 'mL'))),
+        value('scaled_inside', BOOL, formula(this.small <= q(threshold_ml, 'mL'))),
     )
     assert values(b.finish(), Configuration(Request(1)), ['multiply', 'divide', 'scaled_inside'], reader) == [
         True,
@@ -522,21 +536,22 @@ def test_an_indexed_occurrence_keeps_the_selected_scale_when_its_formula_freezes
 
 @pytest.mark.parametrize('reader', ['engine', 'reference'])
 def test_a_table_key_forwards_the_selected_rows_comparison_scale(reader):
-    """Two table rows both hold 5e-11 L. Row 0 uses a 1e-9 L band,
-    row 1 a 1e-12 L band. At 1 h the table switches to row 1."""
+    """At 1 h the table switches to row 1. Its fine band separates the same sample from zero."""
     from napkin.program.build import input_, t
 
+    cfg = Configuration(Request(2))
+    _, sample_l = band_samples(cfg, 0.001)
     b = Builder(UNITS)
     row = b.template(
         'Reading',
         input_('hour', 'h', 0),
         input_('resolution', 'L', 1),
-        value('sample', 'L', 5e-11, scale=this.resolution),
+        value('sample', 'L', sample_l, scale=this.resolution),
     )
     b.table('readings', row, [{'hour': 0, 'resolution': 1}, {'hour': 1, 'resolution': 0.001}])
     sample = row.instances.by('hour').at(t).sample
     b.entity('tank', value('positive', BOOL, formula(sample > q(0, 'L'))))
-    program, cfg = b.finish(), Configuration(Request(2))
+    program = b.finish()
     key, times = Key('tank', ('positive',)), (1, 0, 2)
     if reader == 'reference':
         oracle, failed = run_of(program, cfg)
@@ -586,13 +601,13 @@ def test_finite_comparisons_keep_the_scale_through_large_and_small_intermediates
 
 @pytest.mark.parametrize('reader', ['engine', 'reference'])
 def test_a_product_with_a_large_intermediate_floor_can_be_rescaled(reader):
-    """The product has floor 1e400. Dividing by 1e200 gives band 1e191.
-    Adding 1e192 puts the finite result ten bands above zero."""
+    """Dividing the product scale of 1e400 by 1e200 gives a finite band. The offset lies outside it."""
+    _, offset = band_samples(Configuration(Request(1)), 1e200)
     b = Builder(UNITS)
     b.entity(
         'tank',
         value('x', '', 1, scale=1e200),
-        value('positive', BOOL, formula(this.x * this.x / 1e200 + 1e192 > 0)),
+        value('positive', BOOL, formula(this.x * this.x / 1e200 + offset > 0)),
     )
     assert values(b.finish(), Configuration(Request(1)), ['positive'], reader) == [True]
 
@@ -613,22 +628,23 @@ def test_a_large_floor_gives_a_finite_band_before_comparing():
 
 
 def test_a_frozen_formula_keeps_a_large_intermediate_floor_through_checkpoint():
-    """A retired x*x keeps floor 1e400. A later comparison divides by 1e200,
-    giving a finite band of 1e191, smaller than the 1e192 offset."""
+    """After restore, dividing the frozen scale of 1e400 gives a finite band smaller than the offset."""
     from napkin.engine.timeline import Plan, Run
     from napkin.program.build import t
     from napkin.program.checkpoint import Breakpoint, dumps, loads
 
+    cfg = Configuration(Request(3))
+    _, offset = band_samples(cfg, 1e200)
     b = Builder(UNITS)
     tank = b.entity(
         'tank',
         value('x', '', 1, scale=1e200),
         event('job', value('square', '', formula(this.x * this.x)), after(q(1, 'h'))),
         event('read_later', after(q(2, 'h'))),
-        value('positive', BOOL, formula(this.job.occurrences.at(t).square / 1e200 + 1e192 > 0)),
+        value('positive', BOOL, formula(this.job.occurrences.at(t).square / 1e200 + offset > 0)),
     )
     b.setup(start(tank.job), start(tank.read_later))
-    program, cfg = b.finish(), Configuration(Request(3))
+    program = b.finish()
     machine = Run(Plan.of(program, cfg), (Breakpoint('tank.read_later.step[0]'),))
     stopped = loads(dumps(machine.run()))
     restored = Run.restored(Plan.of(program, cfg), stopped).resume()

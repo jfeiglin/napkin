@@ -75,7 +75,7 @@ from napkin.program.checkpoint import (
     encode,
     loads,
 )
-from napkin.program.config import SAMPLED, Configuration, Request
+from napkin.program.config import SAMPLED, Configuration, Numerics, Request
 from tests.engine.resume_parity import assert_resume_parity, assert_trace_prefix
 from tests.program.examples import DISPATCH, DISPATCH_SWITCH, EXAMPLES, pump_dispatch
 
@@ -415,37 +415,62 @@ def bounds_of(made):
     return found
 
 
-def test_a_component_that_rests_on_its_bound_at_a_stop_is_restored_on_it(tmp_path):
-    """The restored run holds the same active bounds as the live run at the stop. The tank of `emptying` rests on its bound at the stop at ln 2 h, which the
-    component found when the first stage read the drain: restored in this process from the
-    checkpoint's bytes, it holds that bound, and finds none again (`ComponentWay._settle`). The
-    stages read 0 L/h at ln 2 h, and the run is the run straight through, three ways."""
+@pytest.mark.parametrize(
+    ('numerics', 'expect_contact'),
+    [(Numerics(), False), (Numerics(rtol=1e-9, atol_factor=1e-10), True)],
+    ids=['default-band-entry', 'tight-physical-contact'],
+)
+def test_a_component_that_rests_on_its_bound_at_a_stop_is_restored_on_it(tmp_path, numerics, expect_contact):
+    """The stopped tank has the same active bound after restore. Both stages see a zero drain.
+    At the default tolerance the trigger fires on band entry. At the tight setting the solver
+    reaches the physical bound first."""
     case = emptying()
-    made = Run(Plan.of(case.program, case.configuration), case.breakpoints)
+    configuration = replace(case.configuration, numerics=numerics)
+    made = Run(Plan.of(case.program, configuration), case.breakpoints)
     stop = made.run()
-    assert isinstance(stop, Checkpoint) and stop.stop.t == pytest.approx(math.log(2), abs=1e-9)
+    assert isinstance(stop, Checkpoint)
+    level_band = made.comparison_band('tank.water', 0, 0)
+    level_atol = numerics.atol_factor * made.own_scale('tank.water')
+    # The drain is at least 1 L/h near empty. Convert the comparison band and the
+    # integration allowance at zero from litres to hours, then allow for root location.
+    min_drain_rate = 1.0  # L/h
+    time_limit = (level_band + level_atol) / min_drain_rate + numerics.crossing
+    emptying_time = pytest.approx(math.log(2), abs=time_limit, rel=0)
+    assert stop.stop.t == emptying_time
     remaining = made.stock_balance('tank.water', stop.stop.t)
     assert 0 <= remaining <= made.comparison_band('tank.water', float(remaining), 0)
     held = bounds_of(made)
     assert held == [(True, frozenset({(0, 'min')}), frozenset(), frozenset())], held
-    again = Run.restored(Plan.of(case.program, case.configuration), loads(dumps(stop)))
+    again = Run.restored(Plan.of(case.program, configuration), loads(dumps(stop)))
     assert bounds_of(again) == held
-    straight = run(case.program, case.configuration)
+    straight = run(case.program, configuration)
     (fresh,) = in_a_fresh_process(case.program, [stop], tmp_path)
     for final in (made.resume(), again.resume(), fresh):
-        assert_resume_parity(case.program, case.configuration, straight, final)
+        assert_resume_parity(case.program, configuration, straight, final)
     found = read(straight, case.program, ['tank.seen', 'tank.late', 'tank.at', 'tank.water'], [2])
     assert [reading.values[0] for reading in found] == [
         0,
         0,
-        pytest.approx(math.log(2), abs=1e-9),
+        emptying_time,
         float(remaining),
     ]
     assert made.stock_balance('tank.water', 2) == again.stock_balance('tank.water', 2) == remaining
-    if remaining:
-        (decision,) = [entry for entry in straight.entries('settle') if entry.detail('placements')]
-        assert decision.detail('placements') == (('tank.water', float(remaining), 0.0),)
-        assert 'tank.drain.capacity' in decision.detail('reason')
+    (firing,) = straight.entries('fire', 'tank.check.when[0]')
+    contacts = straight.entries('contact', 'tank.water')
+    placements = [entry for entry in straight.entries('settle') if entry.detail('placements')]
+    if expect_contact:
+        (contact,) = contacts
+        assert contact.t == firing.t
+        assert not firing.detail('band_entry')
+        if remaining:
+            (decision,) = placements
+            assert decision.detail('placements') == (('tank.water', float(remaining), 0.0),)
+            assert 'tank.drain.capacity' in decision.detail('reason')
+    else:
+        assert 0 < remaining <= level_band
+        mark = (('tank.check.when[0]', 'tank.water <= 0 L', float(remaining), level_band),)
+        assert firing.detail('near') == firing.detail('band_entry') == mark
+        assert not contacts and not placements
 
 
 def starts(record, part):
