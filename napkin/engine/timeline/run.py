@@ -1024,8 +1024,9 @@ class Run:
     def resume(self):
         """Go on in place past the breakpoint that stopped the run: the stage that stopped runs again
         from its start with the draws that it made, and the edits made at its stops, and commits once
-        (`checkpoints.py`). The record is the one of the run straight through, or of the run with the
-        edits; or the checkpoint of the next stop."""
+        (`checkpoints.py`). Return the completed record or the next checkpoint. After an unedited
+        stop, the run makes the same decisions in the same order. The values agree closely.
+        Inside a long solver step, the relative difference between readings can exceed `rtol`."""
         if self.checkpoint is None:
             raise CheckpointError('the run waits at no stop')
         self.breaks.passing, self.checkpoint = self.checkpoint.stop.hit, None

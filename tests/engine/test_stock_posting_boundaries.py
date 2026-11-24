@@ -9,6 +9,7 @@ from napkin.engine.timeline import Plan, Run, read, resume
 from napkin.model.compile import compile_text
 from napkin.program.checkpoint import Breakpoint, dumps, loads
 from napkin.program.record import Key
+from tests.engine.resume_parity import assert_resume_parity
 
 UNITS = {'L': {'volume': 1}, 'h': {'time': 1}}
 STOCK = """scenario "Inventory edits"
@@ -54,7 +55,7 @@ def test_checkpoint_edit_books_its_difference_from_the_physical_balance(replacem
     checkpoint = live.edit('yard.tank', replacement)
     saved = dumps(checkpoint)
     record = live.resume()
-    assert resume(model.program, loads(saved)) == record
+    assert_resume_parity(model.program, model.configuration, record, resume(model.program, loads(saved)))
     assert record.failure is None, record.failure
     expected = float(replacement - 10_000_000 - Fraction(3, 10_000_000_000))
     tank, external = read(record, model.program, ['yard.tank', 'yard.tank.external'], [0.5, 1])

@@ -12,6 +12,7 @@ from napkin.engine.timeline.component import ComponentWay
 from napkin.engine.timeline.declared import MovingDeclared
 from napkin.engine.timeline.sparse import Sparse
 from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
+from tests.engine.resume_parity import assert_resume_parity
 from tests.engine.test_threshold_transfer_placement import use_method
 
 METHODS = {'component': ComponentWay, 'sparse': Sparse, 'moving_declared': MovingDeclared}
@@ -62,7 +63,7 @@ yard.pause.start()
 
     whole = live.resume()
     assert whole.failure is None, whole.failure
-    assert restored.resume() == whole
+    assert_resume_parity(model.program, model.configuration, whole, restored.resume())
     assert [(e.t, e.round, e.part) for e in whole.entries('commit')] == [
         (0.5, 1, 'yard.pause.step[0]'),
         (0.5, 2, 'yard.pause.step[1]'),

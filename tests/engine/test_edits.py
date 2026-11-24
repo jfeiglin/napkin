@@ -36,6 +36,7 @@ from napkin.program.build import (
 from napkin.program.checkpoint import Breakpoint, Checkpoint, CheckpointError, dumps, loads
 from napkin.program.config import Configuration, Request
 from napkin.program.record import Key
+from tests.engine.resume_parity import assert_resume_parity
 from tests.engine.test_checkpoints import SCENARIOS, UNITS, in_a_fresh_process, ticks
 from tests.program.examples import DISPATCH_SWITCH, PAUSES, At, pump_dispatch
 from tests.reference.from_program import run_of, value_at
@@ -72,7 +73,9 @@ def test_an_edit_at_a_stop_before_a_stage_commits_at_once(tmp_path):
     assert [entry.t for entry in final.entries('start', 'tank.alarm')] == [pytest.approx(5, abs=1e-12)]
     (water,) = read(final, case.program, ['tank.water'], [2, 3, 5, 6.5, 7])
     assert water.values == pytest.approx([9, 7, 3, 0, 0], abs=1e-12)
-    assert in_a_fresh_process(case.program, made, tmp_path) == [*stopped[1:], final]
+    results = in_a_fresh_process(case.program, made, tmp_path)
+    for expected, actual in zip([*stopped[1:], final], results, strict=True):
+        assert_resume_parity(case.program, case.configuration, expected, actual)
 
 
 def test_edits_in_a_stage_join_its_writes_and_commit_once_across_two_stops(tmp_path):
@@ -99,7 +102,9 @@ def test_edits_in_a_stage_join_its_writes_and_commit_once_across_two_stops(tmp_p
     assert kinds.index('commit') < kinds.index('edit')
     orders, noted, demand = read(final, case.program, ['depot.orders', 'depot.noted', 'depot.demand'], [1, 2])
     assert (orders.values, noted.values, demand.values) == ((11, 11), (2, 3), (2, 2))
-    assert in_a_fresh_process(case.program, made, tmp_path) == [*stopped[1:], final]
+    results = in_a_fresh_process(case.program, made, tmp_path)
+    for expected, actual in zip([*stopped[1:], final], results, strict=True):
+        assert_resume_parity(case.program, case.configuration, expected, actual)
 
 
 def held(record, program, item):
@@ -135,7 +140,7 @@ def test_the_acceptance_example_of_change_15(name, tmp_path):
     assert not isinstance(found, Checkpoint) and found.failure is None
     assert all(held(found, program, item) for item in expected)
     if not any(stop.edits for stop in stops):
-        assert found == run(program, configuration)
+        assert_resume_parity(program, configuration, run(program, configuration), found)
     oracle, failed = run_of(
         program, configuration, [(stop.at, stop.occurrence, stop.edits) for stop in stops]
     )
@@ -149,7 +154,9 @@ def test_the_acceptance_example_of_change_15(name, tmp_path):
     assert [(entry.detail('old'), entry.detail('new')) for entry in edits] == [
         ('WAIT', 'SEND') for stop in stops if stop.edits and stop.at == DISPATCH_SWITCH
     ]
-    assert in_a_fresh_process(program, edits_made, tmp_path) == [*stopped[1:], found]
+    results = in_a_fresh_process(program, edits_made, tmp_path)
+    for expected, actual in zip([*stopped[1:], found], results, strict=True):
+        assert_resume_parity(program, configuration, expected, actual)
 
 
 def test_an_edit_that_breaks_a_rule_of_the_run_is_refused_by_name():
@@ -259,7 +266,8 @@ def test_an_edit_names_a_value_as_the_model_does_in_its_unit_or_by_its_engine_na
     (entry,) = final.entries('edit')
     assert (entry.detail('target'), entry.detail('old'), entry.detail('new')) == ('tank.water', 1000, 1500)
     assert checkpoint.edit(target, 1.5 if isinstance(target, Key) else 1500) == edited
-    assert in_a_fresh_process(program, [edited], tmp_path) == [final]
+    (fresh,) = in_a_fresh_process(program, [edited], tmp_path)
+    assert_resume_parity(program, configuration, final, fresh)
     with pytest.raises(CheckpointError, match='outside its range'):
         made_again = Run(Plan.of(program, configuration), (Breakpoint('tank.tick.step[0]'),))
         made_again.run()

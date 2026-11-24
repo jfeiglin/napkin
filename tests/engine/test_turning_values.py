@@ -19,7 +19,7 @@ a step of Radau's dense output, or the closed form of compartments. The cases:
 - a quick rise and fall inside one step: a level 1e-4 L below the peak is crossed at
   2 -+ sqrt(2e-4) h, between two ends of a step of the solver, both below it;
 - a strict threshold, which is still a diagnostic;
-- exact resume three ways (`test_checkpoints.py`) at the reservoir's rise.
+- resume three ways (`test_checkpoints.py`) during the rise of the reservoir.
 
 Every expected value is worked by hand from these closed forms.
 """
@@ -59,6 +59,7 @@ from napkin.program.build import (
     when,
 )
 from napkin.program.config import Configuration, Request
+from tests.engine.resume_parity import assert_resume_parity
 from tests.engine.test_checkpoints import Case, in_a_fresh_process, in_one_process, stages, ticks
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
@@ -217,11 +218,13 @@ def test_a_resumed_run_crosses_where_the_run_straight_through_does_three_ways(wa
     stops, final, made = in_one_process(case)
     assert {connected.way for connected, _ in made.ways.sets.values()} == case.ways
     assert [stop.stop.t for stop in stops] == pytest.approx([0.2, 0.4054, 0.40547, 1, 2])
-    assert final == straight
+    assert_resume_parity(case.program, case.configuration, straight, final)
     (at,) = fired(final, 'reservoir.high.when[0]')
     assert at == pytest.approx(RISE, abs=1e-6) and stops[1].stop.t < at < stops[2].stop.t
     assert fired(final, 'reservoir.low.when[0]') == pytest.approx([0, FALL], abs=1e-6)
-    assert in_a_fresh_process(case.program, stops, tmp_path) == [*stops[1:], final]
+    results = in_a_fresh_process(case.program, stops, tmp_path)
+    for expected, actual in zip([*stops[1:], final], results, strict=True):
+        assert_resume_parity(case.program, case.configuration, expected, actual)
 
 
 def test_the_motion_of_a_step_is_the_cubic_of_its_dense_output():

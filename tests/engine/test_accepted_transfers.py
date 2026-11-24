@@ -9,6 +9,7 @@ from napkin.engine.timeline.component import ComponentWay
 from napkin.engine.timeline.sparse import Sparse
 from napkin.model.compile import compile_text
 from napkin.program.config import Configuration, Request
+from tests.engine.resume_parity import assert_resume_parity
 
 UNITS = {'L': {'volume': 1}, 'h': {'time': 1}}
 PAUSE = """    pause = event():
@@ -103,7 +104,7 @@ plant.pause.start()
     for name in names:
         whole = straight.ways.instance_of(name).transferred(name, 1)
         resumed = restored.ways.instance_of(name).transferred(name, 1)
-        assert resumed == whole
+        assert_resume_parity(program, config, whole, resumed)
         assert whole == pytest.approx(1 / 7 if power else math.log(2), abs=2e-12)
 
 
@@ -281,7 +282,7 @@ def test_individual_clock_legs_preserve_exact_prefixes_in_mixed_groups(
     for run in (stopped, restored):
         way = run.ways.instance_of('plant.delivery')
         assert tuple(way.transferred(name, 0.5) for name in names) == expected[0.5][: len(names)]
-        assert run.resume() == straight
+        assert_resume_parity(program, config, straight, run.resume())
 
 
 @pytest.mark.parametrize('method', [ComponentWay, Sparse])

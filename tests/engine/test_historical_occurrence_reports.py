@@ -11,6 +11,7 @@ from napkin.program.build import SOURCE, Builder, assign, flow, formula, input_,
 from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps
 from napkin.program.checkpoint import loads as load_checkpoint
 from napkin.program.config import Configuration, Request
+from tests.engine.resume_parity import assert_resume_parity
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
 
@@ -64,7 +65,7 @@ def test_an_older_occurrence_selected_at_a_tied_start_keeps_its_own_reads_after_
     assert isinstance(stop, Checkpoint) and stop.stop.t == 2
     saved = load_checkpoint(dumps(stop))
     physical = Run.restored(Plan.of(source_model.program, config), saved).resume()
-    assert physical == machine.resume()
+    assert_resume_parity(source_model.program, config, machine.resume(), physical)
     assert physical.failure is None
 
     # Freshly decoded program objects force historical plan replay even in the source-backed case.

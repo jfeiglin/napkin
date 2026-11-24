@@ -42,10 +42,10 @@ run, a proof that the value never falls, and one in a run withdraws the proofs t
 start (the report says so). A stage that runs again from its start takes the edits made at its
 stops again, in order, at their places, and commits each once.
 
-**Exact resume** (the owner's rule): with the same program, engine version, numerical settings and
-seed, on one platform, a stopped and resumed run gives the same recorded values, draw results, event
-times and event order as the run straight through, and a breakpoint alone never changes which
-branch fires. The engine resumes a run that stopped in its own process in place, and a checkpoint
+**Resume.** Use the same platform, program, engine version, numerical settings and seed. If you
+resume without an edit, both runs make the same decisions in the same order. The draws stay the
+same. The values agree closely. Inside a long solver step, the relative difference can exceed
+`rtol`. The engine resumes a run that stopped in its own process in place, and a checkpoint
 in a fresh process from its saved state (`saved`): the state of the engine at the stop, as data,
 from which the run is made again and goes on, with nothing before the stop run twice
 (`napkin/engine/timeline/saved.py` says what it holds). The restored run's logical state must be the

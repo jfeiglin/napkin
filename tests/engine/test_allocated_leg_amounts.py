@@ -13,6 +13,7 @@ from napkin.engine.timeline.lines import Lines
 from napkin.engine.timeline.sparse import Sparse
 from napkin.model.compile import compile_text
 from napkin.program.checkpoint import Breakpoint, dumps, loads
+from tests.engine.resume_parity import assert_resume_parity
 
 
 @pytest.mark.parametrize('method', [Lines, ComponentWay, Sparse, DeclaredWay, MovingDeclared])
@@ -73,7 +74,7 @@ plant:
     for machine in (live, restored):
         for at, k in ((0.5, 0), (1, 1)):
             if at == 1:
-                assert machine.resume() == record
+                assert_resume_parity(model.program, model.configuration, record, machine.resume())
             way = machine.ways.instance_of('plant.main')
             assert type(way) is method
             for leg, amount in [('main', pay[k]), ('other', local[k])]:

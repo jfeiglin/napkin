@@ -7,8 +7,8 @@ It reads a program (`napkin/program`) under a run configuration and gives the re
 - `run(program, configuration, breakpoints)`: a run that a breakpoint stops gives its `Checkpoint`
   (`napkin/program/checkpoint.py`), which holds the record so far, whose last entry is the stop's
   (`paused`); `Run(plan, breakpoints).run()` then `.edit(...)` and `.resume()` goes on in place, and
-  `resume(program, checkpoint)` goes on in a fresh process (`checkpoints.py`). Either gives the
-  record of the run straight through (or of the run with its edits), or the next checkpoint.
+  `resume(program, checkpoint)` goes on in a fresh process (`checkpoints.py`). Both return the
+  completed record or the next checkpoint.
 - `Plan.of(program, configuration)`: what the run reads of the program (`plan.py`), and `Outside`,
   the refusal of a part that the engine does not run, with its reason.
 - `read(record, program, paths, times)`: the values of named paths at chosen times, each in its
@@ -67,8 +67,10 @@ def run(program, configuration, breakpoints=()):
 def resume(program, checkpoint):
     """Go on with a checkpoint of a run of a program, in this process or another: the run is made
     again from the checkpoint's saved state (`saved.py`), with its edits, and goes on from the stop.
-    Gives the record of the run straight through (or of the run with its edits), or the checkpoint of
-    its next stop. A checkpoint of another program or of another version of the engine is refused
+    Return the completed record or the next checkpoint. If you resume without an edit, the run
+    makes the same decisions in the same order as the uninterrupted run. The values agree closely.
+    Inside a long solver step, the relative difference between readings can exceed `rtol`.
+    A checkpoint of another program or of another version of the engine is refused
     (`CheckpointError`), and so is one whose saved state does not make its state again."""
     if program_digest(program) != checkpoint.program:
         raise CheckpointError('the checkpoint is of another program: the SHA-256 of its bytes differs')

@@ -7,6 +7,7 @@ import pytest
 from napkin.engine.timeline import Plan, Run
 from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
 from napkin.program.record import Key
+from tests.engine.resume_parity import assert_resume_parity
 from tests.engine.test_threshold_transfer_placement import use_method
 from tests.reference.from_program import run_of, value_at
 
@@ -63,7 +64,5 @@ yard.clock.start()
     assert float(way.transferred('yard.steady', run.now)) == pytest.approx(1, rel=0, abs=1e-13)
     if route:
         assert way.transferred('yard.link.backward', run.now) == 0
-    assert (
-        run.resume()
-        == Run.restored(Plan.of(model.program, model.configuration), loads(dumps(checkpoint))).resume()
-    )
+    again = Run.restored(Plan.of(model.program, model.configuration), loads(dumps(checkpoint)))
+    assert_resume_parity(model.program, model.configuration, run.resume(), again.resume())

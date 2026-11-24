@@ -9,6 +9,7 @@ from napkin.engine.timeline.record import Recorder, key_of, requested
 from napkin.model.compile import compile_text
 from napkin.program.checkpoint import Breakpoint, Checkpoint
 from tests.engine.record_history_oracle import check_history_rebuilds
+from tests.engine.resume_parity import assert_resume_parity
 from tests.engine.test_frozen_occurrences import in_a_fresh_process
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
@@ -116,8 +117,8 @@ def test_first_excess_at_and_after_handoff_matches_both_continuations(cutoff, bu
     live = Run(Plan.of(program, bounded), (HANDOFF,))
     checkpoint = live.run()
     assert isinstance(checkpoint, Checkpoint) and checkpoint.stop.t == 2
-    assert live.resume() == straight
-    assert in_a_fresh_process(program, checkpoint, tmp_path) == straight
+    assert_resume_parity(program, bounded, straight, live.resume())
+    assert_resume_parity(program, bounded, straight, in_a_fresh_process(program, checkpoint, tmp_path))
     assert reference.updates and not reference.closed_spans
 
 
@@ -139,15 +140,18 @@ def test_two_jobs_freeze_their_own_score_and_echo(monkeypatch):
 
 def test_changes_at_three_five_and_seven_leave_the_finished_formula_alone(monkeypatch):
     # Add writes to the same input at hours 5 and 7; the original controls already write at 3.
-    source = FINISHED_FORMULAS.replace(
-        'yard.job.start()',
-        """    late = event():
+    source = (
+        FINISHED_FORMULAS.replace(
+            'yard.job.start()',
+            """    late = event():
         after 5 h:
             this.level = 17
         after 2 h:
             this.level = 19
 yard.job.start()""",
-    ) + 'yard.late.start()\n'
+        )
+        + 'yard.late.start()\n'
+    )
     paths = (*FIRST_JOB, 'yard.level')
     program, configuration = selected(source, paths)
     live = Run(Plan.of(program, configuration))
@@ -177,7 +181,9 @@ yard.job.start()""",
     record = live.run()
     assert record.failure is None
     assert tuple(r.values for r in read(record, program, paths, (3, 5, 7))) == (
-        (9, 9, 9), (3, 3, 3), (7, 17, 19),
+        (9, 9, 9),
+        (3, 3, 3),
+        (7, 17, 19),
     )
     assert live_calls and max(live_calls) <= 2
     assert {3, 5, 7} <= set(rebuilt_calls)

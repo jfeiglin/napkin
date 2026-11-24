@@ -344,9 +344,10 @@ def _compact(pieces):
 
 
 class Fits:
-    """The committed curve pieces of a run. A moment closes the incoming interval for every
-    observer, including a run without a breakpoint. No later fit reopens it. At the current
-    endpoint the next interval is still open: the stages there can give it a new value."""
+    """Keep the fitted curves for closed intervals. Each moment closes the preceding interval.
+    A stage at that moment can change the value at the start of the next interval.
+    After a checkpoint, the run makes the same decisions in the same order. The values agree
+    closely. Inside a long solver step, the relative difference between readings can exceed rtol."""
 
     def __init__(self):
         self.ends = [0.0]

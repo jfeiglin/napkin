@@ -341,10 +341,10 @@ record = resume(model.program, loads(dumps(edited)))
 
 This run stops at 40 h, before the stage of `operator.decide`.
 
-**Exact resume.** The conditions are one platform and the same program, engine version, numerical
-settings and seed. Under these conditions, a run that stops and resumes with no edit matches the run
-straight through. Both give the same values, draws, event times and event order. A breakpoint alone
-never changes which branch fires. A stage that stopped runs again from its start. Its draws use the
+**Resume.** Use the same platform, program, engine version, numerical settings and seed. If you
+resume without an edit, the run makes the same decisions in the same order. Its values agree
+closely with those of the uninterrupted run. Inside a long solver step, the relative difference
+between readings can exceed `rtol`. A stage that stopped runs again from its start. Its draws use the
 same keys, so they are the same. A checkpoint of another program or another engine version is
 refused with `CheckpointError`.
 

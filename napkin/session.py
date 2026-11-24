@@ -18,9 +18,10 @@ made, as the logged session did. Each stop must be the log's stop of its hit aga
 within the tolerance in time of a crossing (`Numerics.crossing`), and the run must reach each stop
 of the log up to its horizon, or up to the end of its record where its budget ends it (a run stops by
 its budget where its record does, before any later stop), or the log is refused by name
-(`CheckpointError`): a log never goes on as another run. The run of a log (`play`) goes on past every stop to the end; exact resume makes it
-the logged session's run, with the same values, draws, event times and event order, when that
-session went on to the end with no other edit. The run store keeps the run of a log under its key
+(`CheckpointError`). The run of a log (`play`) continues to the end. If the original session
+finished with no further edit, both runs make the same decisions in the same order. The draws
+stay the same and the values agree closely. Inside a long solver step, the relative difference
+between readings can exceed `rtol`. The run store keeps the run of a log under its key
 (`napkin.store.run`).
 
 **Saving.** `save` writes the checkpoint at which the session waits, with its edits, and `load`

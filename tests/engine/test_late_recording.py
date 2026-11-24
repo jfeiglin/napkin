@@ -11,6 +11,7 @@ from napkin.model.compile import compile_text
 from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
 from napkin.program.record import Unavailable
 from tests.engine.record_history_oracle import check_history_rebuilds
+from tests.engine.resume_parity import assert_resume_parity
 from tests.engine.test_frozen_occurrences import in_a_fresh_process
 from tests.engine.test_sparse_rate_snapshots import SOURCE as SPARSE_METER
 
@@ -96,9 +97,9 @@ def test_a_checkpoint_between_siblings_sees_the_newly_needed_stock(tmp_path):
     cached = live.recorder._histories.get('yard.meter')
     assert cached is None or all(piece.t != 0.3 for piece in cached.pieces)
     continuation = live.resume()
-    assert continuation == straight
+    assert_resume_parity(program, selected, straight, continuation)
     assert sum(piece.t == 0.3 for piece in continuation.history(meter_key).pieces) == 1
-    assert in_a_fresh_process(program, checkpoint, tmp_path) == straight
+    assert_resume_parity(program, selected, straight, in_a_fresh_process(program, checkpoint, tmp_path))
 
 
 def test_the_first_total_piece_at_the_join_exceeds_a_one_piece_budget():
@@ -127,8 +128,8 @@ def test_a_saved_recorder_without_coverage_starts_resumes_before_a_join(tmp_path
     restored = Run.restored(Plan.of(program, selected), legacy)
     assert restored.recorder._coverage_starts == {}
     expected = run(program, selected)
-    assert restored.resume() == expected
-    assert in_a_fresh_process(program, legacy, tmp_path) == expected
+    assert_resume_parity(program, selected, expected, restored.resume())
+    assert_resume_parity(program, selected, expected, in_a_fresh_process(program, legacy, tmp_path))
 
 
 def test_skipped_stock_remains_identifiable_after_its_sparse_producer_retires(tmp_path):
@@ -156,8 +157,8 @@ yard:
     assert dict(saved_recorder['coverage_starts'])['yard.meter'] is None
 
     result = live.resume()
-    assert result == run(program, selected)
-    assert in_a_fresh_process(program, before_join, tmp_path) == result
+    assert_resume_parity(program, selected, run(program, selected), result)
+    assert_resume_parity(program, selected, result, in_a_fresh_process(program, before_join, tmp_path))
     stock = result.history(key_of(program, 'yard.meter'))
     assert stock.pieces[0].t == 0.3
     with pytest.raises(LookupError):

@@ -1,6 +1,6 @@
-"""A stop at a statement of the setup resumes as the run straight through goes, in place, from the
-saved state and in a fresh process (docs/design/decisions.md, change 15: "Exact resume is a rule ... stopping and resuming
-an untouched run gives the same recorded values ... as running straight through", tested three ways).
+"""Resume at a setup statement in place, from the saved state, and in a fresh process.
+Compare the decisions and readings with those of the uninterrupted run (docs/design/decisions.md,
+change 15).
 
 The rule test: a tank of 10 L of [0, 20] drained at 2 L/h, and a setup that marks a value and then
 sets the tank to 8 L; a stop at each statement of the setup, resumed untouched and with an edit of the

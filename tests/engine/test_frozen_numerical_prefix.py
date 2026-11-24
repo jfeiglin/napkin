@@ -13,6 +13,7 @@ from napkin.engine.timeline.lines import Lines
 from napkin.engine.timeline.sparse import Sparse
 from napkin.model.compile import compile_text
 from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
+from tests.engine.resume_parity import assert_resume_parity
 from tests.reference.from_program import run_of
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
@@ -129,7 +130,7 @@ def test_an_interior_checkpoint_preserves_the_numerical_residual_decision(mean, 
     assert isinstance(stop, Checkpoint) and stop.stop.t == 1.25
     restored = Run.restored(Plan.of(model.program, model.configuration), loads(dumps(stop)))
     continued = restored.resume()
-    assert continued == machine.resume()
+    assert_resume_parity(model.program, model.configuration, machine.resume(), continued)
     assert_amount(continued, mean, False)
 
 

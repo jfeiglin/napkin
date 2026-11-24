@@ -45,6 +45,7 @@ from napkin.program.checkpoint import Breakpoint, Checkpoint, Edit, dumps, loads
 from napkin.program.config import Configuration, Request
 from napkin.program.record import BalancePoint, Curve, History, Key, Piece, Unavailable
 from napkin.session import Log
+from tests.engine.resume_parity import assert_resume_parity
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
 LONGEST = 4  # the horizon of the stored longer run
@@ -208,21 +209,17 @@ def test_fresh_stored_and_resumed_runs_of_a_request_have_one_outcome_and_one_set
             cold = store.run(program, configuration, recorded_log)
             warm = store.run(program, configuration, recorded_log)
         later = resumed(program, configuration, breakpoints, edits)
-        assert outcome(warm) == outcome(alone) == outcome(later), (seed, request, breakpoints, edits)
-        assert cold == warm == alone == later, (
-            seed,
-            request,
-            differences(alone, warm),
-            differences(alone, later),
-        )
+        assert cold == warm == alone, (seed, request, differences(alone, warm))
         times = sorted({0, horizon, *(round(rng.uniform(0, horizon), 3) for _ in range(5))})
+        assert_resume_parity(program, configuration, alone, later, sample_times=times)
         expected = held(alone, program, times)
         for record in (warm, later):
             found = held(record, program, times)
             assert found.keys() == expected.keys(), (seed, request)
             for path, values in expected.items():
                 for at, a, b in zip(times, found[path], values, strict=True):
-                    assert same(a, b), (seed, request, path, at, a, b)
+                    if record is warm or isinstance(a, Unavailable) or isinstance(b, Unavailable):
+                        assert same(a, b), (seed, request, path, at, a, b)
 
 
 # ---- the audit's cases, by hand ----------------------------------------------------------------------------
@@ -266,7 +263,8 @@ def test_a_two_piece_budget_keeps_the_exact_tank_balance_at_the_checkpoint_and_h
         assert record.within(2) == record
         assert record.within(1).failure.t == 0
 
-    assert live.resume() == Run.restored(Plan.of(program, configuration), saved).resume() == straight
+    for final in (live.resume(), Run.restored(Plan.of(program, configuration), saved).resume()):
+        assert_resume_parity(program, configuration, straight, final)
 
 
 def test_a_real_tick_exhausts_the_budget_while_the_tank_drains():
@@ -348,7 +346,7 @@ def test_checkpoint_after_a_child_starts_counts_projected_pieces_separately():
     assert [piece.value for piece in checkpoint.record.history(count).pieces] == [0, 1]
     assert engine.recorder._counted['plant.count'] == engine.recorder._total == 1
     record = engine.resume()
-    assert record == Run(Plan.of(program, configuration)).run()
+    assert_resume_parity(program, configuration, Run(Plan.of(program, configuration)).run(), record)
     assert record.failure.t == 1 and record.failure.detail('budget') == 2
 
 
@@ -621,7 +619,8 @@ def test_a_breakpoint_preserves_the_completed_fits_and_the_budget_cutoff(formula
         expected = whole.within(budget)
         straight, _ = fresh(program, bounded, (), {})
         observed, stops_seen = fresh(program, bounded, stops, {})
-        assert outcome(observed) == outcome(straight) == outcome(expected)
+        assert outcome(straight) == outcome(expected)
+        assert_resume_parity(program, bounded, straight, observed)
         assert all(cp.stop.t <= expected.end for cp in stops_seen)
 
 
@@ -648,7 +647,7 @@ def test_budget_cutoffs_follow_the_complete_records_committed_piece_starts(seed)
             config = Configuration(Request(horizon, everything=not keys, keys=keys, pieces=budget))
             record, held_stops = fresh(program, config, stops, edits)
             restored = resumed(program, config, stops, edits)
-            assert record == restored
+            assert_resume_parity(program, config, record, restored)
             expected = requested(whole.within(budget), program)
             assert record == expected, differences(record, expected)
             assert record.end == (times[budget] if budget < len(times) else horizon)

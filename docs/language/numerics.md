@@ -252,15 +252,16 @@ The engine chooses its own steps. A run that needs finer steps sets `max_step`.
 
 ## Reproducibility
 
-- **The same run is deterministic.** The same code, configuration, seed and thread settings on one
-  machine give the same record, bit for bit.
+- **The same run is deterministic.** On the same machine, repeat the run with the same code,
+  configuration, seed, thread settings and breakpoints. The two records agree bit for bit.
 - **Other runs agree within tolerance.** A sample alone or in a batch gives values that agree within
   the stated tolerances, not bit for bit. So do another solver and another platform.
 - A threshold at the edge of its band can fire differently across those settings. The near-ties in
   the trace show where.
-- A run that stops at a breakpoint and goes on gives the same record as the run straight through.
-  This holds on one platform, with the same program, engine version, settings and seed
-  ([events.md](events.md#breakpoints-checkpoints-and-edits)).
+- If you resume from a checkpoint without an edit, the run makes the same decisions in the same
+  order as the uninterrupted run. The recorded values agree closely. The solver can take different
+  steps. Inside a long step, the relative difference between two readings can exceed `rtol`.
+  [Breakpoints, checkpoints and edits](events.md#breakpoints-checkpoints-and-edits).
 - A budget of a solver counts work, never seconds. A run that succeeds on one machine succeeds on
   another ([flows-and-solvers.md](flows-and-solvers.md#budgets)).
 - The draws of a sampled run are keyed by the seed, the place of the draw and its owner. Another

@@ -49,6 +49,7 @@ from napkin.program.artifact import Artifact
 from napkin.program.checkpoint import Breakpoint, Checkpoint, CheckpointError, decode, dumps
 from napkin.program.config import Request
 from napkin.program.record import Key
+from tests.engine.resume_parity import assert_resume_parity
 from tests.reference.errors import NotCovered
 from tests.reference.from_program import run_of
 
@@ -439,8 +440,10 @@ def test_a_run_stopped_before_the_write_fails_by_name_when_it_resumes_three_ways
     # An edit of the finished repair's value is refused by name, and changes nothing.
     with pytest.raises(CheckpointError, match=r'finished occurrence crew\.repair#0, which is frozen'):
         made.edit(Key('crew.repair#0', ('size',)), 2.0)
-    assert in_a_fresh_process(found.program, stopped, tmp_path) == straight
-    assert made.resume() == straight
+    assert_resume_parity(
+        found.program, found.configuration, straight, in_a_fresh_process(found.program, stopped, tmp_path)
+    )
+    assert_resume_parity(found.program, found.configuration, straight, made.resume())
 
 
 @pytest.mark.parametrize('write', sorted(GUARDED_WRITES))
@@ -457,7 +460,7 @@ def test_an_edit_at_a_stop_that_enables_the_write_gives_the_failure_three_ways(w
     assert resumed.failure.t == (3 + 1e-10 if write == 'flow' else 3) and GUARDED_WRITES[write][1] in message(
         resumed
     )
-    assert fresh == resumed
+    assert_resume_parity(found.program, found.configuration, resumed, fresh)
 
 
 @pytest.mark.parametrize('case', ['the time opens it', 'it rises with the water'])
@@ -473,8 +476,10 @@ def test_a_flow_opened_between_moments_fails_at_its_time_after_a_resume_three_wa
     made = Run(Plan.of(found.program, found.configuration), (Breakpoint('crew.tick.step[0]'),))
     stopped = made.run()
     assert isinstance(stopped, Checkpoint) and stopped.stop.t == 2.5
-    assert in_a_fresh_process(found.program, stopped, tmp_path) == straight
-    assert made.resume() == straight
+    assert_resume_parity(
+        found.program, found.configuration, straight, in_a_fresh_process(found.program, stopped, tmp_path)
+    )
+    assert_resume_parity(found.program, found.configuration, straight, made.resume())
 
 
 @pytest.mark.parametrize('write', sorted(GUARDED_WRITES))

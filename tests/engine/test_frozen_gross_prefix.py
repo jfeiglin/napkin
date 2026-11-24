@@ -10,6 +10,7 @@ from napkin.engine.timeline.lines import Lines
 from napkin.engine.timeline.sparse import Sparse
 from napkin.model.compile import compile_text
 from napkin.program.checkpoint import Breakpoint, dumps, loads
+from tests.engine.resume_parity import assert_resume_parity
 
 UNITS = {'L': {'volume': 1}, 'h': {'time': 1}}
 
@@ -70,5 +71,5 @@ plant.pause.start()
     stopped = Run(Plan.of(model.program, model.configuration), (Breakpoint('plant.pause.step[0]'),))
     checkpoint = stopped.run()
     restored = Run.restored(Plan.of(model.program, model.configuration), loads(dumps(checkpoint)))
-    assert restored.resume() == direct
-    assert stopped.resume() == direct
+    assert_resume_parity(model.program, model.configuration, direct, restored.resume())
+    assert_resume_parity(model.program, model.configuration, direct, stopped.resume())

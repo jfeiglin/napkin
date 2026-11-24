@@ -28,13 +28,13 @@ of a run reads is here, or is made again from what is here by the same code:
   and each declared solver's program and basis
   (`solve.Solver`) with its last problem (a digest) and answer.
 
-What is no part of it starts again at each moment on every path, so that a run restored at a stop is
-the run straight through: the sparse integrator's Radau solver (`sparse.Sparse.cut`), a moving solver's
-segment and the answers of its trial states (`declared.MovingDeclared.cut`), a declared solver's
-HiGHS instance, which takes the next solve after the stages of a round on a fresh instance with its
-basis (`solve.Solver.renew`), and the triggers' predictions, which the end of each moment makes
-afresh. An order of work never follows the order of a set of ids, which a restored run makes afresh
-(`moment.Moment.settle`). The instances of the family and of the lines hold the rows of sets that
+At each moment the engine starts the Radau solver again (`sparse.Sparse.cut`). A live solver can
+reuse its last step size. A restored solver selects its first step. Both runs make the same
+decisions in the same order. The values agree closely. Inside a long step, the relative
+difference can exceed `rtol`. The engine also starts a new moving-solver segment
+(`declared.MovingDeclared.cut`), renews the HiGHS instance with its basis (`solve.Solver.renew`),
+and calculates trigger predictions again. After a restore, the engine processes the sets in the
+same order (`moment.Moment.settle`). The instances of the family and of the lines hold the rows of sets that
 left them; a restored instance holds the live ones, in their order, which changes no row's numbers
 and no order of events. Caches are made again as the run reads.
 

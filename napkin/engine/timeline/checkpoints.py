@@ -1,4 +1,4 @@
-"""Breakpoints, checkpoints and exact resume (docs/design/decisions.md, change 15; `napkin/program/checkpoint.py`).
+"""Breakpoints, checkpoints and resume (docs/design/decisions.md, change 15; `napkin/program/checkpoint.py`).
 
 **Breakpoints.** A run with breakpoints (`Run(plan, breakpoints)`) counts each hit: a stage that comes
 due whose step a breakpoint names, or whose event when it is the occurrence's first step, before its
@@ -15,11 +15,10 @@ passes and the next stops; the draws that the stage made before the stop are key
 they are the same and are traced once. Nothing else of the run changed at the stop.
 
 **Resume in a fresh process** (`timeline.resume`) makes the run again from the checkpoint's saved
-state (`saved.py`) and goes on from the stop, as in place: nothing before the stop runs twice. What a
-run carries across a moment that its future reads is in that state, or starts again at each moment
-on every path (`saved.py` says which), so the run that goes on is the run straight through, number
-for number. The restored run's logical state must be the checkpoint's (`State`), or the resume is
-refused by name (`CheckpointError`), so a checkpoint never goes on as another run.
+state (`saved.py`) and continues from the stop. The run makes the same decisions in the same order
+as the uninterrupted run. The values agree closely. Inside a long solver step, the relative
+difference between readings can exceed `rtol`. The engine checks the restored logical state
+against the checkpoint (`State`). If they differ, it raises `CheckpointError`.
 
 **The budget of the record** holds at every stop. If the checkpoint's record exceeds its budget,
 `HistoryFull` returns the prefix ending at the first excess piece (`Record.within`).

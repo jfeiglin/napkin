@@ -22,6 +22,7 @@ from napkin.program.build import (
 from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
 from napkin.program.config import Configuration, Request
 from napkin.program.record import Key
+from tests.engine.resume_parity import assert_resume_parity
 from tests.reference.from_program import run_of, value_at
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
@@ -89,7 +90,7 @@ def test_first_cap_is_posted_to_the_selected_active_occurrence(form, target, sel
     stopped = live.run()
     assert isinstance(stopped, Checkpoint)
     restored = resume(program, loads(dumps(stopped)))
-    assert restored == direct
+    assert_resume_parity(program, CONFIG, direct, restored)
     keys = [Key(f'tank.drain#{i}', steps) for i in (0, 1) for steps in (('stock',), ('pipe', 'actual_rate'))]
     if selector == 'current':
         expected = [(8, 6), (2, 2), (9, 8.5), (0.5, 0.5)]
@@ -257,7 +258,7 @@ yard.dispatch.start()
     assert isinstance(stop, Checkpoint) and stop.stop.t == 2
     loaded = load_artifact(source.artifact().data()).program
     fresh = Run.restored(Plan.of(loaded, source.configuration), loads(dumps(stop))).resume()
-    assert fresh == made.resume()
+    assert_resume_parity(source.program, source.configuration, made.resume(), fresh)
     assert fresh.failure is None
     result, remembered = read(fresh, loaded, ['yard.result', 'yard.observe#0.remember'], [2, 3])
     assert result.values == remembered.values == (3, 3)
@@ -290,7 +291,8 @@ yard.dispatch.start()
     stop = live.run()
     assert isinstance(stop, Checkpoint) and stop.stop.t == 2
     resumed = Run.restored(Plan.of(source.program, source.configuration), loads(dumps(stop))).resume()
-    assert resumed == live.resume() and resumed.failure is None
+    assert_resume_parity(source.program, source.configuration, live.resume(), resumed)
+    assert resumed.failure is None
     keys = [f'yard.job#{index}.{name}.actual_rate' for index in (0, 1) for name in ('first', 'second')]
     assert [r.values for r in read(resumed, source.program, keys, [0.75, 1.5, 2.5])] == [
         (1, 2, 1),

@@ -24,6 +24,7 @@ from napkin.program.build import (
 )
 from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
 from napkin.program.config import Configuration, Numerics, Request
+from tests.engine.resume_parity import assert_resume_parity
 from tests.engine.test_round_rate_reads import SETTING, check, model
 from tests.program.examples import UNITS
 from tests.reference.from_program import run_of
@@ -62,7 +63,8 @@ def test_fifty_millilitres_can_be_refunded_after_a_four_million_litre_withdrawal
     stopped = Run(Plan.of(program, config), (Breakpoint('yard.cycle.step[1]'),))
     checkpoint = stopped.run()
     assert isinstance(checkpoint, Checkpoint)
-    assert stopped.resume() == resume(program, loads(dumps(checkpoint))) == record
+    assert_resume_parity(program, config, record, stopped.resume())
+    assert_resume_parity(program, config, record, resume(program, loads(dumps(checkpoint))))
 
 
 @pytest.mark.parametrize('deposit,count', [(0.001, 1000), (0.05, 100)])
@@ -116,7 +118,10 @@ def frozen_flow(request, scale, split):
         paused = Run(Plan.of(model.program, model.configuration), (Breakpoint('plant.watch.step[1]'),))
         checkpoint = paused.run()
         assert isinstance(checkpoint, Checkpoint)
-        assert paused.resume() == resume(model.program, loads(dumps(checkpoint))) == record
+        assert_resume_parity(model.program, model.configuration, record, paused.resume())
+        assert_resume_parity(
+            model.program, model.configuration, record, resume(model.program, loads(dumps(checkpoint)))
+        )
     return model, record
 
 
@@ -186,7 +191,7 @@ def test_a_hidden_fraction_of_a_deposit_survives_resume_until_the_balance_is_rep
     if replace_balance:
         checkpoint = live.edit('yard.tank', 10_000_000.001)
     record = live.resume()
-    assert resume(program, loads(dumps(checkpoint))) == record
+    assert_resume_parity(program, config, record, resume(program, loads(dumps(checkpoint))))
     if replace_balance:
         assert record.failure is not None and record.failure.t == 3
         assert record.entries('move')[-1].detail('amount') == 10_000_000

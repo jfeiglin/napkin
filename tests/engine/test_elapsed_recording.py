@@ -10,6 +10,7 @@ from napkin.program.artifact import value_of
 from napkin.program.canonical import value_bytes
 from napkin.program.checkpoint import Breakpoint, dumps, loads
 from napkin.program.record import ChangeHistory, History, Key, Piece
+from tests.engine.resume_parity import assert_resume_parity
 
 AMOUNT = Key('meter', ('amount',))
 AGE = Key('meter', ('age',))
@@ -52,7 +53,8 @@ def test_the_clock_survives_checkpoint_resume_and_each_budget_cutoff(tmp_path):
         hits = store.counts['hits']
         cached = store.run(program, config)
         assert store.counts['hits'] == hits + 1
-    assert resumed == fresh == cached == value_of(value_bytes(fresh))
+    assert fresh == cached == value_of(value_bytes(fresh))
+    assert_resume_parity(program, config, fresh, resumed)
     assert cached.history(AMOUNT).changes == (0, 1, 1, 2, 3)
     for cutoff in (1, 2, 3):
         count = sum(

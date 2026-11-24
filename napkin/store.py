@@ -16,8 +16,8 @@ R-A4a-08) is a digest of exactly these:
   of its hit, that a caller made at a checkpoint (docs/design/decisions.md, change 15). Such a run is the program
   stopped at each hit of the breakpoints, edited there and resumed, to the end
   (`napkin.session.play`), so the code that plays it, `session.py` and its closure, takes the place
-  of the engine code in the key. A log with no edit keys as the run without it: a breakpoint alone
-  changes no run. The stops of a log are what a session saw, which the run gives again: they are
+  of the engine code in the key. For a log with no edit, the store uses the key and the record of
+  the uninterrupted run. The stops of a log are what a session saw, which the run gives again: they are
   checked as the log plays, and they are no part of the key.
 
 A change to any of these is a miss, never a stale result. The thread settings of the linear algebra

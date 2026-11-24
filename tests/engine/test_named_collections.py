@@ -30,6 +30,7 @@ from napkin.engine.timeline import Plan, Run, read, run
 from napkin.model.compile import compile_text
 from napkin.program.checkpoint import Breakpoint, Checkpoint
 from napkin.program.record import Unavailable
+from tests.engine.resume_parity import assert_resume_parity
 from tests.engine.test_frozen_occurrences import in_a_fresh_process
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
@@ -392,5 +393,7 @@ def test_a_named_collection_of_an_occurrence_stopped_and_resumed_reads_the_same_
     made = Run(Plan.of(found.program, found.configuration), (Breakpoint('boss.look.step[0]'),))
     stopped = made.run()
     assert isinstance(stopped, Checkpoint) and stopped.stop.t == 1
-    assert in_a_fresh_process(found.program, stopped, tmp_path) == straight
-    assert made.resume() == straight
+    assert_resume_parity(
+        found.program, found.configuration, straight, in_a_fresh_process(found.program, stopped, tmp_path)
+    )
+    assert_resume_parity(found.program, found.configuration, straight, made.resume())

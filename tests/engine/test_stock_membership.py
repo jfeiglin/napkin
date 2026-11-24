@@ -11,6 +11,7 @@ from napkin.model.compile import compile_text
 from napkin.program import artifact
 from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
 from napkin.program.record import Unavailable
+from tests.engine.resume_parity import assert_resume_parity
 
 UNITS = {'L': {'volume': 1}, 'h': {'time': 1}}
 
@@ -189,5 +190,5 @@ yard.adjust.start()
     saved['run'] = tuple(state.items())
     legacy = loads(dumps(replace(paused, saved=tuple(saved.items()))))
     restored = Run.restored(Plan.of(model.program, model.configuration), legacy)
-    assert restored.resume() == live.resume()
+    assert_resume_parity(model.program, model.configuration, live.resume(), restored.resume())
     assert restored.stock_balance('yard.tank', 1) == Fraction(3, 10**10)

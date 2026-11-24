@@ -42,6 +42,7 @@ from napkin.program.config import Configuration, Request
 from napkin.program.record import Key, Unavailable
 from napkin.session import Log, Session, play
 from napkin.store import fingerprint
+from tests.engine.resume_parity import assert_resume_parity
 from tests.engine.test_checkpoints import SCENARIOS
 from tests.program.examples import DISPATCH, DISPATCH_SWITCH, UNITS, pump_dispatch
 
@@ -158,8 +159,9 @@ def test_the_dispatch_resumed_untouched_is_the_unattended_run():
     session = Session(program, ONE_HOUR, [BEFORE_SWITCH])
     session.advance()
     assert session.advance() is None
-    assert session.record == run(program, ONE_HOUR)
-    assert fingerprint(session.record) == fingerprint(run(program, ONE_HOUR))
+    assert_resume_parity(program, ONE_HOUR, run(program, ONE_HOUR), session.record)
+    repeat = Session(program, ONE_HOUR, [BEFORE_SWITCH])
+    assert fingerprint(finished(repeat)) == fingerprint(session.record)
 
 
 def test_the_dispatch_with_its_order_changed_to_send_sends_once_and_keeps_its_draw():
@@ -226,11 +228,12 @@ def test_the_dispatch_saved_at_its_stop_goes_on_in_a_fresh_process_as_the_run_st
     program = pump_dispatch()
     session = Session(program, ONE_HOUR, [BEFORE_SWITCH])
     session.advance()
-    assert in_a_fresh_process(program, session, tmp_path) == run(program, ONE_HOUR)
+    fresh = in_a_fresh_process(program, session, tmp_path)
+    assert_resume_parity(program, ONE_HOUR, run(program, ONE_HOUR), fresh)
     # The edited stop, saved, goes on there as here.
     session.edit(ORDER, 'SEND')
     fresh = in_a_fresh_process(program, session, tmp_path)
-    assert fresh == finished(session)
+    assert_resume_parity(program, ONE_HOUR, finished(session), fresh)
     assert values_at(fresh, program, 'sent', [1]) == (1,)
 
 
@@ -243,7 +246,7 @@ def test_a_session_goes_on_from_a_saved_stop_in_this_process_and_its_log_starts_
     again = Session.load(tmp_path / 'stop.checkpoint', program, configuration=ONE_HOUR)
     assert again.checkpoint == session.checkpoint and again.view().edits == session.view().edits
     assert again.log == session.log
-    assert finished(again) == finished(session)
+    assert_resume_parity(program, ONE_HOUR, finished(session), finished(again))
 
 
 # ---- the log --------------------------------------------------------------------------------------
@@ -408,7 +411,7 @@ def test_an_edit_that_does_not_hold_is_refused_by_name_and_changes_nothing():
         with pytest.raises(CheckpointError, match=message):
             session.edit(path, given)
     assert session.checkpoint.edits == ()
-    assert finished(session) == run(program, ONE_HOUR)
+    assert_resume_parity(program, ONE_HOUR, run(program, ONE_HOUR), finished(session))
 
 
 def test_a_value_of_a_finished_occurrence_is_frozen():
@@ -539,7 +542,7 @@ def test_a_save_writes_the_whole_file_or_none_and_the_session_still_waits(tmp_pa
     session.save(tmp_path / 'stop.checkpoint')
     assert sorted(path.name for path in tmp_path.iterdir()) == ['stop.checkpoint']
     assert (tmp_path / 'stop.checkpoint').read_bytes() == dumps(session.checkpoint)
-    assert finished(session) == run(program, ONE_HOUR)
+    assert_resume_parity(program, ONE_HOUR, run(program, ONE_HOUR), finished(session))
     with pytest.raises(CheckpointError, match='reached its end'):
         session.advance()
 

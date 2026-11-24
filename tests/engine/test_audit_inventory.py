@@ -39,6 +39,7 @@ from napkin.program.build import (
 from napkin.program.checkpoint import Breakpoint, Checkpoint
 from napkin.program.config import Configuration, InputValue, Quantity, Request
 from napkin.program.record import Key
+from tests.engine.resume_parity import assert_resume_parity
 from tests.program.examples import UNITS
 from tests.reference.from_program import run_of, value_at
 
@@ -115,7 +116,10 @@ def test_finished_stock_limits_cumulative_computed_transfer(rate, split, against
         live = Run(Plan.of(compiled.program, compiled.configuration), (Breakpoint('plant.watch.step[1]'),))
         stopped = live.run()
         assert isinstance(stopped, Checkpoint)
-        assert live.resume() == resume(compiled.program, stopped) == record
+        assert_resume_parity(compiled.program, compiled.configuration, record, live.resume())
+        assert_resume_parity(
+            compiled.program, compiled.configuration, record, resume(compiled.program, stopped)
+        )
 
 
 @pytest.mark.parametrize(
@@ -449,7 +453,8 @@ def test_seven_moves_empty_their_source_across_a_checkpoint():
     live = Run(Plan.of(program, config), (Breakpoint('yard.empty.step[6]'),))
     stopped = live.run()
     assert isinstance(stopped, Checkpoint)
-    assert live.resume() == resume(program, stopped) == record
+    assert_resume_parity(program, config, record, live.resume())
+    assert_resume_parity(program, config, record, resume(program, stopped))
 
 
 def test_a_positive_shortage_in_the_first_move_is_not_cumulative_roundoff():

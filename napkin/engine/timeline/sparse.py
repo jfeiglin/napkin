@@ -616,6 +616,7 @@ class Sparse(MovingTransfers, Way):
         self.sets, self.set_levels = sets, levels  # which a checkpoint names (`saved.py`)
         self.key, self.alive = key, True
         self.solver, self.pending = None, None
+        self.last_step = None
         self._drift = None  # the rates of the stores at the present state, once read (`drift`)
         self.run, self.recorder = run, run.recorder
         stores = [store for connected in sets for store in connected.stores]
@@ -1412,6 +1413,7 @@ class Sparse(MovingTransfers, Way):
                 self.t,
                 self.y.copy(),
                 until,
+                first_step=min(self.last_step, until - self.t) if self.last_step is not None else None,
                 rtol=numerics.rtol,
                 atol=self.atol,
                 jac_sparsity=self.pattern(),
@@ -1483,6 +1485,8 @@ class Sparse(MovingTransfers, Way):
 
     def _accept(self, solution, start, end):
         if self.stores and start < end:
+            # Only a committed step supplies a size. A trial beyond a moment does not.
+            self.last_step = solution.h
             if self.amounts.clocks:
                 self.amounts.select_clocks(self.lower_flags.__getitem__, self.upper_flags.__getitem__)
             self.accept_amounts(start, end, self._transfer_amount(solution, start, end))
@@ -1596,9 +1600,10 @@ class Sparse(MovingTransfers, Way):
             self.recorder.add(self.recorded[k], t, float(values[k]), 0.0)
 
     def cut(self, t):
-        """The run stands at time t inside the next step: the step up to t is committed, and the
-        solver starts again from there. It starts again at every moment, even at the end of one of its
-        steps, so that no state of the solver crosses a moment (`saved.py`)."""
+        """Keep the part of the step up to time t. Start the solver again at each moment.
+        A live solver uses its last accepted step size for the next trial. After a restore,
+        the solver selects its first step. Both runs make the same decisions in the same order.
+        Their values agree closely. Inside a long step, the relative difference can exceed rtol."""
         self.solver, self._drift = None, None
         if self.pending is None or t >= self.pending[1]:
             return

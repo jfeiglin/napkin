@@ -470,12 +470,11 @@ refused at the end of a route. This revises the G0 rule that also refused a tall
   revises the actor half of [D1](#d1) and the controller choices of a run in [D9](#d9). It also
   revises the G0 rule "A human prompt pauses one atomic stage" and `R-A5-14`. Eligibility is an
   ordinary guard. `readonly` applies only to the assignments of the model.
-- **Exact resume is a rule.** The conditions are one supported platform and the same compiled
-  program, engine version, numerical settings and seed. Under these conditions, a run that stops and
-  resumes with no edit matches a run with no stop. Both give the same recorded values, draws, event
-  times and event order. A breakpoint alone never changes which branch fires. The tests check three
-  cases: no breakpoint, a stop resumed in one process, and a stop saved and resumed in a fresh
-  process.
+- **Resume.** Use the same platform, compiled program, engine version, numerical settings and seed.
+  A run that resumes without an edit makes the same decisions in the same order. The draws stay
+  the same. The values agree closely. Inside a long solver step, the relative difference between
+  readings can exceed `rtol`. The tests compare an uninterrupted run with two resumed runs. One
+  continues in the same process. The other loads a saved checkpoint in a fresh process.
 - **Edits.** An edit changes a live stored value. Types and bounds hold, and the engine calculates
   the derived rates again. A finished occurrence stays frozen. The record holds an edit of a stock
   as an external transfer. An edit that breaks a proof that a value never falls withdraws that

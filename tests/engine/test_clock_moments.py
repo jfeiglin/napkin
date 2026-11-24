@@ -48,6 +48,7 @@ from napkin.program.build import (
 from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
 from napkin.program.config import Configuration, Request
 from napkin.program.record import Key
+from tests.engine.resume_parity import assert_resume_parity
 from tests.engine.test_checkpoints import in_a_fresh_process
 from tests.reference.errors import NotCovered
 from tests.reference.from_program import run_of, value_at, values_at
@@ -296,7 +297,7 @@ def test_an_opening_checkpoint_keeps_the_incoming_rates_that_justify_its_balance
     edited = machine.edit(*edit)
     restored = Run.restored(Plan.of(program, config), loads(dumps(edited)))
     assert restored.stock_balance('s1.water', 2) == crumb
-    assert restored.resume() == machine.resume()
+    assert_resume_parity(program, config, machine.resume(), restored.resume())
 
 
 @pytest.mark.deep

@@ -8,6 +8,7 @@ import pytest
 from napkin.engine.timeline import Plan, Run, read
 from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
 from napkin.program.record import Key
+from tests.engine.resume_parity import assert_resume_parity
 from tests.engine.test_local_sharing_rule import compare
 from tests.engine.test_threshold_transfer_placement import use_method
 from tests.reference.from_program import run_of, value_at
@@ -56,7 +57,7 @@ yard.wake.start()
         assert abs(float(retained)) <= 2e-15
     restored = Run.restored(Plan.of(model.program, model.configuration), loads(dumps(stopped)))
     record = run.resume()
-    assert restored.resume() == record
+    assert_resume_parity(model.program, model.configuration, record, restored.resume())
     assert record.failure is None and record.end == horizon
     assert run.stock_balance('yard.a', horizon) == retained == restored.stock_balance('yard.a', horizon)
     paths = ['yard.b', 'yard.ab.actual_rate', 'yard.drain.actual_rate']

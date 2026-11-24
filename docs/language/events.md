@@ -569,8 +569,9 @@ A breakpoint holds for every occurrence, or for one member or one occurrence aft
 `operator.decide.step[0]@operator`, or `depot.request_pump.step[0]@depot.request_pump#0` for the
 first occurrence only.
 
-A breakpoint alone never changes the run. A run that stops and goes on gives the same values, draws,
-event times and event order as the run straight through.
+If you resume without an edit, the run makes the same decisions in the same order. The draws
+stay the same. The values agree closely. Inside a long solver step, the relative difference
+between two readings can exceed `rtol`.
 
 ### Checkpoints
 
