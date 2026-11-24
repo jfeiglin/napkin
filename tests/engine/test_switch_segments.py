@@ -646,7 +646,8 @@ def test_an_internal_solver_endpoint_cannot_hide_a_bound_in_the_rest_of_the_time
 
     def one_step(*args, **kwargs):
         span = args[3] - args[1]
-        return radau(*args, first_step=min(1 + 1 / 64, span), **kwargs)
+        kwargs['first_step'] = min(1 + 1 / 64, span)
+        return radau(*args, **kwargs)
 
     monkeypatch.setattr(sparse, 'Radau', one_step)
     upper = 1 + 3 / 64

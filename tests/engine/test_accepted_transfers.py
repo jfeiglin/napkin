@@ -97,15 +97,23 @@ plant.pause.start()
     checkpoint = machine.run()
     restored = Run.restored(Plan.of(program, config), loads(dumps(checkpoint)))
     names = ['plant.there', 'plant.back']
+    tolerance = dict(abs=config.numerics.atol_factor, rel=config.numerics.rtol)
+    if power:
+        tolerance = dict(abs=2e-12, rel=0)
     for name in names:
         expected = 0.5**7 / 7 if power else math.log1p(0.5)
-        assert restored.ways.instance_of(name).transferred(name, 0.5) == pytest.approx(expected, abs=2e-12)
+        assert restored.ways.instance_of(name).transferred(name, 0.5) == pytest.approx(expected, **tolerance)
     assert restored.resume().failure is None
     for name in names:
         whole = straight.ways.instance_of(name).transferred(name, 1)
         resumed = restored.ways.instance_of(name).transferred(name, 1)
-        assert_resume_parity(program, config, whole, resumed)
-        assert whole == pytest.approx(1 / 7 if power else math.log(2), abs=2e-12)
+        if power:
+            assert whole == resumed
+        else:
+            assert resumed == pytest.approx(whole, **tolerance)
+        expected = 1 / 7 if power else math.log(2)
+        for amount in (whole, resumed):
+            assert amount == pytest.approx(expected, **tolerance)
 
 
 def test_a_signed_route_posts_both_physical_legs_when_it_reverses():

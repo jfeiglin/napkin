@@ -102,7 +102,8 @@ def test_a_run_of_steps_too_short_to_tell_apart_stops_the_run_as_stalled(monkeyp
     radau = sparse.Radau
 
     def short_steps(*args, **kwargs):
-        return radau(*args, first_step=short, max_step=short, **kwargs)
+        kwargs.update(first_step=short, max_step=short)
+        return radau(*args, **kwargs)
 
     monkeypatch.setattr(sparse, 'Radau', short_steps)
     failure = stopped(tank(5e4, cut=True))

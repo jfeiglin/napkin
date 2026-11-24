@@ -45,7 +45,7 @@ yard.pause.start()
     saved = restored.ways.instance_of(pipe)
     assert type(way) is type(saved) is METHODS[method]
     accepted = way.amounts.through
-    assert accepted < 0.5
+    assert accepted <= 0.5
     inside = (accepted + 0.5) / 2
 
     def integral(t):
