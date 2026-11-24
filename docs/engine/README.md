@@ -246,8 +246,13 @@ The engine keeps an exact balance for each stock (`napkin/engine/timeline/stocks
 A run gives one record (`napkin/program/record.py`). It holds:
 
 - **Histories.** Each recorded value has a list of pieces in time order. A piece reads
-  `value + rate * (time - t)` from its time until the next piece. A piece on a curve holds a Chebyshev
-  series of degree 8 instead. A jump is a new piece at the same time.
+  `value + rate * (time - t)` from its time until the next piece. A curved piece holds a
+  Chebyshev series of degree 8 or less. The recorder fits a stock over the accepted part of its
+  solver step. If the step continues through a moment, the recorder can extend the fit. Each
+  piece start that the moment observed keeps its time. A stock that held its value over an
+  observed interval stays held there. A stock that moved stays moving there. If a longer fit
+  changes any of these conditions, the recorder keeps the earlier fit and fits the new interval
+  separately. A jump starts a new piece at the same time.
 - **The trace.** One entry for each start, finish, commit, firing, draw, move, solve, edit, pause and
   failure, in order. Each entry has its time, its round, its kind, its part and its owner.
 - **Near-ties.** The detail `near` of an entry gives, for each comparison that decided within its
@@ -267,6 +272,11 @@ balance. A stock that already holds that balance needs no extra point.
 The first counted piece that exceeds the budget sets the stop time. The last trace entry gives
 the time and the budget. The record keeps only the pieces before this stop. It has no balance
 point at the excluded time. You can read values only before the stop time.
+
+If you apply the same budget to a completed record, you get the same stop time, counted piece
+starts, trace and stock balances. Each recorded quantity covers the same times in both records.
+The last stock curve before the stop can use a different length. Its readings agree within the
+value tolerance.
 
 ## `read` and `report`
 

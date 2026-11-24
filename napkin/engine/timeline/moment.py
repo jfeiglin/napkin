@@ -284,6 +284,9 @@ class _Savepoint:
             (store, side): plan.rankings.get((store, side)) for store, side, *_ in tx.allocations
         }
         self.pieces = {name: _length(recorder.pieces, name) for name in names}
+        self.store_tails = {
+            name: recorder._store_tails[name] for name in names if name in recorder._store_tails
+        }
         self.changes = {name: _length(run.changes, name) for name in tx.writes}
         self.defined = {
             name: (_length(plan.defined, name), plan.values[name])
@@ -313,6 +316,7 @@ class _Savepoint:
             else:
                 plan.rankings[end] = before
         _cut(recorder.pieces, self.pieces)
+        recorder._store_tails.update(self.store_tails)
         _cut(run.changes, self.changes)
         for store, count in self.transfers.items():
             if count is None:

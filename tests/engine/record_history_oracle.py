@@ -71,7 +71,7 @@ def _fresh(live, observed, closed):
     comparisons.named = lambda name: plan.comparison_quantity(name, plan.comparison_scales)
 
     ref = Recorder(plan, dict(live.constants), dict(live.tolerance))
-    ref.pieces = {name: list(pieces) for name, pieces in live.pieces.items()}
+    ref.pieces = {name: list(pieces) for name, pieces in live.saved_pieces()}
     ref.transfers = {name: (start, list(items)) for name, (start, items) in live.transfers.items()}
     ref.trace = list(live.trace)
     ref.round = live.round

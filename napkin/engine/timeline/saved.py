@@ -202,12 +202,16 @@ def at_stop(run):
     projected.recorder = recorder = copy(run.recorder)
     recorder.run = projected
     recorder._private = set()
+    recorder.fits = copy(run.recorder.fits)
+    recorder.fits.closed = dict(run.recorder.fits.closed)
+    recorder.fits.ends = list(run.recorder.fits.ends)
     recorder._histories = dict(recorder._histories)
     recorder._flow_reads = dict(recorder._flow_reads)
     recorder._event_ends = dict(recorder._event_ends)
     recorder._dirty = set(recorder._dirty)
     recorder._moving = set(recorder._moving)
     recorder._raw_positions = dict(recorder._raw_positions)
+    recorder._store_tails = dict(recorder._store_tails)
     recorder._counted = dict(recorder._counted)
     recorder._coverage_starts = dict(recorder._coverage_starts)
     recorder.pieces = {name: list(pieces) for name, pieces in run.recorder.pieces.items()}
@@ -305,7 +309,7 @@ def save(run, recorder, arrival):
         (
             'recorder',
             (
-                ('pieces', tuple((name, tuple(recorder.pieces[name])) for name in sorted(recorder.pieces))),
+                ('pieces', tuple(recorder.saved_pieces())),
                 ('trace', tuple(recorder.trace)),
                 ('constants', _pairs(recorder.constants)),
                 ('tolerance', _pairs(recorder.tolerance)),

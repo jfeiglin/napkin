@@ -32,13 +32,13 @@ crossing tolerance, stops the run; where a setting reads a store through a condi
 says that the rates chatter there and names the stores and the flows.
 
 The recorder takes the pieces of the stores and of what the network gives of each flow (an actual
-rate, a route's signed rate, a served fraction) that the record keeps, fitted step by step to the
-step's dense output (`record.fitted`). Sets built at a horizon that is a moment of a run that goes
+rate, a route's signed rate, a served fraction) that the record keeps. It fits the selected
+stocks together on the accepted portion of a Radau step. It fits the actual rates on each
+accepted interval (`record.fitted`). Sets built at a horizon that is a moment of a run that goes
 on too take their values there, with the flags that a new segment would find (`finish`): a read at
 the horizon of a run that ends there is the read of a run that goes on, whose first step of the sets
-starts there. A reader of a condition that watches the
-stores reads the form of the next step (`motion`: the cubic of its dense output,
-`continuous/dense.py`).
+starts there. A reader of a condition that watches the stores reads the form of the next step
+(`motion`: the cubic of its dense output, `continuous/dense.py`).
 """
 
 from __future__ import annotations
@@ -1300,8 +1300,12 @@ class Sparse(MovingTransfers, Way):
         elif self.kept_stores:
             tolerance = np.maximum(self.atol[self.kept_stores], 1e-300)
             states = lambda times: np.array([solution(at)[self.kept_stores] for at in times])  # noqa: E731
-            for k, pieces in zip(self.kept_stores, fitted(states, start, end, tolerance)):
-                recorder.add_pieces(self.stores[k], pieces)
+            names = [self.stores[k] for k in self.kept_stores]
+
+            def fit(left):
+                return fitted(states, left, end, tolerance)
+
+            recorder.store_step(names, fit, start, complete=end == self.pending[1])
         if self.kept_flows:
             if self.outputs is not None and (self.held_rates or not (self.surfaces or self.stepped)):
                 return  # this branch already has its anchor from the sharing
@@ -1384,8 +1388,13 @@ class Sparse(MovingTransfers, Way):
             held = name in self.held_rates or self.surfaces or self.stepped
             self.recorder.add(name, self.t, float(numbers[k]), 0.0 if held else None)
 
+    def _seal_stores(self):
+        for k in self.kept_stores:
+            self.recorder.seal_store(self.stores[k])
+
     def retire(self, key):
         """The set leaves the run's ways."""
+        self._seal_stores()
         self.alive = False
 
     def refresh(self, t):
@@ -1638,6 +1647,7 @@ class Sparse(MovingTransfers, Way):
         Their values agree closely. Inside a long step, the relative difference can exceed rtol."""
         if self.pending is not None:
             self.commit_through(min(t, self.pending[1]))
+            self._seal_stores()
             if t > self.pending[0]:
                 self.contacted = ()
             self.pending = None

@@ -415,6 +415,11 @@ class Recorder:
     def __init__(self, plan, constants, tolerance):
         self.plan, self.constants, self.tolerance = plan, constants, tolerance
         self.pieces = {}  # engine name -> [(t, value, rate)]
+        # One accepted prefix for each stock whose solver step continues past a moment.
+        # Only sealed pieces are appended to pieces. A checkpoint serializes this prefix too.
+        self._store_tails = {}
+        self._extended_stock = False
+        self._checkpoint_observation = None
         self.trace = []
         self.formulas = set()  # the formulas whose pieces the run gives (the family's settings)
         self.run = None  # the run, which knows the entries that each collection keeps
@@ -632,6 +637,71 @@ class Recorder:
                     return balance
         return value
 
+    def store_step(self, names, fit, since, *, complete):
+        """Extend the grouped fit if its charged starts and held intervals stay fixed.
+
+        If a subdivision moves or an opening changes whether it compacts, seal the observed
+        fit for the whole group. The next fit then covers only the newly accepted interval.
+        """
+        open_rows = self._store_tails.get(names[0])
+        start = open_rows[0][0] if open_rows else since
+        columns = fit(start)
+        if open_rows and any(
+            not self._keeps_stock_prefix(name, rows, since) for name, rows in zip(names, columns, strict=True)
+        ):
+            for name in names:
+                self.seal_store(name)
+            start = since
+            columns = fit(start)
+        elif open_rows:
+            self._extended_stock = True
+        for name, pieces in zip(names, columns, strict=True):
+            prior = self._store_tails.pop(name, ())
+            rows = [(t, self._posted_value(name, t, value), shape) for t, value, shape in pieces]
+            if prior:
+                # The physical ledger may have advanced since the opening was posted.
+                rows[0] = (start, prior[0][1], rows[0][2])
+            # A checkpoint owns a distinct raw list even before the step seals.
+            raw = self.pieces.setdefault(name, [])
+            if complete:
+                raw.extend(rows)
+            else:
+                self._store_tails[name] = tuple(rows)
+            self._dirty.add(name)
+        self._held_upper, self._held_growth = math.inf, 0
+        self._from = min(self._from, start)
+
+    def _keeps_stock_prefix(self, name, rows, since):
+        """Keep each charged start, including duplicates, and whether the stock holds there."""
+        prior = self._store_tails[name]
+        if len(rows) == len(prior) == 1 and (rows[0][2] == 0) == (prior[0][2] == 0):
+            # Both single rows have the same start and exact intercept. Curves cannot
+            # compact. Held rows compact with precisely the same predecessor.
+            return True
+        cutoff = bisect_right(rows, since, key=lambda piece: piece[0])
+        proposed = list(rows[:cutoff])
+        proposed[0] = (prior[0][0], prior[0][1], proposed[0][2])
+        raw = self.pieces[name]
+        coverage = self._coverage_starts.get(name)
+        if raw and (coverage is None or raw[-1][0] >= coverage):
+            previous = [raw[-1]]
+        else:
+            _, previous = self._raw_opening(name, raw, prior, since)
+        old = _compact([*previous, *prior])
+        new = _compact([*previous, *proposed])
+        return [(t, rate == 0) for t, _, rate in old] == [(t, rate == 0) for t, _, rate in new]
+
+    def seal_store(self, name):
+        """Commit the last accepted prefix when its producer stops or a posting replaces it."""
+        tail = self._store_tails.pop(name, None)
+        if tail is not None:
+            self.pieces[name].extend(tail)
+
+    def saved_pieces(self):
+        """Raw pieces through the checkpoint, including any accepted, unfinished step."""
+        for name in sorted(self.pieces):
+            yield name, tuple(self.pieces[name]) + self._store_tails.get(name, ())
+
     def add(self, name, t, value, rate):
         """One piece of a value, which a run gives as it goes."""
         if self._held_growth:
@@ -639,6 +709,7 @@ class Recorder:
                 self._held_upper += self._held_growth
             else:
                 self._held_upper, self._held_growth = math.inf, 0
+        self.seal_store(name)
         self.pieces.setdefault(name, []).append((t, self._posted_value(name, t, value), rate))
         self._dirty.add(name)
         self._from = min(self._from, t)
@@ -646,6 +717,7 @@ class Recorder:
     def add_pieces(self, name, pieces):
         """Pieces of a value, which a run gives as it goes."""
         if pieces:
+            self.seal_store(name)
             self._held_upper, self._held_growth = math.inf, 0
             if self.run is not None and name in self.run.stock_state.balances:
                 pieces = [(t, self._posted_value(name, t, value), rate) for t, value, rate in pieces]
@@ -655,6 +727,11 @@ class Recorder:
 
     def incoming_piece(self, name, end):
         """The last recorded piece strictly before an incoming segment ends, or None."""
+        tail = self._store_tails.get(name)
+        if tail is not None:
+            index = bisect_left(tail, end, key=lambda piece: piece[0])
+            if index:
+                return tail[index - 1]
         pieces = self.pieces.get(name, ())
         place = bisect_left(pieces, end, key=lambda piece: piece[0]) - 1
         return pieces[place] if place >= 0 else None
@@ -726,7 +803,7 @@ class Recorder:
         # A redefinition can change an existing formula without writing a raw piece.
         # An occurrence start only adds names and readers to the committed history.
         if self._indexed_version != plan.version:
-            self._histories.clear()
+            self._histories = {}
             self._flow_reads.clear()
             self._event_ends.clear()
             self._raw_positions.clear()
@@ -746,15 +823,28 @@ class Recorder:
         self._indexed_value_count = len(plan.values)
         self._indexed_version = plan.version
 
+    def observe_checkpoint(self, record):
+        """Use the formula starts already visible in this checkpoint when its run resumes."""
+        self._checkpoint_observation = record.end, {name_of(h.key): h for h in record.histories}
+        self._extended_stock = True
+
     def _advance(self, end):
         """Update only histories whose inputs changed or whose current interval moves."""
         plan = self.plan
+        # A redefinition or a cold restore can rebuild the index. The last public
+        # observation still owns the starts it has seen before this physical step.
+        observed = self._as_of if self._extended_stock else None
+        previous = self._histories
+        checkpoint = self._checkpoint_observation
+        self._checkpoint_observation = None
         if not self._index_current():
             self._prepare_histories()
         dirty, self._dirty = self._dirty, set()
         since = min(self._as_of or 0.0, self._from)
         self._from = math.inf
         changed = dirty.intersection(self._order)
+        if checkpoint:
+            changed.update(self._derived.intersection(checkpoint[1]))
         if self._as_of != end:
             changed.update(self._clock)
             changed.update(self._moving)
@@ -762,7 +852,13 @@ class Recorder:
             value = plan.values[name]
             if name in self._derived:
                 start = since if name in self._histories else plan.start_of(name)
+                cutoff = observed
+                prior = previous.get(name)
+                if checkpoint and name in checkpoint[1]:
+                    cutoff, prior = checkpoint[0], checkpoint[1][name]
                 history = self._derived_history(name, value, end, start)
+                if cutoff is not None and prior is not None:
+                    history = self._observed_formula(prior, history, cutoff, end)
             else:
                 history = self._raw_history(name, value, end)
                 if not history.pieces and self._coverage_starts.get(name) is not None:
@@ -786,6 +882,58 @@ class Recorder:
                     pieces.append((at, float(total), 0.0))
             self._put(ledger_name, self._history(ledger, pieces))
         self._as_of = end
+
+    @staticmethod
+    def _observed_formula(prior, history, cutoff, end):
+        """An extended stock fit cannot relocate a formula start already observed.
+
+        Keep the ordinary fitted result whenever its charged prefix is stable.
+        Otherwise retain the observed prefix, then take the new fit from the
+        observation forward. This applies equally to fits, reductions and aliases.
+        """
+        before, after = prior.pieces, history.pieces
+        if not before or before is after:
+            return history
+        old_left = bisect_left(before, cutoff, key=_piece_time)
+        new_left = bisect_left(after, cutoff, key=_piece_time)
+        old_right = bisect_right(before, cutoff, lo=old_left, key=_piece_time)
+        new_right = bisect_right(after, cutoff, lo=new_left, key=_piece_time)
+        if (
+            old_left == new_left
+            and old_right <= new_right
+            and all(before[k].t == after[k].t for k in range(old_left))
+        ):
+            return history
+
+        # Keep every earlier start, including the multiplicity of actual postings
+        # at the observation. An outgoing piece may replace the last one there.
+        at = list(after[new_left:new_right])
+        if not at and new_left and (cutoff < end or old_right > old_left):
+            source = after[new_left - 1]
+            curve = source.curve
+            stop = after[new_right].t if new_right < len(after) else end
+            if curve is not None and stop > cutoff:
+                # Express the same polynomial on the remaining part of the span.
+                # Both endpoints use its native [-1, 1] coordinates, even at a
+                # large absolute time. The new intercept is the landed reading.
+                u = 2 * (cutoff - source.t) / curve.length - 1
+                length = stop - cutoff
+                ratio = length / curve.length
+                domain = chebyshev.Chebyshev((u + ratio, ratio))
+                coeff = chebyshev.Chebyshev(curve.coefficients)(domain).coef
+                curve = Curve(length, tuple(float(c) for c in coeff))
+            else:
+                curve = None
+            at.append(Piece(cutoff, source.at(cutoff), source.rate, curve))
+        missing = max(0, old_right - old_left - len(at))
+        pieces = list(before[: old_left + missing])
+        if at and old_right == old_left and new_right == new_left:
+            # A held continuation often needs no extra start at the observation.
+            Recorder._extend(pieces, [(p.t, p.value, p.curve or p.rate) for p in at])
+        else:
+            pieces.extend(at)
+        pieces.extend(after[new_right:])
+        return History(history.key, pieces)
 
     def _affected(self, changed):
         """The changed histories and their transitive readers, in assembly order."""
@@ -831,38 +979,54 @@ class Recorder:
             self._counted[name] = len(history.pieces)
         self._histories[name] = history
 
+    def _raw_opening(self, name, raw, tail, end):
+        """The first eligible raw index and any held value that precedes its trajectory."""
+        start = self._coverage_starts.get(name)
+        if start is None:
+            return 0, [(0.0, self.constants[name], 0)] if name in self.constants else []
+        i = bisect_left(raw, start, key=lambda piece: piece[0])
+        if end > start and i and raw[i - 1][2] == 0:
+            # A later first trajectory, sealed or provisional, follows the held
+            # balance of the retired producer. An active producer with no trajectory
+            # yet still owns its opening at the coverage boundary.
+            if i < len(raw):
+                held = raw[i][0] > start
+            elif tail:
+                held = tail[0][0] > start
+            else:
+                installed = self.run.ways.set_of
+                held = name not in installed and name.rpartition('.')[0] not in installed
+            if held:
+                return i, [(start, raw[i - 1][1], 0)]
+        return i, []
+
     def _raw_history(self, name, value, end):
         """Append just the raw pieces since the previous boundary. A checkpoint projection
         owns a different raw sequence; it builds its own history without changing the run's."""
         raw = self.pieces.get(name, ())
-        prior, i = self._raw_positions.get(name, (None, 0))
+        tail = self._store_tails.get(name)
+        if tail and tail[-1][0] > end:
+            tail = tail[:bisect_right(tail, end, key=lambda piece: piece[0])]
+        prior, i, old_tail, sealed = self._raw_positions.get(name, (None, 0, None, 0))
         if prior is raw and i <= len(raw):
             kept = self._histories[name].pieces
-            if i == len(raw):
+            if i == len(raw) and old_tail is tail:
                 return self._histories[name]
+            if old_tail is not None:
+                del kept[sealed:]  # the previous provisional fit can have compacted at its opening
         else:
-            start = self._coverage_starts.get(name)
-            if start is None:
-                i = 0
-                kept = [Piece(0.0, self.constants[name])] if name in self.constants else []
-            else:
-                i = bisect_left(raw, start, key=lambda piece: piece[0])
-                kept = []
-                if end > start and i and (i == len(raw) or raw[i][0] > start):
-                    # A retired producer posted its final held value before the join.
-                    # Once the join has passed, retain that genuine flat interval from
-                    # the coverage boundary. A pending producer still owns its opening.
-                    installed = self.run.ways.set_of
-                    pending = name in installed or name.rpartition('.')[0] in installed
-                    if raw[i - 1][2] == 0 and (i < len(raw) or not pending):
-                        kept.append(Piece(start, raw[i - 1][1]))
+            i, opening = self._raw_opening(name, raw, tail, end)
+            kept = [Piece(*piece) for piece in opening]
         j = len(raw)
         if j and raw[-1][0] > end:
             j = bisect_right(raw, end, lo=i, key=lambda piece: piece[0])
         new = raw[i:j]
         self._extend(kept, new)
+        sealed = len(kept)
+        if tail is not None:
+            self._extend(kept, list(tail))
         if kept:
-            self._raw_positions[name] = raw, j
+            self._raw_positions[name] = raw, j, tail, sealed
         return History(value.key, kept)
 
     @staticmethod
@@ -948,10 +1112,15 @@ class Recorder:
             _freeze_pieces(pieces, finish, self.run.frozen[name])
         prior = self._histories.get(name)
         kept = [] if prior is None or boundary == start else prior.pieces
-        if self._private is not None and name not in self._private:
-            kept = list(kept)
-            self._private.add(name)
-        del kept[bisect_left(kept, boundary, key=_piece_time) :]
+        if self._extended_stock:
+            # The previous history witnesses its charged starts. Keep it intact
+            # while the new suffix is assembled, including for aliases that share it.
+            kept = list(kept[: bisect_left(kept, boundary, key=_piece_time)])
+        else:
+            if self._private is not None and name not in self._private:
+                kept = list(kept)
+                self._private.add(name)
+            del kept[bisect_left(kept, boundary, key=_piece_time) :]
         self._extend(kept, pieces)
         return History(value.key, kept)
 

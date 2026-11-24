@@ -48,22 +48,24 @@ def test_observe_commits_each_part_of_one_prepared_step_once(model):
             assert float(way.transferred(pipe, t)) == pytest.approx(expected, rel=1e-12)
             assert float(way.amounts.numerical(way.leg_rows[pipe])) == pytest.approx(expected, rel=1e-12)
         assert [p[0] for p in run.recorder.pieces['tank.water']] == starts
+        (prefix,) = dict(run.recorder.saved_pieces())['tank.water']
+        assert prefix[0] == 0 and prefix[2].length == t
 
-    for t, starts in [(first, [0]), (second, [0, first])]:
+    for t in (first, second):
         run.now = t
         way.incoming_history(t)
-        assert_posted(t, starts)
+        assert_posted(t, [])
         # The left endpoint still belongs to the original solver step after this prefix.
         assert way.level_at('tank.water', 0) == way.incoming_level('tank.water', 0) == 10
         assert way.level_at('tank.water', t) > 10
         before = {name: list(pieces) for name, pieces in run.recorder.pieces.items()}
         way.observe(t)
-        assert_posted(t, starts)
+        assert_posted(t, [])
         assert run.recorder.pieces == before
         assert way.pending[2] is solution
 
     way.step()
-    assert_posted(end, [0, first, second])
+    assert_posted(end, [0])
     assert way.pending is None
 
 

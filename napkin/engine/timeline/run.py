@@ -1020,6 +1020,7 @@ class Run:
         Inside a long solver step, the relative difference between readings can exceed `rtol`."""
         if self.checkpoint is None:
             raise CheckpointError('the run waits at no stop')
+        self.recorder.observe_checkpoint(self.checkpoint.record)
         self.breaks.passing, self.checkpoint = self.checkpoint.stop.hit, None
         return self._go(self._resume)
 
