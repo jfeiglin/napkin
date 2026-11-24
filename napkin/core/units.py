@@ -121,7 +121,7 @@ def dimension_power(number):
 
 
 def scale_of(number):
-    """The exact scale of a unit. An authored decimal, int or Fraction has its stated value. A
+    """The exact scale of a unit. An authored string, decimal, int or Fraction has its stated value. A
     caller supplying a bare float has lost the spelling: that float stands for every number that
     rounds to it, and its scale is the one of them written with the fewest digits: the shortest
     decimal that writes it (0.001, 3785411.784, as a person writes a
@@ -134,7 +134,7 @@ def scale_of(number):
     once in 1,300, which no comparison but an exact one with that decimal can tell apart."""
     if isinstance(number, Fraction):
         return number
-    if isinstance(number, int | Decimal):
+    if isinstance(number, str | int | Decimal):
         return Fraction(number)
     value = float(number)
     written = float.__repr__(value)
