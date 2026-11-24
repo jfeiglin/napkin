@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from itertools import product
 from typing import NamedTuple
 
 import numpy as np
@@ -856,7 +857,7 @@ def branch_sides(surfaces, side, comparisons):
     return signs, equal
 
 
-def curved_motion(t, y, h, drift, rates, side_at, place):
+def curved_motion(t, y, h, drift, rates, side_at, place, factor):
     """Read displacements along one short outgoing trial shared by all curved comparisons."""
     displacement = h * drift
     middle = h * rates(t + h / 2, y + displacement / 2)
@@ -870,8 +871,8 @@ def curved_motion(t, y, h, drift, rates, side_at, place):
             np.zeros_like(y),
             method='DOP853',
             first_step=1,
-            rtol=Numerics.rtol,
-            atol=np.maximum(np.finfo(float).tiny, Numerics.rtol * scale),
+            rtol=factor,
+            atol=np.maximum(np.finfo(float).tiny, factor * scale),
         )
         if not trial.success:
             raise SimulationError(f'cannot resolve the departing switch at {t:g} h: {trial.message}')
@@ -887,15 +888,15 @@ def curved_motion(t, y, h, drift, rates, side_at, place):
     return motion
 
 
-def affine_departure(pair, values, drift, place, contacted, selected, choose, forms_for, physical, rates):
-    """Certify the open side of two affine operands at a physical or nested contact.
+def affine_departure(pair, values, drift, place, contacted, selected, forms_for, physical, factor):
+    """Read the direction of two affine operands on the installed field at a contact.
     Return zero to keep an observed offset inside its band, or None to use the curved trajectory."""
     left, right = values
     forms = forms_for(selected)
     if forms is None:
         return None
     velocity, size = affine.velocity(forms, drift, place)
-    if abs(velocity) <= Numerics.rtol * size:
+    if abs(velocity) <= factor * size:
         return None
 
     coincident = left == right or pair in contacted
@@ -919,24 +920,24 @@ def affine_departure(pair, values, drift, place, contacted, selected, choose, fo
     if not coincident:
         return None
 
-    # A branch can change the rates of its own controlling stocks. Require the same
-    # direction on its proposed field before committing to a first-order departure.
-    sign = 1 if velocity > 0 else -1
-    outgoing = {**selected, pair: sign}
-    choose(outgoing)
-    try:
-        next_forms = forms_for(outgoing)
-        if next_forms is not None:
-            next_velocity, size = affine.velocity(next_forms, rates(), place)
-            if sign * next_velocity > Numerics.rtol * size:
-                return sign
-    finally:
-        choose(selected)
-    return None
+    return 1 if velocity > 0 else -1
 
 
 def departing_branches(
-    surfaces, t, y, side_at, rates, place, moving, contacted, comparisons, *, certify=None
+    surfaces,
+    t,
+    y,
+    side_at,
+    rates,
+    place,
+    moving,
+    contacted,
+    comparisons,
+    *,
+    certify=None,
+    hold=None,
+    departures=None,
+    evidence=None,
 ):
     """Select the sides a segment leaves on, including comparisons between two moving expressions.
     At a contact their equal values alone cannot pick a side. Compare their values along the
@@ -945,10 +946,15 @@ def departing_branches(
         return {}
     side = side_at(t, y)
     signs, equal = branch_sides(surfaces, side, comparisons)
+    if evidence is not None:
+        # A nested branch can move an operand off its surface altogether.
+        evidence.update((pair, sign) for pair, sign in signs.items() if sign)
     contacts = {
         pair: values for pair, values in equal.items() if t or values[0] == values[1] or pair in contacted
     }
     if contacts:
+        if hold is not None:
+            hold(contacts)
         h = math.sqrt(np.finfo(float).eps) * max(1.0, abs(t))
         drift = rates(t, y)
         probe = y + h * drift
@@ -968,6 +974,10 @@ def departing_branches(
                     sign = certify((a, b), (left, right), drift)
                     if sign is not None:
                         signs[a, b] = sign
+                        if departures is not None:
+                            departures.add((a, b))
+                        if evidence is not None:
+                            evidence[a, b] = sign
                         continue
                 if left != right and (a, b) not in contacted:
                     # An interpolated inventory at a scheduled cut can miss a physical
@@ -987,11 +997,13 @@ def departing_branches(
                         return False
 
                     if not (touches(math.inf) or touches(0.0)):
+                        if evidence is not None:
+                            evidence[a, b] = 0  # actual offset inside the band; watch its exit
                         continue
                 change = (following(a) - left) - (following(b) - right)
                 if change == 0 or not (directed(a, b) or directed(b, a)):
                     if motion is None:
-                        motion = curved_motion(t, y, h, drift, rates, side_at, place)
+                        motion = curved_motion(t, y, h, drift, rates, side_at, place, comparisons.factor)
                     da, db = motion(a, left), motion(b, right)
                     change = da - db
                     if moving(a) and moving(b):
@@ -999,13 +1011,58 @@ def departing_branches(
                         # two rounded coordinates to obtain the same increment. Allow the
                         # rounding of those coordinates and of the two integrated changes.
                         error = math.ulp(left) + math.ulp(right) + math.ulp(left + da) + math.ulp(right + db)
-                        error += Numerics.rtol * (abs(da) + abs(db))
+                        error += comparisons.factor * (abs(da) + abs(db))
                         if abs(change) <= error:
                             change = 0
             except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
                 continue
             signs[a, b] = int(change > 0) - int(change < 0)
+            if departures is not None:
+                departures.add((a, b))
+            if evidence is not None:
+                evidence[a, b] = signs[a, b]
     return signs
+
+
+def consistent_departure(pairs, initial, motion, reversal, at):
+    """Test joint proposals on their own fields. Equality keeps the band-exit watch armed.
+
+    Probe only the signs that disagreed in a cycle. A bounded search can diagnose an
+    unresolved combination without enumerating all signs of a large network.
+    """
+    tried = {}
+    candidate = initial
+    # A single comparison has three possibilities. The limit also allows all
+    # combinations of up to three conflicting comparisons.
+    limit = 27
+    while candidate not in tried and len(tried) < limit:
+        observed = tried[candidate] = motion(candidate)
+        if None in observed:
+            break
+        if candidate == observed:
+            return
+        candidate = observed
+
+    changed = tuple(i for i in range(len(pairs)) if any(a[i] != b[i] for a, b in tried.items()))
+    names = ', '.join(f'{nodes.notation(pairs[i][0])} against {nodes.notation(pairs[i][1])}' for i in changed)
+    if len(changed) <= 3:
+        for values in product((0, -1, 1), repeat=len(changed)):
+            alternative = list(candidate)
+            for i, value in zip(changed, values, strict=True):
+                alternative[i] = value
+            choice = tuple(alternative)
+            if choice not in tried:
+                tried[choice] = motion(choice)
+                if choice == tried[choice]:
+                    return
+        if (
+            len(pairs) == 1
+            and tried.get((1,)) == (-1,)
+            and tried.get((-1,)) == (1,)
+            and tried.get((0,)) in ((-1,), (1,))
+        ):
+            reversal(names)
+    raise SimulationError(f'cannot resolve the departing comparisons at {at:g} h: {names}')
 
 
 def branch_expression(source, signs):
@@ -1270,7 +1327,7 @@ def far_sides(
     lower, upper = bounds
     clock, _, clock_branches = clocks
     at = t if clock is None else clock[2]  # every store crosses under the rates after the clock switches
-    switches, derivative = [], None
+    switches, placed, derivative = [], {}, None
     watched = band_edges = None
     choose(clock_branches)
     for a, b in surfaces:
@@ -1340,6 +1397,7 @@ def far_sides(
                 reversal(here_node.name)
             low, high = (limit - float(band), beyond) if way > 0 else (beyond, limit + float(band))
             switches.append((i, low, high, beyond))
+            placed[a, b] = i, way if here_node == a else -way, 1 if here_node == a else -1
     departure = y.copy()
     for i, low, high, beyond in switches:
         if low <= departure[i] <= high:
@@ -1382,15 +1440,32 @@ def far_sides(
             place,
             contacted,
             signs,
-            choose,
             forms_for,
             booked_reader if stock_at is not None else None,
-            lambda: rates(at, departure),
+            comparisons.factor,
         )
 
-    for layer in layers:
+    def hold(contacts):
+        nonlocal signs
+        if any(pair not in signs for pair in contacts):
+            signs = {**dict.fromkeys(contacts, 0), **signs}
+            choose(signs)
+
+    def directions(layer, departures=None, evidence=None):
         found = departing_branches(
-            layer, at, departure, side_at, rates, place, moving, reached, comparisons, certify=certify
+            layer,
+            at,
+            departure,
+            side_at,
+            rates,
+            place,
+            moving,
+            reached,
+            comparisons,
+            certify=certify,
+            hold=hold,
+            departures=departures,
+            evidence=evidence,
         )
         if band_edges:
             edges = [pair for pair in band_edges if found.get(pair) == 0]
@@ -1400,8 +1475,39 @@ def far_sides(
                     i, gap, order = band_edges[pair]
                     if physical_motion[i] * gap > 0:
                         found[pair] = order if gap > 0 else -order
-        signs = {**signs, **found, **clock_branches}
+                        if evidence is not None:
+                            evidence[pair] = found[pair]
+        return found
+
+    departures = set()
+    for layer in layers:
+        signs = {**signs, **directions(layer, departures), **clock_branches}
         choose(signs)
+
+    # An equality field can suggest an open side that drives the operands straight
+    # back across it. Test the whole proposal on its own field, including the curved
+    # probe. Inner and outer comparisons must agree on the same installed rates.
+    check = tuple(pair for pair in surfaces if pair in departures and pair not in clock_branches)
+    if check:
+
+        def motion(candidate):
+            nonlocal signs
+            signs = {**signs, **dict(zip(check, candidate, strict=True))}
+            choose(signs)
+            measured = {}
+            directions(check, evidence=measured)
+            if placed:
+                drift = rates(at, departure)
+                for pair in check:
+                    if pair in placed:
+                        # The fixed-stock probe placed this coordinate on its far
+                        # side. A field with zero velocity there holds that side.
+                        i, far, order = placed[pair]
+                        velocity = drift[i] * order
+                        measured[pair] = far if velocity == 0 else (1 if velocity > 0 else -1)
+            return tuple(measured.get(pair) for pair in check)
+
+        consistent_departure(check, tuple(signs[pair] for pair in check), motion, reversal, at)
     return tuple(switches), clock, signs, watched
 
 
