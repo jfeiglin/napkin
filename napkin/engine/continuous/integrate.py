@@ -1327,7 +1327,7 @@ def far_sides(
     lower, upper = bounds
     clock, _, clock_branches = clocks
     at = t if clock is None else clock[2]  # every store crosses under the rates after the clock switches
-    switches, placed, derivative = [], {}, None
+    switches, occupied, derivative = [], {}, None
     watched = band_edges = None
     choose(clock_branches)
     for a, b in surfaces:
@@ -1382,8 +1382,11 @@ def far_sides(
             if (limit == lower[i] and way <= 0) or (limit == upper[i] and way >= 0):
                 continue  # the store cannot leave its interval
             beyond = math.nextafter(limit, way * math.inf) if way else here
-            if way == 0 or (here - beyond) * way >= 0:
-                continue  # it does not move, or it is on the far side already
+            if way == 0:
+                continue
+            occupied[a, b] = way if here_node == a else -way
+            if (here - beyond) * way >= 0:
+                continue  # the stock already occupies the departing side
             probe = np.array(y, dtype=float)
             probe[i] = beyond
             # Leave the arithmetic coordinates alone. A nextafter probe alone is still equal
@@ -1397,7 +1400,6 @@ def far_sides(
                 reversal(here_node.name)
             low, high = (limit - float(band), beyond) if way > 0 else (beyond, limit + float(band))
             switches.append((i, low, high, beyond))
-            placed[a, b] = i, way if here_node == a else -way, 1 if here_node == a else -1
     departure = y.copy()
     for i, low, high, beyond in switches:
         if low <= departure[i] <= high:
@@ -1451,7 +1453,7 @@ def far_sides(
             signs = {**dict.fromkeys(contacts, 0), **signs}
             choose(signs)
 
-    def directions(layer, departures=None, evidence=None):
+    def directions(layer, departures=None, evidence=None, contacts=reached):
         found = departing_branches(
             layer,
             at,
@@ -1460,7 +1462,7 @@ def far_sides(
             rates,
             place,
             moving,
-            reached,
+            contacts,
             comparisons,
             certify=certify,
             hold=hold,
@@ -1495,16 +1497,12 @@ def far_sides(
             signs = {**signs, **dict(zip(check, candidate, strict=True))}
             choose(signs)
             measured = {}
-            directions(check, evidence=measured)
-            if placed:
-                drift = rates(at, departure)
-                for pair in check:
-                    if pair in placed:
-                        # The fixed-stock probe placed this coordinate on its far
-                        # side. A field with zero velocity there holds that side.
-                        i, far, order = placed[pair]
-                        velocity = drift[i] * order
-                        measured[pair] = far if velocity == 0 else (1 if velocity > 0 else -1)
+            directions(check, evidence=measured, contacts=reached | occupied.keys())
+            for pair in check:
+                if pair in occupied and measured.get(pair) == 0:
+                    # The stock already occupied its open side or the contact
+                    # probe put it there. A stationary field holds that side.
+                    measured[pair] = occupied[pair]
             return tuple(measured.get(pair) for pair in check)
 
         consistent_departure(check, tuple(signs[pair] for pair in check), motion, reversal, at)

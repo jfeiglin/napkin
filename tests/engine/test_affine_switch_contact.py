@@ -144,6 +144,37 @@ def test_initially_tangent_feedback_rechecks_equality_after_the_band_exit(monkey
     assert record.failure.t == pytest.approx(sqrt(2 * rtol / (1 - rtol)), abs=Numerics.crossing, rel=0)
 
 
+@pytest.mark.parametrize('rtol', [1e-9, 1e-7])
+@pytest.mark.parametrize(
+    'at_equality,above,net',
+    [(4, 1, 0), (4, 1.125, 0.125), (4, 0, None), (1, 2, 0)],
+    ids=['stationary', 'still-rising', 'reversed', 'no-departure'],
+)
+def test_a_stock_already_beyond_the_probe_checks_the_rate_of_its_occupied_side(rtol, at_equality, above, net):
+    # At hour 1 the stock is two floats above 1 L, still inside the comparison
+    # band. A positive net at equality locates the departure. Its open field
+    # may hold or continue. When equality itself holds, the offset opens nothing.
+    source = f"""scenario "A stock just above its switch"
+    horizon 2 h
+yard:
+    stock: L = 1.0000000000000004 L
+    flow fill: SOURCE -> this.stock
+        request = formula(0 L/h if t < 1 h else ({above} L/h if this.stock > 1 L else {at_equality} L/h))
+    flow drain: this.stock -> SINK
+        request = formula(0 L/h if t < 1 h else 1 L/h)
+"""
+    model = compile_text(source, {'h': {'time': 1}, 'L': {'volume': 1}})
+    config = replace(model.configuration, numerics=Numerics(rtol=rtol, atol_factor=rtol / 10))
+    record = run(model.program, config)
+    if net is None:
+        assert record.failure is not None and record.failure.t == 1
+        assert 'yard.stock' in record.failure.detail('message')
+    else:
+        assert record.failure is None and record.end == 2
+        start, end = read(record, model.program, ['yard.stock'], [0, 2])[0].values
+        assert end == pytest.approx(start + net, abs=1e-14, rel=0)
+
+
 def test_one_reversing_field_with_many_independent_coincident_surfaces():
     pairs = tuple((nodes.ref(f'stock{k}'), nodes.ref(f'target{k}')) for k in range(30))
     tested = []
