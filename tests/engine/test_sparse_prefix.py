@@ -53,6 +53,9 @@ def test_observe_commits_each_part_of_one_prepared_step_once(model):
         run.now = t
         way.incoming_history(t)
         assert_posted(t, starts)
+        # The left endpoint still belongs to the original solver step after this prefix.
+        assert way.level_at('tank.water', 0) == way.incoming_level('tank.water', 0) == 10
+        assert way.level_at('tank.water', t) > 10
         before = {name: list(pieces) for name, pieces in run.recorder.pieces.items()}
         way.observe(t)
         assert_posted(t, starts)

@@ -1643,15 +1643,25 @@ class Sparse(MovingTransfers, Way):
             self.pending = None
         self.solver, self._drift = None, None
 
+    def _step_state(self, t, *, incoming=False):
+        """Read the pending step. An incoming contact can read beyond its end."""
+        if self.pending is None or not self.stores:
+            return self.y
+        start, end, solution, _, _ = self.pending
+        if t <= start:
+            # A moment can commit a prefix and advance self.y inside this step.
+            return solution.y_old
+        return solution(t if incoming else min(t, end))
+
     def incoming_level(self, store, t):
-        if self.pending is not None and self.pending[0] < t:
-            return float(self.pending[2](t)[self.place[store]])
+        if self.pending is not None:
+            return float(self._step_state(t, incoming=True)[self.place[store]])
         return self.level_at(store, t)
 
     def incoming_rates(self, t):
         # An incoming read must not call _start: it can be part of closing the
         # old face constraints while the outgoing branch is being selected.
-        y = self.y if self.pending is None else self.pending[2](max(t, self.pending[0]))
+        y = self._step_state(t, incoming=True)
         evaluated = self.evaluations
         try:
             carried = self.values(t, y)[1]
@@ -1665,9 +1675,7 @@ class Sparse(MovingTransfers, Way):
         k = self.place[store]
         if self.pending is None and t > self.t:
             return float(self.y[k] + (t - self.t) * self.drift()[k])
-        if self.pending is None:
-            return float(self.y[k])
-        return float(self.pending[2](min(max(t, self.pending[0]), self.pending[1]))[k])
+        return float(self._step_state(t)[k])
 
     def drift(self):
         """The rate of each store at the present state: what a condition read an instant after a moment
@@ -1686,7 +1694,7 @@ class Sparse(MovingTransfers, Way):
     def rate_at(self, name, t):
         """What the network gives of a flow at time t (an actual rate, a route's signed rate or a
         served fraction)."""
-        y = self.y if self.pending is None else self.pending[2](min(max(t, self.pending[0]), self.pending[1]))
+        y = self._step_state(t)
         evaluations = self.evaluations
         try:
             if self.pending is None and self.solver is None:
