@@ -43,7 +43,17 @@ from napkin.program.build import (
 )
 from napkin.program.checkpoint import Breakpoint, Checkpoint, Edit, dumps, loads
 from napkin.program.config import Configuration, Request
-from napkin.program.record import BalancePoint, Curve, History, Key, Piece, Unavailable
+from napkin.program.record import (
+    BalancePoint,
+    Curve,
+    Entry,
+    History,
+    Key,
+    Manifest,
+    Piece,
+    Record,
+    Unavailable,
+)
 from napkin.session import Log
 from tests.engine.resume_parity import assert_resume_parity
 
@@ -51,6 +61,19 @@ UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
 LONGEST = 4  # the horizon of the stored longer run
 PATHS = ['plant.w0', 'plant.w1', 'plant.ticks', 'plant.want', 'plant.total', 'plant.pipe.actual_rate']
 LEDGERS = ['plant.w0.external', 'plant.w1.external']
+
+
+def test_exclusive_budget_failure_has_round_zero_with_or_without_a_later_pause():
+    water = Key('plant', ('water',))
+    history = History(water, tuple(Piece(t, t) for t in range(146)))
+    observation = Entry(129, 1, 'finish', 'plant.observe', 'plant.observe#0')
+    whole = Record(Manifest(146), (history,), (observation,))
+    at_check = replace(whole, trace=(observation, Entry(145, 1, 'pause', '')))
+    for budget in range(130, 145):
+        expected = whole.within(budget)
+        assert expected.failure.t == budget
+        assert expected.failure.round == 0
+        assert at_check.within(budget) == expected
 
 
 def plant(rng, curved=False):
@@ -462,7 +485,7 @@ def test_a_clock_formula_exhausts_its_budget_on_the_first_completed_span(first_s
     record = made.run()
     cutoff = 1 if first_stage == 1 else 1.25
     assert record.failure is not None and record.failure.t == cutoff
-    assert record.failure.round == (1 if ticks else 0)
+    assert record.failure.round == 0
     assert record.history(key).pieces[0].curve.length == cutoff
     assert made.env['plant.ticks'] == (1 if first_stage == 1 else 0)
 

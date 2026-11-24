@@ -352,7 +352,8 @@ class Record:
     def within(self, pieces):
         """The record within a budget of pieces (see the module): itself, when the values that it holds
         have no more pieces; else the record before the time of the first piece that does not fit (its
-        histories and its trace), which a failure entry at that time ends, naming the budget."""
+        histories and its trace), which a failure entry at that time ends, naming the budget.
+        The failure has round zero because the record excludes every round at that time."""
         held = [history for history in self.histories if self.manifest.names(history.key)]
         if sum(history.charged_pieces() for history in held) <= pieces:
             return self
@@ -376,7 +377,7 @@ class Record:
         )
         failure = Entry(
             end,
-            next((entry.round for entry in self.trace if entry.t >= end), 0),
+            0,
             'failure',
             '',
             '',
