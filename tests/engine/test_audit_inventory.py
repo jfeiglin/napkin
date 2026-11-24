@@ -39,6 +39,7 @@ from napkin.program.build import (
 from napkin.program.checkpoint import Breakpoint, Checkpoint
 from napkin.program.config import Configuration, InputValue, Quantity, Request
 from napkin.program.record import Key
+from tests.comparison_bands import band_samples
 from tests.engine.resume_parity import assert_resume_parity
 from tests.program.examples import UNITS
 from tests.reference.from_program import run_of, value_at
@@ -303,21 +304,23 @@ def test_frozen_inventory_uses_its_declared_amount_scale_over_time(rate_power, s
 
 
 def test_a_store_range_inverted_within_the_band_is_a_single_physical_point():
-    """The authored ends fit the 1e-9 L band. Their midpoint is the feasible physical inventory."""
+    """The ends lie within the configured band. Their midpoint is the feasible inventory."""
+    config = Configuration(Request(1))
+    inside, _ = band_samples(config, 1)
+    low = Fraction('0.3') + Fraction(str(inside))
     b = Builder(UNITS)
     b.entity(
         'plant',
-        value('lo', 'L', 0.3000000006),
+        value('lo', 'L', float(low)),
         value('hi', 'L', 0.3),
         value('water', 'L', 0.3, lower=this.lo, upper=this.hi),
         flow('fill', SOURCE, this.water, request=q(0, 'L/h')),
     )
     program = b.finish()
-    config = Configuration(Request(1))
     record = run(program, config)
     oracle, error = run_of(program, config)
     assert record.failure is None and error is None
-    expected = Fraction('0.3000000003')
+    expected = (low + Fraction('0.3')) / 2
     key = Key('plant', ('water',))
     assert read(record, program, [key], [0, 1])[0].values == pytest.approx(
         (float(expected),) * 2, abs=1e-15, rel=0
@@ -361,9 +364,10 @@ def test_fitted_formula_in_picolitres_keeps_its_declared_scale():
 
 @pytest.mark.parametrize('entry', ['configured input', 'event argument'])
 def test_numeric_entry_inside_its_range_comparison_band_is_admitted(entry):
-    """0.3000000006 L is within 1e−9 L of 0.3 L, so the argument is admitted as given."""
+    """An argument within the configured band of its upper limit is admitted as given."""
     b = Builder(UNITS)
-    entered = Fraction('0.3000000006')
+    inside, _ = band_samples(Configuration(Request(1)), 1)
+    entered = Fraction('0.3') + Fraction(str(inside))
     if entry == 'event argument':
         tank = b.entity('tank', event('take', param('limit', 'L', upper=q(0.3, 'L')), after(q(2, 'h'))))
         b.setup(start(tank.take, q(float(entered), 'L')))

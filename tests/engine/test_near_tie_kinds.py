@@ -2,8 +2,8 @@
 guard (`skip`), a trigger that came within tolerance of its threshold and did not fire (`miss`), a
 gate's release (`release`) and a split of who is served at a settling (`settle`), each with the detail
 `near` and its message in the report. The cases are worked by hand in floats: 0.1 + 0.2 exceeds 0.3,
-and 0.7 + 0.1 falls short of 0.8, by one unit in the last place, far inside a store's tolerance of
-1e-9 of its size (1 L here); 0.30001 and 0.79 miss them by far more.
+and 0.7 + 0.1 falls short of 0.8, by one unit in the last place, far inside the stock's configured
+comparison band (scale 1 L); 0.30001 and 0.79 miss them by far more.
 """
 
 from __future__ import annotations
@@ -31,9 +31,10 @@ from napkin.program.build import (
     when,
 )
 from napkin.program.config import Configuration, Request
+from tests.comparison_bands import band_samples
 from tests.program.examples import UNITS
 
-TOLERANCE = 1e-9  # change 29: rtol times 1 L
+(TOLERANCE,) = band_samples(Configuration(Request(1)), 1, multiples=(1,))
 OVER = (0.1 + 0.2) - 0.3  # one unit in the last place of 0.3
 UNDER = (0.7 + 0.1) - 0.8  # one unit in the last place of 0.8, below it
 

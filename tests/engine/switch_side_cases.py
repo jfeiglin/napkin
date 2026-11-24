@@ -28,10 +28,16 @@ from napkin.program.build import (
 )
 from napkin.program.config import Configuration, Numerics, Request
 from napkin.program.record import Key
+from tests.comparison_bands import band_samples
 
 WAYS = {'component': 'ComponentWay', 'sparse': 'Sparse', 'declared': 'MovingDeclared'}
 TIMES = (Fraction(1, 4), Fraction(3, 4), Fraction(1))
 VARIANTS = ('co-moving', 'crossing', 'inside-band', 'departure', 'late-separation', 'band-exit')
+
+
+def switch_gap(scale):
+    (band,) = band_samples(Configuration(Request(1)), scale, multiples=(1,))
+    return Fraction(str(band))
 
 
 def _run(machine, family, case):
@@ -69,14 +75,14 @@ def check_switch_side(seed, family):
     before = after = int(op(0, 0))
     if variant == 'inside-band':
         # The raw gap changes sign at cross, always strictly inside the comparison band.
-        change = Fraction(1 if seed % 2 else -1, 10**12)
+        change = switch_gap(1) * Fraction(1 if seed % 2 else -1, 1000)
         origin += change * cross
         slope -= change
     elif variant == 'band-exit':
-        # Start halfway from equality to the edge of a fixed 1e-4 L band. The operands
+        # Start halfway from equality to the edge of the declared stock's band. The operands
         # leave it at cross without crossing raw zero anywhere on this trajectory.
         scale = 100_000
-        edge = Fraction(1 if op in (gt, le) else -1, 10_000)
+        edge = switch_gap(scale) * (1 if op in (gt, le) else -1)
         origin -= edge / 2
         slope -= edge / (2 * cross)
         after = int(op(edge, 0))

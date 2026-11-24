@@ -46,6 +46,7 @@ from napkin.program.config import (
     Request,
 )
 from napkin.program.record import Curve, History, Key, Piece, Unavailable
+from tests.comparison_bands import band_samples
 
 UNITS = {
     'h': {'time': 1},
@@ -296,9 +297,14 @@ def test_held_formula_keeps_lazy_branches_scale_selectors_and_full_history(monke
     from napkin.engine.timeline import record as recording
     from napkin.program.build import ifelse, start
 
+    keys = tuple(Key('tank', (field,)) for field in ('positive', 'mix'))
+    config = Configuration(Request(2, everything=not selective, keys=keys if selective else ()))
+    sample = 1e-8  # The addition to the stock stays the same in both branches.
+    (width,) = band_samples(config, 1, multiples=(10,))
+    fine_scale = sample / width
     b = tank(
-        value('fine', 'L', 1e-8, scale=1),
-        value('coarse', 'L', 1e-8, scale=100),
+        value('fine', 'L', sample, scale=fine_scale),
+        value('coarse', 'L', sample, scale=100 * fine_scale),
         value('choose', BOOL, False),
         value('chosen', 'L', formula(ifelse(this.choose, this.coarse, this.fine))),
         value('positive', BOOL, formula(this.chosen > q(0, 'L'))),
@@ -307,8 +313,6 @@ def test_held_formula_keeps_lazy_branches_scale_selectors_and_full_history(monke
     )
     b.setup(start(named('tank').switch))
     program = b.finish()
-    keys = tuple(Key('tank', (field,)) for field in ('positive', 'mix'))
-    config = Configuration(Request(2, everything=not selective, keys=keys if selective else ()))
     actual = Run(Plan.of(program, config)).run()
     monkeypatch.setattr(recording, '_held_formula', lambda *_: None)
     eager = Run(Plan.of(program, config)).run()

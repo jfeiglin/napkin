@@ -8,6 +8,7 @@ from napkin.engine import read, run
 from napkin.model.compile import compile_text
 from napkin.program.config import Configuration, Numerics, Request
 from napkin.program.record import Key
+from tests.comparison_bands import band_samples
 
 
 def crossing_record(level, mirror, *, delivery_into='delivery', cap='', yes=1, no=0, drive='2.4'):
@@ -59,8 +60,9 @@ plant:
     offset = Fraction(initial) - 21
     if offset:
         # After separation the gap grows 1/8 L/h. The larger operand, the target, falls
-        # 1/8 L/h. The meter closes when that gap reaches 1e-9 times the target.
-        band = Fraction(1, 10**9)
+        # 1/8 L/h. The meter closes when the gap reaches the configured band.
+        (factor,) = band_samples(config, 1, multiples=(1,))
+        band = Fraction(str(factor))
         target = Fraction(initial) - separation / 4
         separation += (band * target - offset) * 8 / (1 + band)
     actual = read(record, program, [key], [1])[0].values[0]

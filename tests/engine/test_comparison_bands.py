@@ -21,17 +21,11 @@ from napkin.program.build import (
 )
 from napkin.program.config import Configuration, Numerics, Request
 from napkin.program.record import Key
+from tests.comparison_bands import band_samples
 from tests.engine.test_solver_memberships import plant
 from tests.reference.from_program import run_of, value_at
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}, 'mL': ({'volume': 1}, Fraction(1, 1000))}
-
-
-def band_samples(configuration, scale):
-    """Return gaps half a band and two bands from zero, in the unit of the supplied scale."""
-    numerics = configuration.numerics
-    band = max(numerics.rtol, numerics.atol_factor) * scale
-    return band / 2, 2 * band
 
 
 def values(program, configuration, names, reader):
@@ -94,10 +88,12 @@ def test_a_configured_band_applies_to_formulas_and_guards(reader, precision, equ
 
 @pytest.mark.parametrize('reader', ['engine', 'reference'])
 def test_a_membership_whose_ends_compare_equal_is_valid(reader):
+    config = Configuration(Request(1))
+    inside, _ = band_samples(config, 0.3)
     b = Builder(UNITS)
     b.entity(
         'tank',
-        value('lo', 'L', 0.30000000005),
+        value('lo', 'L', 0.3 + inside),
         value('hi', 'L', 0.3),
         value('accepted', BOOL, formula(within(q(0.3, 'L'), this.lo, this.hi))),
     )
@@ -107,8 +103,10 @@ def test_a_membership_whose_ends_compare_equal_is_valid(reader):
 @pytest.mark.parametrize('reader', ['engine', 'reference'])
 def test_an_in_band_inverted_solver_interval_has_one_admissible_point(reader):
     """The midpoint of the two known ends is 0.300000000025 L/h."""
-    p = plant(0.30000000005, 0.3)
     config = Configuration(Request(1))
+    inside, _ = band_samples(config, 0.3)
+    midpoint = 0.300000000025
+    p = plant(midpoint + inside / 2, midpoint - inside / 2)
     rate = Key('clinic', ('use', 'actual_rate'))
     if reader == 'reference':
         oracle, failed = run_of(p, config)
@@ -143,7 +141,8 @@ tank:
 @pytest.mark.parametrize('magnitude', ['0.001', '0.3', '1', '1000', '1000000000'])
 def test_each_relation_at_its_own_scale(magnitude, reader):
     at = Fraction(magnitude)
-    gap = at * Fraction(1, 10**9)
+    (relative_band,) = band_samples(Configuration(Request(1)), 1, multiples=(1,))
+    gap = at * Fraction(str(relative_band))
     for multiplier in (0, Fraction(1, 4), 4, -4):
         delta = multiplier * gap
         b = Builder(UNITS)
@@ -347,8 +346,7 @@ def test_a_starting_predicate_reads_a_later_fields_declared_scale(reader):
 
 @pytest.mark.parametrize('reader', ['engine', 'reference'])
 def test_a_fine_concentration_keeps_its_scale_in_inline_and_named_arithmetic(reader):
-    """At 1e-12 mol/m3 the fine band's radius is 1e-21 mol/m3.
-    The coarse peer and an explicitly coarse result each have radius 1e-9."""
+    """The concentration exceeds its fine band and falls inside a band based on the coarse scale."""
     from napkin.program.build import ifelse
 
     u = 'mol/m3'
@@ -425,12 +423,13 @@ def test_sparse_expression_uses_the_selected_rows_scale():
 
 @pytest.mark.parametrize('reader', ['engine', 'reference'])
 def test_repeated_reads_of_one_quantity_have_the_same_floor_as_a_literal_multiple(reader):
-    """Twice x = 1.5e-9 L is inside twice x's band (2e-9 L).
+    """Twice x exceeds one band and falls inside twice that band.
     Subtracting its alias leaves zero contribution from x, so y keeps its fine scale."""
+    (x,) = band_samples(Configuration(Request(1)), 1, multiples=(0.75,))
     b = Builder(UNITS)
     b.entity(
         'tank',
-        value('x', 'L', 0.75e-9, scale=1),
+        value('x', 'L', x, scale=1),
         value('y', 'L', 1e-12, scale=1e-12),
         value('alias', 'L', formula(this.x + q(0, 'L'))),
         value('doubled', BOOL, formula(2 * this.x > q(0, 'L'))),

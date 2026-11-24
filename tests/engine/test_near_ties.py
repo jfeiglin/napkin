@@ -1,7 +1,7 @@
 """Near-ties (change 10; `triggers.py`, `moment.near_ties`): a firing or a test of a stage that was
 decided within tolerance of its boundary is marked as the detail `near` of its trace entry, and the
 engine computes nothing more precisely. The cases are worked by hand: in floats, 0.1 + 0.2 exceeds 0.3
-by one unit in the last place, far inside a store's tolerance of 1e-9 of its size (1 L here), while
+by one unit in the last place, far inside the configured comparison band (scale 1 L), while
 0.30001 exceeds it by far more.
 """
 
@@ -33,9 +33,10 @@ from napkin.program.build import (
     when,
 )
 from napkin.program.config import Configuration, Request
+from tests.comparison_bands import band_samples
 from tests.program.examples import UNITS
 
-TOLERANCE = 1e-9  # change 29: rtol times 1 L
+(TOLERANCE,) = band_samples(Configuration(Request(1)), 1, multiples=(1,))
 OVER = (0.1 + 0.2) - 0.3  # one unit in the last place of 0.3
 
 
@@ -155,14 +156,19 @@ def test_or_stops_at_the_term_that_decides():
     assert entry.t == 1 and [tie[1] for tie in entry.detail('near')] == ['tank.level >= 0.3 L']
 
 
-@pytest.mark.parametrize(('scale', 'separate'), [(2e158, True), (4e158, False)])
-def test_a_trigger_and_its_near_trace_distinguish_extreme_finite_values(scale, separate):
+@pytest.mark.parametrize(('band_size', 'separate'), [(2, True), (4, False)])
+def test_a_trigger_and_its_near_trace_distinguish_extreme_finite_values(band_size, separate):
     """The actual gap is 3.4e308. The 2e308 band excludes it and the 4e308 band includes it."""
     from decimal import Decimal
 
     from napkin.engine.report import report
     from napkin.program.checkpoint import decode, encode
 
+    cfg = Configuration(Request(1))
+    (factor,) = band_samples(cfg, 1, multiples=(1,))
+    # The other factor has scale 1e159. Their product times the configured
+    # factor must give the selected 2e308 or 4e308 band in the comparison.
+    scale = band_size * 1e149 / factor
     b = Builder(UNITS)
     b.entity(
         'meter',
@@ -172,7 +178,6 @@ def test_a_trigger_and_its_near_trace_distinguish_extreme_finite_values(scale, s
         alarm(this.separate),
     )
     program = b.finish()
-    cfg = Configuration(Request(1))
     record = run(program, cfg)
     assert record.failure is None
     assert [e.t for e in record.entries('fire')] == ([0] if separate else [])

@@ -26,6 +26,8 @@ from napkin.model.library import PRELUDE, empty_library, prelude_units
 from napkin.model.load import schema_errors
 from napkin.model.semantic import Units
 from napkin.program import build
+from napkin.program.config import Configuration, Request
+from tests.comparison_bands import band_samples
 
 # Declared units, name: (dimensions, scale), with scales that are not all exact in binary.
 DECLARED = {
@@ -339,16 +341,18 @@ def test_a_run_reads_equal_quantities_as_one_number():
 
 
 @pytest.mark.parametrize(
-    ('unit', 'amount', 'scale', 'equals_zero'),
+    ('unit', 'units_per_litre', 'scale', 'equals_zero'),
     [
-        ('L', '0.0000000005', '', True),
-        ('mL', '0.0000005', ' scale 1000 mL', True),
-        ('mL', '0.0000005', '', False),
+        ('L', 1, '', True),
+        ('mL', 1000, ' scale 1000 mL', True),
+        ('mL', 1000, '', False),
     ],
 )
 def test_respelling_a_near_zero_value_preserves_its_guard_at_the_same_physical_scale(
-    unit, amount, scale, equals_zero
+    unit, units_per_litre, scale, equals_zero
 ):
+    half_band_l, _ = band_samples(Configuration(Request(1)), 1)
+    amount = half_band_l * units_per_litre
     model = compile_text(
         f'scenario "Near zero"\n    horizon 1 h\ninput signal: {unit} = {amount} {unit}{scale}\n'
         'close = formula(signal == 0 L)\n',

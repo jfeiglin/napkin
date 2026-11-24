@@ -59,12 +59,13 @@ from napkin.program.build import (
     when,
 )
 from napkin.program.config import Configuration, Request
+from tests.comparison_bands import band_samples
 from tests.engine.resume_parity import assert_resume_parity
 from tests.engine.test_checkpoints import Case, in_a_fresh_process, in_one_process, stages, ticks
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
 RISE, FALL = math.log(1.5), math.log(3)  # h: where 9 (u - u^2) = 2 L, at u = 2/3 and u = 1/3
-TOLERANCE = 1e-9 * 12  # change 29: rtol times the level at the 12 L threshold
+(TOLERANCE,) = band_samples(Configuration(Request(4)), 12, multiples=(1,))
 
 
 def watch(name, test, reset=None):

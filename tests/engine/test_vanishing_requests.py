@@ -40,8 +40,7 @@ def reservoir(horizon):
 def test_a_storm_that_decays_past_the_smallest_float_runs_to_its_horizon():
     """To 1000 h the storm's request passes below the smallest normal float, at 708 h; the run goes
     on to its horizon. The reservoir holds 9 (e^-5 - e^-10) L at 5 h, and 9 e^-1000 L at 1000 h,
-    which is zero to the run's absolute tolerance (`Numerics.atol_factor`, 1e-10 of a litre), as
-    are the storm and the spill there."""
+    below the 1e-10 L limit used here. The storm and spill rates also decay to zero."""
     program, configuration = reservoir(1000)
     made = Run(Plan.of(program, configuration))
     record = made.run()

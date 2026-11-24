@@ -52,6 +52,7 @@ from napkin.program.build import (
 )
 from napkin.program.config import Configuration, Request
 from napkin.program.record import Key
+from tests.comparison_bands import band_samples
 from tests.engine.test_local_sharing import network
 from tests.engine.test_random_solvers import HORIZON, SCALES, TIMES, UNITS, program
 
@@ -155,18 +156,19 @@ def test_more_models_give_the_same_answer_in_every_unit_of_volume(seed):
 
 
 def test_changing_an_authored_rate_scale_changes_a_near_zero_comparison():
-    # Both spellings have the same physical rate (5e-11 L/h). Only the explicit
-    # comparison scale of the named provider limit changes.
+    # The same rate lies outside the band's 1 mL/h scale and inside its 1000 mL/h scale.
+    configuration = Configuration(Request(0))
+    _, rate = band_samples(configuration, 1)
     threshold = q(0, 'mL/h')
     for physical_scale, expected in ((1000, False), (1, True)):
         builder = Builder(UNITS)
         builder.entity(
             'provider',
-            value('limit', 'mL/h', 5e-8, scale=q(physical_scale, 'mL/h')),
+            value('limit', 'mL/h', rate, scale=q(physical_scale, 'mL/h')),
             value('positive', None, formula(this.limit > threshold)),
         )
         source = builder.finish()
-        machine = Run(Plan.of(source, Configuration(Request(0))))
+        machine = Run(Plan.of(source, configuration))
         record = machine.run()
         assert record.failure is None
         assert machine.own_scale('provider.limit') == physical_scale / 1000

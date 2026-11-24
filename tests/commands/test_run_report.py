@@ -14,6 +14,7 @@ import textwrap
 import pytest
 
 from tests.commands.call import UNITS, napkin, package
+from tests.comparison_bands import band_samples
 from tests.language.test_solvers import network
 
 
@@ -447,6 +448,8 @@ def test_the_text_counts_five_near_tie_sources_and_the_json_keeps_every_entry(
 ):
     """At 1 h every guard holds at the boundary. At 2 h guard a falls just below it, then at
     3 h guard z holds at it again. The inclusive guard a still holds at 2 h within the level's band."""
+    from napkin.program.config import Configuration, Request
+
     model_text = (
         'scenario "Checks"\n    horizon 3 h\n\ntank:\n    level: L = 1 L in [0 L, 2 L]\n    total: L = 0 L\n'
     )
@@ -458,9 +461,10 @@ def test_the_text_counts_five_near_tie_sources_and_the_json_keeps_every_entry(
         )
     model_text += '    checks = event():\n        after 1 h:\n'
     model_text += ''.join(f'            this.{name}.start()\n' for name in checks)
-    model_text += """\
+    in_band, _ = band_samples(Configuration(Request(3)), 1)
+    model_text += f"""\
         after 1 h:
-            this.level -= 0.00000000001 L
+            this.level -= {in_band} L
             this.a.start()
         after 1 h:
             this.level = 1 L

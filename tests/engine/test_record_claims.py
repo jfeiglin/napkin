@@ -54,6 +54,7 @@ from napkin.program.build import (
 from napkin.program.checkpoint import Breakpoint, Checkpoint
 from napkin.program.config import Configuration, Request
 from napkin.program.record import Key, Unavailable
+from tests.comparison_bands import band_samples
 from tests.engine.test_checkpoints import SCENARIOS
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
@@ -312,16 +313,17 @@ def test_no_proof_of_an_edited_run_is_contradicted_by_its_own_values(seed):
 
 
 def test_two_spellings_of_one_input_refuse_the_lag_of_a_falling_clock():
-    """The two readings of x add to 1.5e-9 L with a band of 2e-9 L. A different member's
-    independently declared x at the same value gives the sum a band of only 1e-9 L."""
+    """The two readings of x add to one and a half single-read bands. Repeating the same
+    input doubles its band. The independently declared input keeps the single-read band."""
     from napkin.model.compile import compile_text
 
+    (sample,) = band_samples(Configuration(Request(2)), 1, multiples=(0.75,))
     model = compile_text(
-        """scenario "Two spellings"
+        f"""scenario "Two spellings"
     horizon 2 h
 
 Meter:
-    input x: L = 0.75e-9 L scale 1 L
+    input x: L = {sample} L scale 1 L
     clock = formula(t if this.x + w.x > 0 L else -t)
 
 w: Meter
@@ -348,23 +350,24 @@ peer: Meter
 )
 def test_respell_one_read_in_the_gated_plant(seed):
     """Replace one reading of this.signal by plant.signal without changing its identity.
-    The two identical contributions have a band of twice the declared scale times 1e-9."""
+    The two identical contributions have a band of twice the single-read band."""
     rng = random.Random(f'spellings {seed}')
     scale = rng.choice([0.001, 1, 1e4, 1e7])
     multiple = rng.choice([0.625, 0.75, 1.25, 1.5])
     times = (1, 2)
     expected = times if multiple > 1 else (-1, -2)
     lag = Lag(0, 1)
+    config = Configuration(Request(4))
+    (sample,) = band_samples(config, scale, multiples=(multiple,))
     variants = []
     for second in (this.signal, named('plant').signal):
         program, edit = gated(
             random.Random(seed),
             (
-                input_('signal', 'L', scale * multiple * 1e-9, scale=scale),
+                input_('signal', 'L', sample, scale=scale),
                 value('clock', 'h', formula(ifelse(this.signal + second > q(0, 'L'), t, -t))),
             ),
         )
-        config = Configuration(Request(4))
         record = edited(program, config, (Breakpoint('plant.tick.step[0]'),), edit)
         raw = read(record, program, ['plant.clock'], times)[0]
         (shown,) = report(record, program, config, ['plant.clock'], times, {'plant.clock': lag}).values

@@ -43,6 +43,7 @@ from napkin.program.build import (
 from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
 from napkin.program.config import Configuration, Request
 from napkin.program.record import Key
+from tests.comparison_bands import band_samples
 from tests.engine.test_solvers import UNITS, staffing
 from tests.reference.from_program import run_of, value_at
 
@@ -768,14 +769,18 @@ def test_an_outside_pipe_keeps_the_shared_side_until_a_later_contact(kind, scale
     b = Builder(UNITS)
     at = F(2) - F(5, 10**9)
     delay = F(1, 10**9)
+    config = Configuration(Request(2 + F(1, 10**6)))
     if kind == 'key':
+        # The gauge reaches zero at 2 h. During each delay it moves by one 1 L band.
+        (width,) = band_samples(config, 1, multiples=(1,))
+        speed = F(str(width)) / delay
         b.entity(
             'gauge',
-            value('level', 'L', 0, lower=0, scale=scale),
-            flow('fill', SOURCE, this.level, request=rate(1)),
+            value('level', 'L', -2 * speed, lower=-2 * speed, scale=scale),
+            flow('fill', SOURCE, this.level, request=rate(speed)),
         )
         rows = b.template('Reading', input_('level', 'L', 0), input_('give', 'L/h', 0))
-        b.table('readings', rows, ({'level': 0, 'give': 4}, {'level': 2, 'give': 1}))
+        b.table('readings', rows, ({'level': -2 * speed, 'give': 4}, {'level': 0, 'give': 1}))
         ask = rows.instances.by('level').at(named('gauge').level).give
     else:
         after_rate = rate(1) + (t - q(at, 'h')) * q(10**7, 'L/h/h') if kind == 'moving' else rate(1)
@@ -795,7 +800,6 @@ def test_an_outside_pipe_keeps_the_shared_side_until_a_later_contact(kind, scale
     )
     b.setup(start(named('tap').copy))
     p = b.finish()
-    config = Configuration(Request(2 + F(1, 10**6)))
     live = Run(Plan.of(p, config), (Breakpoint('tap.copy.step[1]'),))
     paused = live.run()
     assert isinstance(paused, Checkpoint)
@@ -808,8 +812,8 @@ def test_an_outside_pipe_keeps_the_shared_side_until_a_later_contact(kind, scale
         ('tap.pipe.actual_rate', at + delay, later),
     ]
     if kind == 'key':
-        # At scale 1 L, the two early stages are 5e-9 and 4e-9 L short of the 2 L
-        # key, both outside its 2e-9 L band. The 10 L scale admits that same crossing.
+        # The early stages are five and four unit bands below the zero key. The
+        # 10 L scale admits both, while the 1 L scale waits for the crossing.
         probes += [('tap.pipe.actual_rate', F(2), 1)]
         oracle, problem = run_of(p, config)
         assert problem is None

@@ -7,7 +7,9 @@ from random import Random
 
 from napkin.engine import read, run
 from napkin.model.compile import compile_text
+from napkin.program.config import Configuration, Request
 from napkin.program.record import Key
+from tests.comparison_bands import band_samples
 from tests.reference.from_program import run_of, value_at
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
@@ -22,11 +24,18 @@ def _settings(seed):
     return base, slope, cross, prices
 
 
+def selection_drift(base, leaves):
+    if leaves:
+        return Decimal('0.5')
+    (fraction,) = band_samples(Configuration(Request(1)), 1, multiples=(0.5,))
+    return base * Decimal(str(fraction))
+
+
 def switch_selection_source(seed, mode, leaves):
     base, slope, cross, (older, later) = _settings(seed)
     # The older key overtakes the later one at exactly cross hours. The small
     # drift is half the band at the initial base, and acts for less than an hour.
-    drift = Decimal('0.5') if leaves else base * Decimal('5e-10')
+    drift = selection_drift(base, leaves)
     trajectory = '    rank = formula(this.origin + this.slope * t)'
     if mode == 'rank':
         trajectory = """    rank: L = this.origin

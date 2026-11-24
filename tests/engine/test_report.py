@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 import textwrap
+from dataclasses import replace
 
 import pytest
 
@@ -17,7 +18,7 @@ from napkin.engine import run
 from napkin.engine.report import Lag, Shown, report
 from napkin.model.compile import compile_text
 from napkin.program.checkpoint import Breakpoint
-from napkin.program.config import Configuration, InputValue, Request
+from napkin.program.config import Configuration, InputValue, Numerics, Request
 from napkin.program.record import Unavailable
 from tests.engine.test_checkpoints import SCENARIOS
 from tests.program.examples import EXAMPLES, UNITS
@@ -331,7 +332,10 @@ def test_the_report_lists_each_near_tie_of_the_run():
     """In floats 0.1 + 0.2 exceeds 0.3 by one unit in the last place, far inside the level's tolerance,
     1e-9 times its declared unit of 1 L: the alarm fired within tolerance of its threshold. The tally crosses 2 L
     at 2 h, moving through it, which is no near-tie."""
-    found = reported(compiled(TOP_UP), ['tank.level'], [3])
+    model = compiled(TOP_UP)
+    # The reported width below is part of this fixture's expected diagnostic.
+    config = replace(model.configuration, numerics=Numerics(rtol=1e-9, atol_factor=1e-9))
+    found = reported(model, ['tank.level'], [3], configuration=config)
     (tie,) = found.near_ties
     assert (tie.t, tie.kind, tie.part, tie.owner) == (1, 'fire', 'tank.alarm.when[0]', 'tank')
     assert tie.difference == (0.1 + 0.2) - 0.3 and tie.tolerance == pytest.approx(1e-9)

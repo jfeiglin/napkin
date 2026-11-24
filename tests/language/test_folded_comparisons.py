@@ -1,5 +1,6 @@
 """A mixed-unit constant takes the same comparison band in the compiler as in the run."""
 
+from decimal import Decimal
 from fractions import Fraction
 
 import pytest
@@ -9,6 +10,7 @@ from napkin.model.compile import compile_text
 from napkin.model.semantic import exact_value
 from napkin.program.config import Configuration, Request
 from napkin.program.record import Key
+from tests.comparison_bands import band_samples
 from tests.program.examples import UNITS
 from tests.reference.from_program import run_of, value_at
 
@@ -121,9 +123,12 @@ def test_array_and_scalar_guards_use_each_rows_exact_operand():
 
 @pytest.mark.parametrize('operand', ['authored', '1000000000.00000005 h'])
 def test_naming_one_operand_keeps_the_residual_against_a_declared_threshold(operand):
+    (band,) = band_samples(Configuration(Request(1)), 1, multiples=(1,))
+    # Put the upper edge between the exact residual and its float-rounded value of zero.
+    threshold = Decimal('0.00000005') / 2 - Decimal(str(band))
     model = compile_text(
         'scenario "Named operand"\n    horizon 1 h\n'
-        'input threshold: h = 0.00000001 h\nauthored = formula(1000000000.00000005 h)\n'
+        f'input threshold: h = {threshold} h\nauthored = formula(1000000000.00000005 h)\n'
         f'gap = formula({operand} - 1000000000 h)\ngreater = formula(gap > threshold)\n',
         UNITS,
     )
@@ -136,13 +141,17 @@ def test_naming_one_operand_keeps_the_residual_against_a_declared_threshold(oper
 
 
 @pytest.mark.parametrize(
-    ('threshold', 'greater'),
+    ('position', 'greater'),
     [
-        ('0.999999999 h', False),
-        ('0.999999998999999999 h', True),
+        ('edge', False),
+        ('outside', True),
     ],
 )
-def test_a_literal_just_outside_the_closed_relative_band_retains_its_decimal(threshold, greater):
+def test_a_literal_just_outside_the_closed_relative_band_retains_its_decimal(position, greater):
+    (band,) = band_samples(Configuration(Request(1)), 1, multiples=(1,))
+    edge = 1 - Decimal(str(band))
+    # The next lower decimal still rounds to the same binary float.
+    threshold = f'{edge if position == "edge" else edge.next_minus()} h'
     model = compile_text(
         f'scenario "Closed relative band"\n    horizon 1 h\n'
         f'edge = formula({threshold})\nnamed_check = formula(1 h > edge)\n'

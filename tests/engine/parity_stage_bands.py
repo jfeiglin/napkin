@@ -1,6 +1,5 @@
 """Comparison and switch programs expressed independently in text and in the structured DSL."""
 
-from decimal import Decimal
 from fractions import Fraction
 from functools import partial
 from operator import ge, gt, le, lt
@@ -145,12 +144,12 @@ def switch_inputs(seed):
     origin, slope, scale, change = start, pace, None, None
     cross = Fraction(rng.choice((3, 4, 5)), 8)
     if variant == 'inside-band':
-        change = Fraction(1 if seed % 2 else -1, 10**12)
+        change = switches.switch_gap(1) * Fraction(1 if seed % 2 else -1, 1000)
         origin += change * cross
         slope -= change
     elif variant == 'band-exit':
         scale = 100_000
-        edge = Fraction(1 if op in ('>', '<=') else -1, 10_000)
+        edge = switches.switch_gap(scale) * (1 if op in ('>', '<=') else -1)
         origin -= edge / 2
         slope -= edge / (2 * cross)
     elif variant != 'co-moving':
@@ -256,7 +255,7 @@ def switch_builder(settings, family):
 
 def selection_builder(seed, mode, leaves):
     base, slope, cross, (older, later) = selections._settings(seed)
-    drift = Decimal('.5') if leaves else base * Decimal('5e-10')
+    drift = selections.selection_drift(base, leaves)
 
     def q(n, u):
         return b.q(number(n), u)

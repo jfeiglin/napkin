@@ -10,6 +10,8 @@ from napkin.engine.timeline.triggers import Triggers
 from napkin.engine.timeline.ways import Ways
 from napkin.model.compile import compile_text
 from napkin.program.checkpoint import Breakpoint, dumps, encode, loads
+from napkin.program.config import Configuration, Request
+from tests.comparison_bands import band_samples
 from tests.engine.solver_guard import install
 
 SOURCE = """scenario "A latent capacity"
@@ -182,10 +184,11 @@ tank:
 
 
 def test_only_a_comparison_on_the_firing_path_can_mark_a_band_entry():
-    source = """scenario "Separate firing paths"
+    (sample,) = band_samples(Configuration(Request(1)), 100, multiples=(0.1,))
+    source = f"""scenario "Separate firing paths"
     horizon 1 h
 tank:
-    water: L = 0.00000001 L scale 100 L
+    water: L = {sample} L scale 100 L
     allow: L = 1 L
     low = event():
         when this.allow == 1 L or this.water <= 0 L:

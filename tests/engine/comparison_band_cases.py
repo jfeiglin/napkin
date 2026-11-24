@@ -5,6 +5,7 @@ from fractions import Fraction
 from random import Random
 from traceback import format_exc
 
+from napkin.core.comparisons import DEFAULT_FACTOR
 from napkin.engine.timeline import read, run
 from napkin.model.compile import compile_text
 from napkin.model.language.problems import LanguageError
@@ -12,11 +13,13 @@ from napkin.program.build import Builder, after, event, param, q, start, value
 from napkin.program.check import ProgramError
 from napkin.program.config import Configuration, Request
 from napkin.program.record import Key
+from tests.comparison_bands import band_samples
 from tests.reference.from_program import run_of, values_at
 
 UNITS = {'h': {'time': 1}, 'min': ({'time': 1}, Fraction(1, 60)), 'L': {'volume': 1}}
 CONFIG = Configuration(Request(0))
-BAND = Decimal('0.000000001')
+(one_band,) = band_samples(CONFIG, 1, multiples=(1,))
+BAND = Decimal(str(one_band))
 FAMILIES = ('gap', 'range')
 
 
@@ -130,7 +133,8 @@ def interval_limits(seed):
     rng = Random(seed)
     inside = Decimal('0.5') if seed == 0 else Decimal(rng.randint(1, 10)) / 10
     outside = 2 if seed == 0 else rng.randint(2, 12)
-    return {'inside': BAND * inside, 'outside': BAND * outside}
+    static_band = Decimal(str(DEFAULT_FACTOR))
+    return {'inside': static_band * inside, 'outside': static_band * outside}
 
 
 def range_source(kind, lower, unit):

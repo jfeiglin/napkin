@@ -1,15 +1,19 @@
 """A raw zero inside a moving comparison band cannot change a followed request."""
 
+from decimal import Decimal
 from fractions import Fraction
 
 import pytest
 
 from napkin.model.compile import compile_text
+from napkin.program.config import Configuration, Request
 from napkin.program.record import Key
+from tests.comparison_bands import band_samples
 from tests.reference.from_program import run_of, value_at
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
 TOTAL = Key('box', ('total',))
+TEN_UNIT_BAND = Decimal(str(band_samples(Configuration(Request(1)), 10, multiples=(1,))[0]))
 MODEL = """scenario "An in-band clock crossing"
     horizon {horizon} h
 box:
@@ -28,10 +32,10 @@ def total(condition, at, horizon=1):
 
 @pytest.mark.parametrize('clock', ['t', 't * (t / 1 h)'])
 def test_the_clocks_can_swap_raw_order_while_the_strict_comparison_stays_false(clock):
-    # The audited linear model previously delivered 3/4 L. Its gap is between
-    # -1.25e-9 and 3.75e-9 L, inside the band throughout the hour. The quadratic
-    # spelling reaches exactly the same maximum gap after crossing zero at 1/2 h.
-    condition = f'9.99999999875 L + ({clock}) * 1.750000005 L/h > 10 L + ({clock}) * 1.75 L/h'
+    # The raw gap runs from minus one eighth to three eighths of the initial band.
+    origin = 10 - TEN_UNIT_BAND / 8
+    speed = Decimal('1.75') + TEN_UNIT_BAND / 2
+    condition = f'{origin} L + ({clock}) * {speed} L/h > 10 L + ({clock}) * 1.75 L/h'
     assert total(condition, 1) == 0
 
 
@@ -41,22 +45,23 @@ def test_a_genuine_curved_departure_from_equality_starts_immediately():
 
 @pytest.mark.parametrize('horizon', [1, 2])
 def test_curved_motion_leaves_a_band_without_a_raw_zero_at_half_an_hour(horizon):
-    # The larger operand remains 10 L and its band is exactly 1e-8 L.
-    condition = '9.999999995 L - 0.00000002 L * (t / 1 h) * (t / 1 h) < 10 L'
+    # A half-band opening plus two bands times t² reaches one band at half an hour.
+    condition = f'{10 - TEN_UNIT_BAND / 2} L - {2 * TEN_UNIT_BAND} L * (t / 1 h) * (t / 1 h) < 10 L'
     assert total(condition, 1, horizon) == Fraction(1, 2)
 
 
 def test_requesting_a_longer_run_preserves_the_prefix_before_a_real_exit():
     # The clocks begin at equality with nearly equal velocities. As they drain
     # towards zero, the band shrinks far enough to distinguish them after hour 6.
-    condition = '10 h - 0.9999999995 * t > 10 h - t'
+    speed = 1 - TEN_UNIT_BAND / 20
+    condition = f'10 h - {speed} * t > 10 h - t'
     assert total(condition, 1, 1) == total(condition, 1, 10) == 0
     assert total(condition, 8, 10) > 0
 
 
 def test_later_created_key_wins_a_moving_tie_even_after_the_older_raw_key_overtakes_it():
     model = compile_text(
-        """scenario "Two eligible ranks"
+        f"""scenario "Two eligible ranks"
     horizon 1 h
 Row:
     input origin = 10 h
@@ -64,8 +69,8 @@ Row:
     input price = 8 L/h
     rank = formula(this.origin + this.speed * t)
 older: Row
-    origin = 9.9999999995 h
-    speed = 1.000000001
+    origin = {10 - TEN_UNIT_BAND / 20} h
+    speed = {1 + TEN_UNIT_BAND / 10}
     price = 5 L/h
 later: Row
 box:

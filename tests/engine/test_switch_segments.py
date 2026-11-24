@@ -42,6 +42,7 @@ from napkin.program.build import (
 from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
 from napkin.program.config import Configuration, Numerics, Request
 from napkin.program.record import Key
+from tests.comparison_bands import band_samples
 from tests.engine.test_clock_moments import LOOK, UNITS, network, rate
 from tests.engine.test_round_rate_reads import check
 from tests.reference.from_program import run_of, value_at
@@ -462,8 +463,9 @@ def test_a_segment_can_leave_a_switch_and_return_to_it(capped):
 
 @pytest.mark.parametrize('capped', [False, True])
 def test_nearness_in_litres_cannot_make_a_later_switch_due(capped):
-    """At 1 h the slowly rising store is just below the switch by 2e-9 L, within the relative
-    tolerance of its 100 L level. It takes another 2e-5 h to get there, outside the time band."""
+    """At 1 h the level is inside the quantity band, but its crossing is still later."""
+    config = Configuration(Request(1.1))
+    (room,) = band_samples(config, 100.0001, multiples=(0.02,))
     builder = Builder(UNITS)
     builder.entity(
         'tank',
@@ -473,22 +475,24 @@ def test_nearness_in_litres_cannot_make_a_later_switch_due(capped):
             'fill',
             SOURCE,
             this.water,
-            request=formula(ifelse(this.water < q(100.000100002, 'L'), rate(0.0001), rate(1))),
+            request=formula(ifelse(this.water < q(100.0001 + room, 'L'), rate(0.0001), rate(1))),
         ),
         event('look', after(q(1, 'h')), after(q(0, 'h'), assign(this.again, this.fill.actual_rate))),
     )
     builder.setup(start(named('tank').look))
     program = builder.finish()
-    record = run(program, Configuration(Request(1.1)))
+    record = run(program, config)
     assert record.failure is None
     assert read(record, program, ['tank.again'], [1])[0].values == pytest.approx([0.0001])
     assert not record.entries('contact')
 
 
 @pytest.mark.parametrize('capped', [False, True])
-@pytest.mark.parametrize('room,expected', [(2e-9, 0), (2e-7, 0.0002)])
-def test_reallocation_at_a_stage_uses_the_stocks_own_bound_band(capped, room, expected):
-    """At 1 h the tank holds 100.0001 L and its comparison band is about 1e-7 L."""
+@pytest.mark.parametrize('multiple,expected', [(0.02, 0), (2, 0.0002)])
+def test_reallocation_at_a_stage_uses_the_stocks_own_bound_band(capped, multiple, expected):
+    """At 1 h the tank holds 100.0001 L. Headroom lies inside or outside its band."""
+    config = Configuration(Request(1.1))
+    (room,) = band_samples(config, 100.0001, multiples=(multiple,))
     builder = Builder(UNITS)
     builder.entity(
         'tank',
@@ -511,7 +515,7 @@ def test_reallocation_at_a_stage_uses_the_stocks_own_bound_band(capped, room, ex
     )
     builder.setup(start(named('tank').look))
     program = builder.finish()
-    record = run(program, Configuration(Request(1.1)))
+    record = run(program, config)
     assert record.failure is None
     assert read(record, program, ['tank.again'], [1])[0].values == pytest.approx([expected])
     assert read(record, program, ['tank.water'], [1])[0].values == pytest.approx([100.0001], rel=0, abs=5e-12)

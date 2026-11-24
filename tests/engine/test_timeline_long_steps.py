@@ -92,8 +92,7 @@ def test_a_crossing_in_a_long_quiet_time_is_where_the_closed_form_puts_it_with_f
     record = run(program, configured(200 * DAY))
     assert record.failure is None
     times = [(1 / mark - 1 / start) / pace * DAY for start in starts]
-    # The error of a run adds the errors of its steps: an error of the level of 200 times the
-    # tolerance of a step is a time of `200 rtol m / (p m²)` days.
+    # A relative level error of 'part' at the mark corresponds to part * mark / (pace * mark²) days.
     part = 200 * 1e-9
     slack = part * mark / (pace * mark * mark) * DAY
     for row, (start, when) in enumerate(zip(starts, times)):
@@ -280,7 +279,7 @@ def test_a_linear_chain_of_three_compartments_is_its_closed_form_and_quick():
     times = [1, 5, 24]
     found = read(record, program, ['chain.a', 'chain.b', 'chain.c'], times)
     e = math.exp
-    # Within the relative tolerance of the run, or the absolute one of a store (1e-10 of its 100 L).
+    # Use a relative error for the large balances and an absolute error near zero.
     near = {'rel': 1e-7, 'abs': 1e-8}
     assert found[0].values == pytest.approx([100 * e(-at) for at in times], **near)
     assert found[1].values == pytest.approx([200 * (e(-at / 2) - e(-at)) for at in times], **near)
