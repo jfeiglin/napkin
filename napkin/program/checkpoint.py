@@ -261,6 +261,7 @@ RECORDS = {
         record.Unavailable,
         record.Curve,
         record.Piece,
+        record.BalancePoint,
         record.History,
         record.ChangeHistory,
         record.Entry,

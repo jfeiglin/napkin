@@ -2,8 +2,8 @@
 (the readiness audit of `8b3a01a`, rows 11 and 18; `program/record.py`, `Recorder`, `Breaks`,
 `store.run`).
 
-A run whose record would hold more pieces than its budget stops then, before any later stop or
-checkpoint: no checkpoint holds a record past its budget. The run keeps what its request names and the budget counts those pieces.
+A run stops when the next trajectory piece or posting for a requested value exceeds the budget.
+The record can also contain a point that gives a stock's exact balance at its cutoff.
 A store's ledger begins with the edit that changed it. The same request has one outcome and set
 of values on a fresh run, on a store hit and on a run resumed from its checkpoint.
 
@@ -17,6 +17,7 @@ in each value that the request holds at many times. Then the audit's two cases, 
 from __future__ import annotations
 
 import random
+from dataclasses import replace
 
 import pytest
 
@@ -33,6 +34,7 @@ from napkin.program.build import (
     event,
     flow,
     formula,
+    move,
     named,
     q,
     start,
@@ -41,7 +43,7 @@ from napkin.program.build import (
 )
 from napkin.program.checkpoint import Breakpoint, Checkpoint, Edit, dumps, loads
 from napkin.program.config import Configuration, Request
-from napkin.program.record import Key, Unavailable
+from napkin.program.record import BalancePoint, Curve, History, Key, Piece, Unavailable
 from napkin.session import Log
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
@@ -162,6 +164,16 @@ def same(left, right):
     return left == pytest.approx(right, rel=1e-12, abs=1e-12)
 
 
+def charged_starts(record):
+    return sorted(
+        float(piece.t)
+        for history in record.histories
+        if record.manifest.names(history.key)
+        for piece in history.pieces
+        if not isinstance(piece, BalancePoint)
+    )
+
+
 @pytest.mark.parametrize('curved', [False, True], ids=['lines', 'curves'])
 @pytest.mark.parametrize('seed', range(40))
 def test_fresh_stored_and_resumed_runs_of_a_request_have_one_outcome_and_one_set_of_values(
@@ -183,7 +195,7 @@ def test_fresh_stored_and_resumed_runs_of_a_request_have_one_outcome_and_one_set
             keys = tuple(Key('plant', tuple(path.split('.')[1:])) for path in rng.sample(PATHS + LEDGERS, 2))
         asked = Request(horizon, everything=not keys, keys=keys)
         whole, _ = fresh(program, Configuration(asked), breakpoints, edits)
-        count = sum(len(history.pieces) for history in whole.histories if whole.manifest.names(history.key))
+        count = len(charged_starts(whole))
         request = Request(horizon, everything=not keys, keys=keys, pieces=rng.randint(1, count + 2))
         configuration = Configuration(request)
         alone, stops = fresh(program, configuration, breakpoints, edits)
@@ -216,7 +228,7 @@ def test_fresh_stored_and_resumed_runs_of_a_request_have_one_outcome_and_one_set
 # ---- the audit's cases, by hand ----------------------------------------------------------------------------
 
 
-def tank():
+def tank(*before_tick):
     """A tank of 10 L that drains at 2 L/h, and a tick at 2 h, where a breakpoint stops the run."""
     b = Builder(UNITS)
     b.entity(
@@ -224,13 +236,95 @@ def tank():
         value('water', 'L', 10, lower=0),
         value('ticks', '', 0),
         flow('drain', this.water, SINK, request=q(2, 'L/h')),
-        event('tick', after(q(2, 'h'), add(this.ticks, 1))),
+        event('tick', after(q(2, 'h'), *before_tick, add(this.ticks, 1))),
     )
     b.setup(start(named('tank').tick))
     return b.finish()
 
 
 WATER = Key('tank', ('water',))
+
+
+def test_a_two_piece_budget_keeps_the_exact_tank_balance_at_the_checkpoint_and_horizon():
+    program = tank()
+    configuration = Configuration(Request(4, everything=False, keys=(WATER,), pieces=2))
+    straight = Run(Plan.of(program, configuration)).run()
+    live = Run(Plan.of(program, configuration), (Breakpoint('tank.tick.step[0]'),))
+    checkpoint = live.run()
+    assert isinstance(checkpoint, Checkpoint) and checkpoint.stop.t == 2
+    saved = loads(dumps(checkpoint))
+    assert saved.record == checkpoint.record
+
+    for record, time, balance in ((saved.record, 2, 6), (straight, 4, 2)):
+        assert record.end == time and record.failure is None
+        opening, drain, point = record.history(WATER).pieces
+        assert opening.t == drain.t == 0 and opening.value == drain.value == 10
+        assert drain.at(time) == balance
+        assert isinstance(point, BalancePoint)
+        assert (point.t, point.value, point.rate, point.curve) == (time, balance, 0, None)
+        assert record.value(WATER, time) == balance
+        assert record.within(2) == record
+        assert record.within(1).failure.t == 0
+
+    assert live.resume() == Run.restored(Plan.of(program, configuration), saved).resume() == straight
+
+
+def test_a_real_tick_exhausts_the_budget_while_the_tank_drains():
+    program = tank()
+    ticks = Key('tank', ('ticks',))
+    request = Request(4, everything=False, keys=(WATER, ticks))
+    whole = Run(Plan.of(program, Configuration(request))).run()
+    assert whole.failure is None and whole.value(ticks, 2) == 1
+    bounded = Run(Plan.of(program, Configuration(replace(request, pieces=3)))).run()
+
+    assert bounded == requested(whole.within(3), program)
+    assert bounded.end == 2 and bounded.failure.detail('budget') == 3
+    assert [(p.t, p.value) for p in bounded.history(ticks).pieces] == [(0, 0)]
+    assert all(piece.t < bounded.end for history in bounded.histories for piece in history.pieces)
+    assert charged_starts(bounded) == [0, 0, 0]
+    assert bounded.value(WATER, 1.75) == 6.5
+    assert isinstance(bounded.value(WATER, 2), Unavailable)
+
+
+def test_an_inclusive_stage_failure_keeps_the_exact_stock_balance():
+    program = tank(assign(this.ticks, 1 / this.ticks))
+    request = Request(4, everything=False, keys=(WATER,), pieces=2)
+    record = Run(Plan.of(program, Configuration(request))).run()
+    assert record.end == 2 and 'division by zero' in record.failure.detail('message')
+    assert record.failure.detail('budget') is None
+    assert record.history(WATER).pieces[-1] == BalancePoint(2, 6)
+    assert record.value(WATER, 2) == 6
+    assert charged_starts(record) == [0, 0]
+    assert record.within(2) == record
+
+
+def test_an_exact_fitted_line_ends_with_the_physical_balance_point():
+    engine = Run(Plan.of(tank(), Configuration(Request(4, everything=False, keys=(WATER,)))))
+    record = engine.run()
+    # This degree-one Chebyshev series reads exactly 10 L at 0 h and 2 L at 4 h.
+    line = Piece(0, 10.0, curve=Curve(4.0, (6.0, -4.0)))
+    assert line.at(4) == record.value(WATER, 4) == 2
+    incoming = replace(record, histories=(History(WATER, (line,)),))
+    projected = engine.stock_state.project(incoming)
+    assert projected.history(WATER).pieces == (line, BalancePoint(4, 2.0))
+    assert projected.within(1) == projected
+
+
+def test_a_stock_posting_at_the_horizon_still_uses_a_piece():
+    b = Builder(UNITS)
+    b.entity(
+        'tank',
+        value('water', 'L', 10),
+        value('bottle', 'L', 0),
+        event('fill', after(q(2, 'h'), move(q(1, 'L'), this.water, this.bottle))),
+    )
+    b.setup(start(named('tank').fill))
+    program = b.finish()
+    full = Run(Plan.of(program, Configuration(Request(2, everything=False, keys=(WATER,), pieces=2)))).run()
+    assert full.failure is None and full.value(WATER, 2) == 9
+    one = Run(Plan.of(program, Configuration(Request(2, everything=False, keys=(WATER,), pieces=1)))).run()
+    assert one.failure.t == 2 and one.failure.detail('budget') == 1
+    assert one == requested(full.within(1), program)
 
 
 def test_checkpoint_after_a_child_starts_counts_projected_pieces_separately():
@@ -260,8 +354,8 @@ def test_checkpoint_after_a_child_starts_counts_projected_pieces_separately():
 
 def test_an_edit_after_the_horizon_of_a_request_adds_no_ledger():
     """Row 11: the tank is lowered to 4 L at the stop at 2 h. A request of the water to 1 h within two
-    pieces holds the water at 0 h, 10 L, and on its line from 0 h at -2 L/h: two pieces, by hand, and no
-    ledger, since nothing came from outside by 1 h. The 4 h run holds the ledger
+    pieces holds its opening and its drain line. An extra point holds its balance at 1 h.
+    No ledger exists because nothing came from outside by 1 h. The 4 h run holds the ledger
     from its edit at 2 h, -2 L (6 L lowered to 4 L)."""
     program, stops = tank(), (Breakpoint('tank.tick.step[0]'),)
     edits = {1: [(WATER, 4)]}
@@ -272,7 +366,8 @@ def test_an_edit_after_the_horizon_of_a_request_adds_no_ledger():
     assert alone.failure is None and alone.end == 1
     assert read(alone, program, ['tank.water', 'tank.water.external'], [1])[0].values == (8,)
     assert read(alone, program, ['tank.water.external'], [1])[0].values == (0,)
-    assert sum(len(history.pieces) for history in alone.histories if alone.manifest.names(history.key)) == 2
+    assert sum(len(history.pieces) for history in alone.histories if alone.manifest.names(history.key)) == 3
+    assert alone.within(2) == alone
 
 
 def test_a_run_past_its_budget_at_0_h_gives_no_checkpoint_at_2_h():
@@ -547,7 +642,7 @@ def test_budget_cutoffs_follow_the_complete_records_committed_piece_starts(seed)
         whole, _ = fresh(
             program, Configuration(Request(horizon, everything=not keys, keys=keys)), stops, edits
         )
-        times = sorted(float(p.t) for h in whole.histories if whole.manifest.names(h.key) for p in h.pieces)
+        times = charged_starts(whole)
         # The sorted list deliberately retains different pieces that start at the same instant.
         for budget in (rng.randint(1, len(times)), max(1, len(times) - 1), len(times)):
             config = Configuration(Request(horizon, everything=not keys, keys=keys, pieces=budget))

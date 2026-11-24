@@ -60,10 +60,10 @@ pieces of each value of a run:
 **What a record holds** follows from its request and trace (`requested`): every value, or the values that the request
 names, what their formulas read under each definition that the trace's commits gave them
 (`needed`), and the ledgers of the books, each history in the order of its key; a piece that starts
-at the record's end holds its value there (`_finished`). The values that a record holds have at most the request's
-budget of pieces: a record that would hold more ends before the time of the first piece that does
-not fit, naming the budget (`Record.within`), and a run whose record so far would hold more at a
-stop ends there by its budget, before any checkpoint (`checkpoints.Breaks`).
+at the record's end holds its value there (`_finished`). The budget counts trajectory pieces and
+actual postings. A stock can have one extra point for its exact balance at the cutoff.
+The record ends before the first piece that exceeds the budget (`Record.within`).
+This rule also applies when the run stops for a checkpoint (`checkpoints.Breaks`).
 
 Numbers are in the canonical unit of their dimension. `read` gives them in the declared unit of each
 path, from what the record holds and from nothing else (`Record.unavailable`): any other value is
@@ -984,17 +984,12 @@ class Recorder:
         )
         made = Record(manifest, tuple(held), trace, failure)
         if not ongoing:
-            rejected = failure is not None and (failure.detail('attempts') or failure.detail('placements'))
             if self.run is not None:
-                # A failed numerical segment has no accepted trajectory past its incoming
-                # cutoff. A held stock still has its last committed posting at every stop.
-                accepted = pause is not None or rejected or (failure is None and end == self.plan.horizon)
-                made = self.run.stock_state.project(made, held_only=not accepted)
+                made = self.run.stock_state.project(made)
             made = _finished(made)
         # At a provisional end the recorded outgoing slopes still count. At a true end
         # they become held points, as do the retained pieces when the budget ends a run.
-        # The values that the record holds stay within the request's budget of pieces (R-A4a-07); a
-        # record that its budget ends keeps its histories up to that end (`requested`).
+        # Record.within charges the trajectory and real postings, including at a pause.
         bounded = made.within(request.pieces)
         return bounded if bounded is made else requested(bounded, plan.program)
 

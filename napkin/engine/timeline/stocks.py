@@ -15,7 +15,7 @@ from ...core import expr as nodes
 from ...core.literals import Literals, node_parts
 from ...core.units import rational
 from ...expressions import evaluate
-from ...program.record import Piece
+from ...program.record import BalancePoint
 from ..continuous.transfers import (
     ZERO_AMOUNT,
     certified_amount,
@@ -700,17 +700,32 @@ class Stocks:
         previous = run.moment.stage_balance(name, tx) if tx is not None else self.stock_balance(name, run.now)
         return rational(value) - previous
 
-    def project(self, record, *, held_only=False):
-        """Project rounded physical balances at the cutoff into the requested stock histories.
-        The saved recorder and all posting cursors remain suitable for a continuing run."""
+    def _failure_balance_time(self, name, end):
+        """Use the accepted transfer ledger. A failed trial can report a later diagnostic time."""
+        run = self.run
+        accepted = min(end, run.accepted)
+        way = run.ways.instance_of(name)
+        # A numerical way commits the integral of a step at through. A held rate
+        # gives its integral directly up to the accepted timeline time.
+        through = getattr(getattr(way, 'amounts', None), 'through', accepted)
+        # The stock can also have a newer exact posting from an accepted stage.
+        return max(self.balances[name][2], min(accepted, through))
+
+    def project(self, record):
+        """Give each moving stock a held physical balance at the inclusive cutoff.
+        A posting already at the cutoff remains a charged piece."""
         end = record.end
+        if record.after(end) is not None:
+            return record
         run = self.run
         corrected, amounts = {}, {}
         for history in record.histories:
             name = name_of(history.key)
-            if history.pieces and name in self.balances and not (held_only and name in run.ways.set_of):
-                actual = float(self.point(name, end, amounts)[0])
-                if history.at(end) != actual:
+            if history.pieces and name in self.balances:
+                at = end if record.failure is None else self._failure_balance_time(name, end)
+                actual = float(self.point(name, at, amounts)[0])
+                last = history.pieces[-1]
+                if last.curve is not None or last.rate != 0 or last.at(end) != actual:
                     corrected[name] = actual
         if not corrected:
             return record
@@ -734,10 +749,15 @@ class Stocks:
             points = history.pieces
             if name in corrected and points:
                 if points[-1].t == end:
-                    points = points[:-1]
-                histories.append(replace(history, pieces=(*points, Piece(end, corrected[name]))))
-            else:
-                histories.append(history)
+                    if points[-1].at(end) != corrected[name]:
+                        # Correct the value of a real posting without changing its budget charge.
+                        last = replace(points[-1], value=corrected[name], rate=0.0, curve=None)
+                        points = (*points[:-1], last)
+                elif name in self.balances:
+                    points = (*points, BalancePoint(end, corrected[name]))
+                # An alias reads the stock's cutoff value. Its fitted trajectory
+                # needs no second display point for the same physical balance.
+            histories.append(history if points is history.pieces else replace(history, pieces=points))
         return replace(record, histories=tuple(histories))
 
 

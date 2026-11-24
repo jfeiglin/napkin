@@ -573,7 +573,7 @@ class Occurrences:
     def _violation(self, cutoff, violations):
         problem = self._failure(cutoff, violations)
         self.run.ways.cut(cutoff)
-        self.run.now = cutoff
+        self.run.now = self.run.accepted = cutoff
         raise problem
 
     def waiting(self):

@@ -54,11 +54,12 @@ manifest of what it holds (R-A4a-07, R-A4a-08).
   requested values read under the definitions and occurrences of its trace
   (`engine/timeline/record.requested`). A run past its budget stops where its record ends,
   before any later stop.
-- **The budget** (`Record.within`, R-A4a-07): the values that a record holds have at most the
-  request's number of pieces. A record that would hold more ends at the time of the first piece that
+- **The budget** (`Record.within`, R-A4a-07): Count the trajectory pieces and stock postings of
+  the requested values. A record can hold one extra exact-balance point per stock at the cutoff.
+  A record that would exceed the budget ends at the time of the first counted piece that
   does not fit, with a failure entry there that names the budget (the detail `budget`): it holds the
   values before that time, and from it on every value is `Unavailable` with that reason. Only the
-  pieces of the values that the record holds count. A run whose record so far would hold more at a stop
+  requested values use the budget. A run whose record so far would exceed its budget at a stop
   ends there by its budget, and gives no checkpoint (`napkin/engine/timeline/checkpoints.py`): a run
   stops by its budget where its record does, before any later stop.
 """
@@ -174,11 +175,22 @@ class Piece:
 
 
 @dataclass(frozen=True)
+class BalancePoint(Piece):
+    """An extra held point that shows the physical balance of a stock at the record cutoff."""
+
+
+@dataclass(frozen=True)
 class History:
     """The pieces of one value, in time order."""
 
     key: Key
     pieces: tuple[Piece, ...]
+
+    def charged_pieces(self):
+        """Count the trajectory and posting pieces. A final balance point is free."""
+        if self.pieces and isinstance(self.pieces[-1], BalancePoint):
+            return len(self.pieces) - 1
+        return len(self.pieces)
 
     def at(self, time):
         """The value at a time: the last piece at or before it. A value that did not exist yet is a
@@ -342,9 +354,11 @@ class Record:
         have no more pieces; else the record before the time of the first piece that does not fit (its
         histories and its trace), which a failure entry at that time ends, naming the budget."""
         held = [history for history in self.histories if self.manifest.names(history.key)]
-        if sum(len(history.pieces) for history in held) <= pieces:
+        if sum(history.charged_pieces() for history in held) <= pieces:
             return self
-        times = sorted(float(piece.t) for history in held for piece in history.pieces)
+        times = sorted(
+            float(piece.t) for history in held for piece in history.pieces[: history.charged_pieces()]
+        )
         end = times[pieces]
         histories = []
         for history in self.histories:

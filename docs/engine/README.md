@@ -256,9 +256,17 @@ A run gives one record (`napkin/program/record.py`). It holds:
 - **The manifest.** The horizon, the values that the record holds, and the comparison settings.
 - **The failure,** when the run stopped. A value after the stop is `Unavailable`, with the reason.
 
-**The budget of pieces.** The values that a record holds have at most `request.pieces` pieces. A
-record that would hold more ends at the time of the first piece that does not fit. Its last entry is
-a failure that names the budget.
+**The budget of pieces.** `request.pieces` sets the limit for the requested histories. The engine
+counts each trajectory piece and each stock posting. A posting at the cutoff also counts.
+
+A record can hold one extra point per stock to show its exact balance. The engine excludes this
+point from the budget. At a checkpoint, at the horizon, or at a failure, a moving stock ends
+with a held point. If a calculation fails during a trial step, the point shows the last accepted
+balance. A stock that already holds that balance needs no extra point.
+
+The first counted piece that exceeds the budget sets the stop time. The last trace entry gives
+the time and the budget. The record keeps only the pieces before this stop. It has no balance
+point at the excluded time. You can read values only before the stop time.
 
 ## `read` and `report`
 
@@ -340,7 +348,8 @@ never changes which branch fires. A stage that stopped runs again from its start
 same keys, so they are the same. A checkpoint of another program or another engine version is
 refused with `CheckpointError`.
 
-A record over its budget of pieces at a stop ends there, and the run gives no checkpoint. The
+If the counted pieces exceed the budget at a breakpoint, the engine returns a budget failure.
+Otherwise, it returns the checkpoint. The
 [Python API](../python-api.md) tells how a `Session` uses checkpoints, and the
 [command line](../cli.md) tells how `napkin play` uses them.
 
@@ -459,7 +468,7 @@ of one that it cannot calculate.
 | A limit | `max_occurrences`, `max_active` or `max_rounds`. The message names the limit and the event, and for `max_active` the oldest occurrence and the step where it waits. |
 | A budget of a solve | `fair-sharing budget exceeded` or `distance budget exceeded` ([solver.md](solver.md#failure-names)). |
 | `Numerical evaluation budget exceeded` | A Component or Sparse instance evaluated its rates more than `max_evaluations` times. |
-| The budget of pieces | The record would hold more pieces than `request.pieces`. |
+| The budget of pieces | The next counted piece exceeds `request.pieces`. |
 | Chattering | The rates switch back and forth at a condition, or a segment takes 1,000 accepted steps in a row, each shorter than the crossing tolerance. |
 | Retirement | An occurrence finishes with material in its stock, above its conservation allowance. |
 | A write to a frozen occurrence | An assignment, a nonzero `move`, or a flow that carries more than the allowance into or out of a stock of a finished occurrence. |
