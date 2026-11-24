@@ -801,6 +801,8 @@ class Run:
             return self.written[name]
         if name in self.plan.stocks:
             return float(self.stock_balance(name, self.now))
+        if name in self.published:
+            return self.ways.shared_value(name)
         return self.env.get(name)
 
     def write(self, name, value, balance=None):
@@ -850,13 +852,23 @@ class Run:
         source = None if node is None else self.occurrences.sources[id(node)]
         plan.log.append(('define', name, source, self.now, plan.start_of(name)))
         self.changed.add(name)
-        self.changed.update(self.recorder.defined(name))
+        self.refresh_recording()
         owner = plan.occurrence_of(name)
         if owner is not None:
             receiver, event = owner.rsplit('#', 1)[0].rsplit('.', 1)
             self.changed.add(('occurrences', receiver, event))
         for end in plan.setting_ends(name):
             self.changed.add(('flows', *end))
+
+    def refresh_recording(self):
+        """Rebuild the producers of trajectories newly admitted to a selected record."""
+        added = self.recorder.refresh_needed()
+        self.changed.update(added)
+        # Sets are registered under their flows; their public rate fields have longer names.
+        for name in added.intersection(self.recorder._coverage_starts):
+            flow = name.rpartition('.')[0]
+            if flow in self.plan.flows:
+                self.changed.add(flow)
 
     def hold(self, store, value):
         """A store that no flow meets any more holds its value."""

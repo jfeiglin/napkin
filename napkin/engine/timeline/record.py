@@ -88,6 +88,7 @@ from __future__ import annotations
 import math
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
+from copy import copy
 from dataclasses import dataclass, replace
 from fractions import Fraction
 from itertools import pairwise
@@ -375,7 +376,11 @@ class Recorder:
         self.formulas = set()  # the formulas whose pieces the run gives (the family's settings)
         self.run = None  # the run, which knows the entries that each collection keeps
         self.round = 0  # the round of the moment where the run is
-        self._wanted = None  # what a record of some keys needs so far (`wanted`), once asked
+        self._wanted = None  # None denotes a full record.
+        # A missing key has never been skipped. None marks a producer's declined
+        # trajectory; its first later admission sets the start of recorded coverage.
+        self._coverage_starts = {}
+        self.refresh_needed()
         # A store that edits changed -> (its start, [(time, amount from outside)]) (`external`).
         self.transfers = {}
         self.fits = Fits()
@@ -488,10 +493,11 @@ class Recorder:
             if self._held_upper <= self.plan.configuration.request.pieces:
                 return
         self._advance(end)
-        if self._total <= self.plan.configuration.request.pieces:
+        view = self._at_cutoff(end)
+        if view._total <= self.plan.configuration.request.pieces:
             return
         round_ = int(not self.run.bare) if before else self.round
-        prefix = self.record(end, pause=Entry(end, round_, 'pause', '', ''), ongoing=end != self.plan.horizon)
+        prefix = view._record(end, None, Entry(end, round_, 'pause', '', ''), end != self.plan.horizon)
         if prefix.failure is not None and (not before or prefix.failure.t < end):
             raise HistoryFull(prefix)
 
@@ -609,26 +615,25 @@ class Recorder:
         return pieces[place] if place >= 0 else None
 
     def wanted(self, name):
-        """Whether the record keeps the history of an engine name, which a way of running asks so
-        that it gives no pieces that no record keeps: of a record of every value, each; of one of some
-        keys, what they need under the definitions that the run gave so far (`needed`, the one rule
-        of what a record holds, which `record` applies again at the end, from the trace)."""
+        """Whether this request retains the trajectory offered by a producer."""
+        if self._wanted is None or name in self._wanted:
+            return True
+        self._coverage_starts.setdefault(name, None)
+        return False
+
+    def refresh_needed(self):
+        """Refresh a selected record after a commit changes membership or definitions."""
         request = self.plan.configuration.request
         if request.everything:
-            return True
-        if self._wanted is None:
-            self._wanted = needed(self.plan, [name_of(key) for key in request.keys], self.plan.defined)
-        return name in self._wanted
-
-    def defined(self, name):
-        """A commit gave a value a new definition: a record of some keys that needs the value keeps
-        what the new definition reads from now on (`needed`). Gives the names that it keeps now and
-        did not, which the run marks as changed, so that a way of running asks `wanted` again."""
-        if self._wanted is None or name not in self._wanted:
             return set()
-        found = needed(self.plan, [name], self.plan.defined) - self._wanted
-        self._wanted |= found
-        return found
+        previous = self._wanted
+        self._wanted = needed(self.plan, [name_of(key) for key in request.keys], self.plan.defined)
+        added = self._wanted.difference(previous) if previous is not None else set()
+        joined = added.intersection(self._coverage_starts)
+        if joined:
+            # Replace the mapping so a failed commit can restore its earlier coverage.
+            self._coverage_starts = self._coverage_starts | dict.fromkeys(joined, self.run.now)
+        return added
 
     # ---- the committed histories -----------------------------------------------------------------
 
@@ -641,9 +646,7 @@ class Recorder:
         """Order the histories that this request retains and index their direct readers."""
         plan = self.plan
         request = plan.configuration.request
-        wanted = (
-            None if request.everything else needed(plan, [name_of(k) for k in request.keys], plan.defined)
-        )
+        wanted = self._wanted
         started = {entry.owner for entry in self.trace if entry.kind == 'start'} | {None}
         names = [
             n for n in plan.values if (wanted is None or n in wanted) and plan.occurrence_of(n) in started
@@ -708,20 +711,17 @@ class Recorder:
         if self._as_of != end:
             changed.update(self._clock)
             changed.update(self._moving)
-        pending = list(changed)
-        while pending:
-            for reader in self._readers.get(pending.pop(), ()):
-                if reader not in changed:
-                    changed.add(reader)
-                    pending.append(reader)
-        for name in sorted(changed, key=self._order.__getitem__):
+        for name in self._affected(changed):
             value = plan.values[name]
             if name in self._derived:
                 start = since if name in self._histories else plan.start_of(name)
                 history = self._derived_history(name, value, end, start)
             else:
                 history = self._raw_history(name, value, end)
-                if history.pieces and (history.pieces[-1].curve is not None or history.pieces[-1].rate != 0):
+                if not history.pieces and self._coverage_starts.get(name) is not None:
+                    # At the join only the private cutoff view can see this opening.
+                    self._moving.add(name)
+                elif history.pieces and (history.pieces[-1].curve is not None or history.pieces[-1].rate != 0):
                     self._moving.add(name)
                 else:
                     self._moving.discard(name)
@@ -740,6 +740,42 @@ class Recorder:
             self._put(ledger_name, self._history(ledger, pieces))
         self._as_of = end
 
+    def _affected(self, changed):
+        """The changed histories and their transitive readers, in assembly order."""
+        pending = list(changed)
+        while pending:
+            for reader in self._readers.get(pending.pop(), ()):
+                if reader not in changed:
+                    changed.add(reader)
+                    pending.append(reader)
+        return sorted(changed, key=self._order.__getitem__)
+
+    def _at_cutoff(self, end):
+        """A check sees the settled opening even if the first outgoing segment is still pending."""
+        if not self._coverage_starts:
+            return self
+        openings = {
+            name for name, start in self._coverage_starts.items()
+            if start == end and name in self._histories and not self._histories[name].pieces
+        }
+        if not openings:
+            return self
+        view = copy(self)
+        view._histories = dict(self._histories)
+        view._counted = dict(self._counted)
+        view._private = set()
+        view.fits = copy(self.fits)
+        view.fits.closed = dict(self.fits.closed)
+        for name in self._affected(set(openings)):
+            value = self.plan.values[name]
+            if name in openings:
+                settled = self.run.present(name)
+                history = History(value.key, (Piece(end, settled),))
+            else:
+                history = view._derived_history(name, value, end, end)
+            view._put(name, history)
+        return view
+
     def _put(self, name, history):
         if name in self._counted:
             self._total += len(history.pieces) - self._counted[name]
@@ -756,14 +792,28 @@ class Recorder:
             if i == len(raw):
                 return self._histories[name]
         else:
-            i = 0
-            kept = [Piece(0.0, self.constants[name])] if name in self.constants else []
+            start = self._coverage_starts.get(name)
+            if start is None:
+                i = 0
+                kept = [Piece(0.0, self.constants[name])] if name in self.constants else []
+            else:
+                i = bisect_left(raw, start, key=lambda piece: piece[0])
+                kept = []
+                if end > start and i and (i == len(raw) or raw[i][0] > start):
+                    # A retired producer posted its final held value before the join.
+                    # Once the join has passed, retain that genuine flat interval from
+                    # the coverage boundary. A pending producer still owns its opening.
+                    installed = self.run.ways.set_of
+                    pending = name in installed or name.rpartition('.')[0] in installed
+                    if raw[i - 1][2] == 0 and (i < len(raw) or not pending):
+                        kept.append(Piece(start, raw[i - 1][1]))
         j = len(raw)
         if j and raw[-1][0] > end:
             j = bisect_right(raw, end, lo=i, key=lambda piece: piece[0])
         new = raw[i:j]
         self._extend(kept, new)
-        self._raw_positions[name] = raw, j
+        if kept:
+            self._raw_positions[name] = raw, j
         return History(value.key, kept)
 
     @staticmethod
@@ -839,6 +889,9 @@ class Recorder:
     def record(self, end, failure=None, pause=None, *, ongoing=False):
         """The run's committed histories and trace up to the stop or horizon."""
         self._advance(end)
+        return self._at_cutoff(end)._record(end, failure, pause, ongoing)
+
+    def _record(self, end, failure, pause, ongoing):
         plan, request = self.plan, self.plan.configuration.request
         last = failure if failure is not None else pause
         trace = (*self.trace, last) if last is not None else tuple(self.trace)

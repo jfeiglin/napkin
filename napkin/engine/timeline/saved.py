@@ -201,6 +201,7 @@ def at_stop(run):
     recorder._moving = set(recorder._moving)
     recorder._raw_positions = dict(recorder._raw_positions)
     recorder._counted = dict(recorder._counted)
+    recorder._coverage_starts = dict(recorder._coverage_starts)
     recorder.pieces = {name: list(pieces) for name, pieces in run.recorder.pieces.items()}
     recorder.trace = list(recorder.trace)
     projected.moved = set(run.moved)
@@ -301,6 +302,7 @@ def save(run, recorder, arrival):
                 ('round', recorder.round),
                 ('fit_ends', tuple(recorder.fits.ends)),
                 ('wanted', None if recorder._wanted is None else tuple(sorted(recorder._wanted))),
+                ('coverage_starts', tuple(sorted(recorder._coverage_starts.items()))),
                 (
                     'transfers',
                     tuple((name, start, tuple(moved)) for name, (start, moved) in recorder.transfers.items()),
@@ -792,7 +794,12 @@ def _recorder(recorder, found):
     recorder.formulas = set(found['formulas'])
     recorder.round = found['round']
     recorder.fits.ends = list(found.get('fit_ends', (0.0,)))
-    recorder._wanted = None if found['wanted'] is None else set(found['wanted'])
+    recorder._coverage_starts = dict(found.get('coverage_starts', ()))
+    if found['wanted'] is None:
+        # Older selected checkpoints could stop before any producer asked what to retain.
+        recorder.refresh_needed()
+    else:
+        recorder._wanted = set(found['wanted'])
     recorder.transfers = {name: (start, list(moved)) for name, start, moved in found['transfers']}
 
 

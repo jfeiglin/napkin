@@ -268,6 +268,8 @@ class _Savepoint:
     def __init__(self, run, tx):
         recorder, plan = run.recorder, run.plan
         self.run = run
+        self.wanted = recorder._wanted
+        self.coverage_starts = recorder._coverage_starts
         self.trace = len(recorder.trace) if tx.mark is None else tx.mark
         names = set(tx.writes)
         for name in tx.writes:
@@ -297,6 +299,8 @@ class _Savepoint:
     def discard(self):
         """Take back what the commit changed of the record."""
         run, recorder, plan = self.run, self.run.recorder, self.run.plan
+        recorder._wanted = self.wanted
+        recorder._coverage_starts = self.coverage_starts
         for mapping, previous in self.stock_edits:
             for name in self.names:
                 mapping.pop(name, None)
@@ -909,6 +913,8 @@ class Moment:
             run.write(name, value, tx.balances.get(name))
         for member, event, args, evidence in tx.starts:
             run.occurrences.register(member, event, args, evidence)
+        if tx.starts:
+            run.refresh_recording()
 
     # ---- the settling -----------------------------------------------------------------------------
 
