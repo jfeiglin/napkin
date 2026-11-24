@@ -1,6 +1,7 @@
 """A contact batch has one stock-key order for settlement and for the trace."""
 
 import math
+from decimal import Decimal
 from fractions import Fraction
 from itertools import permutations
 
@@ -9,6 +10,8 @@ from napkin.engine.timeline.contacts import contact_batch
 from napkin.engine.timeline.way import Way
 from napkin.model.compile import compile_text
 from napkin.program.checkpoint import Breakpoint, Checkpoint
+from napkin.program.config import Configuration, Request
+from tests.comparison_bands import band_samples
 
 TEMPLATE = """scenario "Coupled stock contacts"
     horizon 2 h
@@ -19,9 +22,13 @@ yard:
 yard.clock.start()
 """
 
-SPLIT = """    a: L = 4.000000004 L in [0 L,]
-    b: L = 1.000000001 L in [0 L,]
-    c: L = 0 L in [0 L,5.000000005 L]
+# At 1 L/h, this amount is just beyond one hour's delivery, inside the stock's band.
+(UNIT_BAND,) = band_samples(Configuration(Request(2)), 1, multiples=(1,))
+CONTACT_LEVEL = 1 + Decimal(str(UNIT_BAND)) / 100
+
+SPLIT = f"""    a: L = {4 * CONTACT_LEVEL} L in [0 L,]
+    b: L = {CONTACT_LEVEL} L in [0 L,]
+    c: L = 0 L in [0 L,{5 * CONTACT_LEVEL} L]
     flow ab: this.a -> this.b
         request = 1 L/h
     flow ac: this.a -> this.c
@@ -29,9 +36,9 @@ SPLIT = """    a: L = 4.000000004 L in [0 L,]
     flow bc: this.b -> this.c
         request = 2 L/h"""
 
-CAPPED = """    feeder: L = 8 L in [0 L,]
-    a: L = 0 L in [0 L,1.000000001 L]
-    b: L = 0 L in [0 L,1.000000001 L]
+CAPPED = f"""    feeder: L = 8 L in [0 L,]
+    a: L = 0 L in [0 L,{CONTACT_LEVEL} L]
+    b: L = 0 L in [0 L,{CONTACT_LEVEL} L]
     flow pipe_a: this.feeder -> this.a
         request = 1 L/h
         capacity = 1 L/h
@@ -69,9 +76,10 @@ def test_coupled_loop_uses_the_same_split_for_all_six_contact_orders(monkeypatch
     contacts = ('yard.a', 'yard.b', 'yard.c')
     results = set(batch_results(monkeypatch, SPLIT, contacts, ('yard.ab', 'yard.ac', 'yard.bc')))
     (((a, b, c), (ab, ac, bc), reasons),) = results
-    assert (a, b, c) == (0, 0, Fraction('5.000000005'))
-    assert ab + ac == Fraction('4.000000004')
-    assert bc - ab == Fraction('1.000000001')
+    unit_delivery = Fraction(CONTACT_LEVEL)
+    assert (a, b, c) == (0, 0, 5 * unit_delivery)
+    assert ab + ac == 4 * unit_delivery
+    assert bc - ab == unit_delivery
     assert not reasons
 
 
