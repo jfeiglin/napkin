@@ -251,6 +251,17 @@ class Triggers:
         (`reads.py`)."""
         return lazily(node, lambda name: self.run.value(name, t), self.plan.units, t)
 
+    def _just_after(self, t, *parts):
+        """Sample all operands at one time inside their prepared trajectories.
+        During settlement a continuing step can end before t + AFTER. Preparing
+        a new step here would use an unsettled field."""
+        later = t + AFTER
+        for name in self.moving_reads(*parts) - {'t'}:
+            way = self._giver(name)
+            if way is not None:
+                later = min(later, way.probe_until)
+        return max(t, later)
+
     def path_side(self, node, t):
         """A side read on the installed trajectories, also at the present time. At the present the
         run reads a stock's accepted ledger balance, which can differ from its trajectory in the
@@ -272,7 +283,8 @@ class Triggers:
         def later(left, right):
             # A side that cannot be read an instant later is not shown to move through: it stays marked.
             try:
-                a, b = self.side(left, t + AFTER), self.side(right, t + AFTER)
+                at = self._just_after(t, left, right)
+                a, b = self.side(left, at), self.side(right, at)
             except (ExpressionError, ArithmeticError, LookupError):
                 return 0.0
             return signed_gap(a, b)
@@ -335,7 +347,7 @@ class Triggers:
                 if reset is None:
                     if not self.holds(trigger.test):
                         state.armed = True
-                    elif not self.holds(trigger.test, t + AFTER):
+                    elif not self.holds(trigger.test, self._just_after(t, trigger.test)):
                         state.armed, state.blocked_at = True, t
                 elif reset[0] == 'when':
                     state.armed = self.holds(reset[1])

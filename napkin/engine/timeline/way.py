@@ -1,6 +1,7 @@
 """What an installed set publishes and reports when the timeline reaches a moment."""
 
 from bisect import bisect_right
+from math import inf
 
 from ...core import expr as nodes
 from ...core.units import rational
@@ -66,6 +67,11 @@ class MovingTransfers:
     def _pending_end(self):
         return self.pending.end
 
+    @property
+    def probe_until(self):
+        """A just-after read can follow a prepared trajectory only through its endpoint."""
+        return self._pending_end() if self.pending is not None else inf
+
     def _transferred(self, name, t):
         row = self.leg_rows[name]
         if t == self.amounts.through:
@@ -86,6 +92,7 @@ class Way:
     """An engine supplies its answers on its installed trajectory and the contacts it located."""
 
     sample_on_read = False
+    probe_until = inf  # a held value or outgoing line supports the full just-after probe
     resting_rates = None
     resting = None
     recorded_through = None  # end of the last dense span already given to the recorder
