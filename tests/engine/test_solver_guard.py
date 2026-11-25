@@ -104,7 +104,7 @@ def test_a_changed_capacity_discards_its_future_step_and_preserves_the_other_gro
             and way.pending[1] > way.run.clock.apart(way.t)
         ):
             # Both collocation polynomials have supplied their paid prefix at 1 h.
-            assert way.recorded_through == way.run.now and way.pending_evaluations == 0
+            assert way.amounts.through == way.t == way.run.now and way.pending_evaluations == 0
             destination.extend(way.stores)
 
     def retiring(way, key):

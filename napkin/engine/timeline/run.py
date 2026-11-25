@@ -1082,6 +1082,7 @@ class Run:
                 self.bound_at.clear()
                 self.accepted = self.now
                 self.ways.cut(self.now)
+            self.ways.record_accepted(self.now)
             return self.recorder.record(self.now, self.recorder.failure(self.now, str(problem), **details))
         return self.recorder.record(self.plan.horizon)
 
@@ -1091,6 +1092,8 @@ class Run:
         horizon = self.plan.horizon
         while self.now < horizon:
             moment = self.next_moment()
+            if self.arriving and self.saved_arrival is None:
+                self.ways.accept_sparse(moment[0])
             self.recorder.check_budget(moment[0], before=True)
             self.moment.at(*moment)
         self.ways.finish(horizon, not self.bare)

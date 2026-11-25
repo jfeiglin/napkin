@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import replace
+from fractions import Fraction
 
 import pytest
 
@@ -74,6 +75,155 @@ def test_exclusive_budget_failure_has_round_zero_with_or_without_a_later_pause()
         assert expected.failure.t == budget
         assert expected.failure.round == 0
         assert at_check.within(budget) == expected
+
+
+@pytest.mark.parametrize(('path', 'proved'), [('water', True), ('report', False)])
+def test_unrelated_tick_checks_the_budget_without_publishing_the_open_step(monkeypatch, path, proved):
+    from napkin.engine.timeline import plan
+    from napkin.engine.timeline.record import Recorder
+    from napkin.model.compile import compile_text
+
+    monkeypatch.setattr(plan, 'LIMIT', 0)  # Exercise the same two directed meters on Sparse.
+    program = compile_text(
+        """scenario "An unrelated clock reads a pending budget"
+    horizon 2 h
+tank:
+    water: L = 10 L
+    flow fill: SOURCE -> this.water
+        request = formula(1 L/h + t * 1 L/h/h)
+    flow drain: this.water -> SINK
+        request = formula(0.5 L/h + t * 0.25 L/h/h)
+    report = formula(max(this.water, 10.75 L))
+    tick = event():
+        after 1 h
+tank.tick.start()
+""",
+        UNITS,
+    ).program
+    key = Key('tank', (path,))
+    config = Configuration(Request(2, everything=False, keys=(key,)))
+    live = Run(Plan.of(program, config))
+    checks, proofs, exact = [], [], []
+    check, bound, assemble = Recorder.check_budget, Recorder._pending_fits, Recorder._check_committed
+
+    def observed(recorder, end, **options):
+        pending = list(live.ways.pending_sparse(end)) if recorder is live.recorder and end == 1 else []
+        before = [(way.recorded_through, tuple(recorder.pieces.get('tank.water', ()))) for way in pending]
+        try:
+            return check(recorder, end, **options)
+        finally:
+            if before:
+                after = [
+                    (way.recorded_through, tuple(recorder.pieces.get('tank.water', ()))) for way in pending
+                ]
+                assert after == before
+                checks.append(end)
+
+    def admission(recorder, end, pending):
+        result = bound(recorder, end, pending)
+        if recorder is live.recorder and end == 1:
+            proofs.append(result)
+        return result
+
+    def committed(recorder, end, before):
+        if recorder.run is live and recorder is not live.recorder and end == 1:
+            exact.append(end)
+        return assemble(recorder, end, before)
+
+    with monkeypatch.context() as observed_run:
+        observed_run.setattr(Recorder, 'check_budget', observed)
+        observed_run.setattr(Recorder, '_pending_fits', admission)
+        observed_run.setattr(Recorder, '_check_committed', committed)
+        whole = live.run()
+    assert whole.failure is None
+    assert checks and proofs and all(result == proved for result in proofs)
+    assert bool(exact) != proved
+    # water(t) = 10 + t/2 + 3t²/8. The report follows that stock after its bend.
+    assert whole.history(key).at(1) == pytest.approx(10.875)
+    assert whole.history(key).at(2) == pytest.approx(12.5)
+    starts = charged_starts(whole)
+    assert len(starts) >= 2
+    for limit in (1, len(starts) - 1, len(starts)):
+        bounded = replace(config, request=replace(config.request, pieces=limit))
+        actual = Run(Plan.of(program, bounded)).run()
+        expected = requested(whole.within(limit), program)
+        assert actual.failure == expected.failure and actual.trace == expected.trace
+        assert charged_starts(actual) == charged_starts(expected)
+
+    # An exact private view can certify a live step at this stop. A checkpoint
+    # restores the record from its data and starts with no private fit evidence.
+    if not proved:
+        stopped = Run(Plan.of(program, config), (Breakpoint('tank.tick.step[0]'),))
+        cutoff = stopped.run()
+        assert isinstance(cutoff, Checkpoint) and cutoff.stop.t == 1
+        assert stopped.recorder._budget_rows
+        restored = Run.restored(Plan.of(program, config), loads(dumps(cutoff)))
+        assert not restored.recorder._budget_rows
+        assert_resume_parity(program, config, whole, restored.resume())
+
+
+@pytest.mark.parametrize(
+    ('change', 'frontier'),
+    [
+        ('unchanged', 5),
+        ('other step', 1),
+        ('posting order', 2),
+        ('intercept type', 1),
+        ('omitted tail', 4),
+        ('omitted column', 1),
+        ('early publication', 3),
+        ('ordinal', 1),
+    ],
+)
+def test_only_the_matching_prefix_of_a_solver_publication_certifies_closed_fits(change, frontier):
+    program = plant(random.Random(1))
+    recorder = Run(Plan.of(program, Configuration(Request(7)))).recorder
+    name, step = 'plant.want', object()
+    rows = [(1, Fraction(2), 0), (2, 3.0, 0), (2, 8.0, 0), (4, 9.0, 0)]
+    view = recorder.projection()
+    view._capture_budget_rows = True
+    view.add_trajectory(step, 5, [name], [(name, rows)])
+    recorder._budget_rows, recorder._budget_valid = view._budget_rows, 5
+
+    posted, through = list(rows), 6
+    if change == 'other step':
+        step = object()
+    elif change == 'posting order':
+        posted[1], posted[2] = posted[2], posted[1]
+    elif change == 'intercept type':
+        posted[0] = (1, 2.0, 0)
+    elif change == 'omitted tail':
+        posted.pop()
+    elif change == 'omitted column':
+        posted.clear()
+    elif change == 'early publication':
+        through, posted = 3, posted[:3]
+    elif change == 'ordinal':
+        recorder.add(name, 5, 12, 0)
+    recorder.add_trajectory(step, through, [name], [(name, posted)] if posted else [])
+    assert recorder._budget_valid == frontier and not recorder._budget_rows
+
+
+def test_rolled_back_posting_cannot_make_an_older_budget_certificate_valid_again():
+    from napkin.engine.timeline.moment import Tx, _Savepoint
+
+    program = plant(random.Random(1))
+    run = Run(Plan.of(program, Configuration(Request(7))))
+    run.prepare()
+    recorder = run.recorder
+    name, step, rows = 'plant.want', object(), [(1, 3.0, 0)]
+    view = recorder.projection()
+    view._capture_budget_rows = True
+    view.add_trajectory(step, 3, [name], [(name, rows)])
+    recorder._budget_rows, recorder._budget_valid = view._budget_rows, 3
+    tx = Tx('plant.tick#0')
+    tx.writes[name] = 4.0
+    point = _Savepoint(run, tx)
+    recorder.add(name, 2, 4.0, 0)
+    point.discard()
+    recorder.add_trajectory(step, 4, [name], [(name, rows)])
+    assert recorder._budget_valid == 2
+    assert recorder.pieces[name][-1] == rows[0]
 
 
 def plant(rng, curved=False):

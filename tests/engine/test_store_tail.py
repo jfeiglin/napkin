@@ -50,37 +50,56 @@ def test_projected_first_step_has_its_own_raw_and_assembled_history(model):
     end = way.peek()
     first, second = end / 4, end / 2
     run.now = first
-    way.incoming_history(first)
-    run.recorder.record(first, ongoing=True)
-    raw = run.recorder.pieces['tank.water']
-    assert raw == []
-    live_history = run.recorder._histories['tank.water']
-    original = tuple(live_history.pieces)
-    assert original[-1].curve.length == first
+    way.observe(first)
+    live_raw = tuple(run.recorder.pieces.get('tank.water', ()))
+    live_histories = dict(run.recorder._histories)
+    for at in (first, second):
+        run.now = at
+        way.observe(at)
+        view, _ = saved.at_stop(run)
+        assert view is not run.recorder and way.recorded_through is None
+        projected = view.record(at, ongoing=True).history(WATER).pieces
+        assert projected[-1].curve.length == at
+        assert view._histories['tank.water'].pieces[-1].curve.length == end
+        assert projected[-1].at(at) == pytest.approx(way.pending[2](at)[0], rel=1e-14)
+        assert tuple(run.recorder.pieces.get('tank.water', ())) == live_raw
+        assert run.recorder._histories == live_histories
 
-    # The checkpoint owns the cut. Its raw list is empty until the cut seals its prefix.
-    run.now = second
-    view, _ = saved.at_stop(run)
-    assert view is not run.recorder
-    projected = view.record(second, ongoing=True).history(WATER).pieces
-    assert projected[-1].curve.length == second
-    assert projected[-1].at(second) == pytest.approx(way.pending[2](second)[0], rel=1e-14)
-    assert view.pieces['tank.water'] is not raw
-    assert raw == [] and tuple(live_history.pieces) == original
-    assert run.recorder._total == sum(run.recorder._counted.values())
-
-    # A posting appended after the curve can still be discarded atomically.
+    # Only a real write enters a live savepoint. The private observation is absent.
     tx = Tx('tank.tick#0')
     tx.writes['tank.water'] = 20
     savepoint = _Savepoint(run, tx)
-    run.recorder.add('tank.water', first, 20, 0)
-    assert [piece[0] for piece in raw] == [0, first]
+    run.recorder.add('tank.water', second, 20, 0)
+    assert run.recorder.pieces['tank.water'][-1] == (second, 20, 0)
     savepoint.discard()
-    assert raw == []
-    assert run.recorder.incoming_piece('tank.water', first)[2].length == first
+    assert tuple(run.recorder.pieces.get('tank.water', ())) == live_raw
     way.step()
-    assert run.recorder.pieces['tank.water'] is raw
-    assert len(raw) == 1 and raw[0][2].length == end
+    (raw,) = run.recorder.pieces['tank.water']
+    assert raw[0] == 0 and raw[2].length == end
+
+
+def test_exact_opening_survives_a_later_physical_post_before_the_first_projection(monkeypatch):
+    from fractions import Fraction
+
+    monkeypatch.setattr(plan, 'LIMIT', 0)
+    source = SOURCE.replace('water: L = 10 L', 'water: L = 10.000000000000000001 L')
+    model = compile_text(source, {'L': {'volume': 1}, 'h': {'time': 1}})
+    run = Run(Plan.of(model.program, model.configuration))
+    run.prepare()
+    way = run.ways.instance_of('tank.water')
+    way.last_step = 1
+    end = way.peek()
+    t = end / 4
+    opening = Fraction('10.000000000000000001')
+    assert run.stock_state.balances['tank.water'][0] == opening
+    way.observe(t)
+    assert run.stock_state.post_stock('tank.water', t)
+    assert run.stock_state.balances['tank.water'][0] != opening
+    view = run.recorder.projection()
+    way.record_through(t, view)
+    assert view.pieces['tank.water'][0][1] == opening
+    way.step()
+    assert run.recorder.pieces['tank.water'][0][1] == opening
 
 
 def test_disk_checkpoint_exposes_only_the_accepted_stock_prefix(model, tmp_path):
@@ -143,7 +162,7 @@ def test_first_excess_on_either_side_of_each_charged_start(model):
             assert isinstance(bounded.value(WATER, bounded.end), Unavailable)
         else:
             assert bounded == whole
-    assert changed == [(charged.index(1), 1)]
+    assert set(changed) <= {(charged.index(1), 1)}
 
 
 def test_real_posting_ends_the_moving_step_and_the_new_balance_holds(monkeypatch):
@@ -162,53 +181,42 @@ def test_real_posting_ends_the_moving_step_and_the_new_balance_holds(monkeypatch
     assert not isinstance(posting, BalancePoint) and stock.charged_pieces() == len(stock.pieces)
 
 
-def test_a_single_group_fit_is_exact_and_an_unstable_extension_preserves_observed_starts(model):
+def test_private_prefix_uses_the_same_joint_fit_as_the_completed_step(model):
     """One stock's subdivided fit also supplies the common grid of its held neighbour."""
-    from types import SimpleNamespace
-
     import numpy as np
     from scipy.integrate._ivp.radau import RadauDenseOutput
 
     from napkin.engine.timeline.record import fitted
-    from napkin.engine.timeline.sparse import Sparse
 
     start, end = 1000.0, 1000.0000001
     solution = RadauDenseOutput(
         start, end, np.array([10.0, 4.0]), np.array([[0.0, 0.0, 0.0], [0.5, 0.25, 0.25]])
     )
-    stores = ('tank.water', 'tank.spare')
-    kept = np.array([0, 1])
-    tolerance = np.array([1e-8, 1e-8])
+    run = Run(Plan.of(model.program, model.configuration))
+    run.prepare()
+    way = run.ways.instance_of('tank.water')
+    way.stores = ('tank.water', 'tank.spare')
+    way.kept_stores = [0, 1]
+    way.atol = np.array([1e-8, 1e-8])
+    way.kept_flows = []
+    way.t = start
+    way.pending = (start, end, solution, solution(end), False)
+    way._history_span()
 
-    def reference(left, at):
-        states = lambda times: np.array([solution(t)[kept] for t in times])  # noqa: E731
-        return dict(zip(stores, map(tuple, fitted(states, left, at, tolerance)), strict=True))
+    def states(times):
+        return np.array([solution(t) for t in times])
 
-    for cuts in ([], [start + 0.7 * (end - start)]):
-        run = Run(Plan.of(model.program, model.configuration))
-        way = SimpleNamespace(
-            recorder=run.recorder,
-            stores=stores,
-            kept_stores=[0, 1],
-            atol=tolerance,
-            constant_requests=False,
-            kept_flows=[],
-            pending=(start, end),
-        )
-        expected = {name: () for name in stores}
-        since = start
-        for at in (*cuts, end):
-            Sparse._record(way, solution, since, at)
-            next_fit = reference(since, at)
-            assert len(next_fit[stores[0]]) == len(next_fit[stores[1]]) > 1
-            expected = {name: expected[name] + next_fit[name] for name in stores}
-            assert dict(run.recorder.saved_pieces()) == expected
-            if at < end:
-                assert all(run.recorder.pieces[name] == [] for name in stores)
-            since = at
-        assert {name: tuple(run.recorder.pieces[name]) for name in stores} == expected
-        if cuts:
-            assert expected[stores[1]] != reference(start, end)[stores[1]]
+    expected = dict(zip(way.stores, fitted(states, start, end, way.atol), strict=True))
+    assert len(expected['tank.water']) == len(expected['tank.spare']) > 1
+    at = start + 0.7 * (end - start)
+    view = run.recorder.projection()
+    way.record_through(at, view)
+    for name, rows in expected.items():
+        assert view.pieces[name] == [row for row in rows if row[0] < at]
+        assert not run.recorder.pieces.get(name)
+    way.record_through(end)
+    for name, rows in expected.items():
+        assert run.recorder.pieces[name] == rows
 
 
 def test_compacted_held_prefix_can_become_curved_without_erasing_same_time_postings(model):

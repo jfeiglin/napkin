@@ -33,10 +33,12 @@ from napkin.program.build import (
     q,
     start,
     subtract,
+    t,
     this,
     value,
 )
 from napkin.program.config import Configuration, Numerics, Request
+from napkin.program.record import Key
 from tests.reference.errors import NotCovered
 from tests.reference.from_program import run_of
 
@@ -110,6 +112,29 @@ def test_an_assertion_still_inside_its_band_at_the_horizon_holds():
     record, oracle = tank(this.water >= q(5, 'L'), after(q(7, 'h')), horizon=5)
     assert record.failure is None and record.end == 5
     assert oracle is not None  # the exact-arithmetic oracle has no comparison band
+
+
+def test_a_failed_stage_records_the_paid_prefix_of_an_unrelated_solver():
+    b = Builder(UNITS)
+    b.entity(
+        'tank',
+        value('water', 'L', 10, lower=0, outflow=endpoint(capacity=q(10, 'L/h'))),
+        flow('drain', this.water, SINK, request=formula(q(1, 'L/h') + t * q(1, 'L/h/h'))),
+    )
+    b.entity(
+        'clock',
+        value('count', '', 0),
+        assertion(this.count <= 0),
+        event('tick', after(q(1, 'h'), add(this.count, 1))),
+    )
+    b.setup(start(named('clock').tick))
+    live = Run(Plan.of(b.finish(), Configuration(Request(3))))
+    record = live.run()
+    assert record.failure is not None and record.end == 1
+    assert live.ways.sets[live.ways.set_of['tank.water']][0].way == 'sparse'
+    water = record.history(Key('tank', ('water',)))
+    for at in (0.8, 0.9, 1):
+        assert water.at(at) == pytest.approx(10 - at - at**2 / 2, abs=1e-9, rel=0)
 
 
 @pytest.mark.parametrize('factor', [1e-9, 1e-7], ids=['tight', 'wide'])

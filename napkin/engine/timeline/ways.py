@@ -221,6 +221,32 @@ class Ways:
             return min(clocks)
         return None
 
+    def accept_sparse(self, t):
+        """Book incoming physical prefixes before their opening stages."""
+        for key in self.sampled:
+            way = self.sets[key][1]
+            if isinstance(way, Sparse):
+                way.commit_through(t)
+
+    def pending_sparse(self, t):
+        """Installed sparse groups with unrecorded incoming history at t."""
+        for key in self.sampled:
+            way = self.sets[key][1]
+            if isinstance(way, Sparse) and way.has_unrecorded(t):
+                yield way
+
+    def project_sparse(self, recorder, t):
+        """Materialize the pending sparse prefixes in one detached recorder view."""
+        for way in self.pending_sparse(t):
+            way.record_through(t, recorder)
+
+    def record_accepted(self, t):
+        """Flush history up to each sparse group's last paid coordinate at a terminal failure."""
+        for key in self.sampled:
+            way = self.sets[key][1]
+            if isinstance(way, Sparse):
+                way.record_accepted(t)
+
     def cut(self, t):
         """Every instance stands at time t. Give the stores brought to a bound by the cut."""
         met = set()
@@ -438,7 +464,14 @@ class Ways:
         """The sets `ids` leave their instances at time t; gives the values of their stores there, in
         the order of the sets' ids (a set of ids has no order of its own)."""
         values = {}
-        for key in sorted(ids):
+        retiring = sorted(ids)
+        # A delivered rate can read another retiring group's incoming step.
+        # Materialize all outgoing spans while every supplier is still installed.
+        for key in retiring:
+            way = self.sets[key][1]
+            if isinstance(way, Sparse):
+                way.record_through(t)
+        for key in retiring:
             connected, instance = self.sets[key]
             # Both ends consume the same accepted physical leg before its installation retires.
             amounts = {} if len(connected.stores) > 1 else None

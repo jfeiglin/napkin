@@ -711,7 +711,7 @@ class Stocks:
         # The stock can also have a newer exact posting from an accepted stage.
         return max(self.balances[name][2], min(accepted, through))
 
-    def project(self, record):
+    def project(self, record, readers=None):
         """Give each moving stock a held physical balance at the inclusive cutoff.
         A posting already at the cutoff remains a charged piece."""
         end = record.end
@@ -729,10 +729,12 @@ class Stocks:
                     corrected[name] = actual
         if not corrected:
             return record
+        if readers is None:
+            readers = run.recorder._readers
         pending = list(corrected)
         while pending:
             source = pending.pop()
-            for name in run.recorder._readers.get(source, ()):
+            for name in readers.get(source, ()):
                 value = run.plan.values[name]
                 if (
                     name not in corrected

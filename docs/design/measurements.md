@@ -272,3 +272,63 @@ The engine still uses its existing sum implementation. The 31.4% figure is an ex
 replay estimate. A production speedup remains unverified. Before adopting the design, time
 the whole engine, verify small collections and compare the first budget excess across a
 checkpoint, including postings that land exactly at the cutoff.
+
+## Recording a moving solver at an unrelated moment
+
+We counted incoming history writes on the 25-cell `instances` case at `367040c`. Each cell
+has its own solver. The budget check before a moment asked every moving cell for its history.
+This caused all 900 writes inside an open step. The other 742 writes came when a cell completed
+its step. Formula assembly subsequently read those pieces.
+
+The solver now books each incoming physical transfer at the same time as before. A reader
+at a moment can use the dense solution directly. When the solver completes or retires a step,
+it writes that step's history. A checkpoint takes its own copy of the accepted prefix. A terminal
+failure keeps the prefix that the solver has already booked. The public record and the
+checkpoint expose a curve only through the accepted cutoff.
+
+Before an ordinary moment, the recorder first tries to prove that all the pieces will fit.
+Its bound includes requested formulas and their inputs. If necessary, it uses the openings
+of the prepared solver steps to tighten the bound. If the bound still cannot prove room,
+the recorder assembles the actual histories in a private copy and applies the usual first-excess
+rule. Both that copy and the final record use the same fitted coefficients and piece starts
+for a given solver step. Checking the budget does not post a second transfer or insert a
+new boundary into the live trajectory.
+
+A private check keeps the rows that it counted for each open step. When the solver later
+writes those rows, the recorder compares the step, row positions, and exact posted values.
+It can reuse counts for intervals that end strictly before the first difference. A shorter
+publication, a replacement step or a reordered posting limits the reuse. A restored run
+starts without this information. The checkpoint format stays the same.
+
+On the 25-cell case the solver fitted 817 whole steps and no partial step. The budget
+check fitted 437 of those steps first. Each completed step reused its earlier fit.
+There were no live history writes from the budget check.
+
+On the five real piece limits, every live record was byte-identical to its own unlimited
+record trimmed to that limit. In Juneau, 923 pieces covered 109.692307680 h, up from
+103.2 h. The new record had 18 fewer charged starts through the later cutoff. The other
+four limits stopped at the same time as before. In the occurrence-alias fixture, every
+limit from 1 through 182 preserved the first excess, charged starts, trace and coverage.
+At limit 51, both records were byte-identical and stopped at 1 h. The largest difference
+in a curve inside a cutoff was 7.11e-15 L, in `yard.sink` immediately before 3 h.
+
+The 5-year workforce prototype illustrates the cost of an inconclusive bound. All 103
+checks with a pending step required an exact private record. Those private checks used
+6.20 CPU seconds in a separate instrumented run. The isolated whole run went from
+8.95 to 14.84 seconds and saved two pieces, from 45,577 to 45,575.
+
+For the `instances` measurements, each process used one numerical-library thread and
+the run store was off. Each pair gives the measurements before and after the change.
+Times are in CPU seconds. The function times include their callees and overlap.
+
+| Work | 50 cells | 100 cells | 200 cells |
+| --- | ---: | ---: | ---: |
+| Complete profiled run | 14.87 → 11.38 | 60.60 → 41.32 | 287.67 → 192.97 |
+| Sparse solver history fit, `Sparse._record` | 5.40 → 1.16 | 20.87 → 2.62 | 78.80 → 5.94 |
+| Budget check, `Recorder.check_budget` | 10.63 → 5.65 | 51.57 → 24.78 | 268.58 → 136.31 |
+| Assembly of the two collection sums | 4.17 → 3.12 | 25.02 → 14.93 | 164.46 → 80.41 |
+| Stored pieces | 28,013 → 21,213 | 84,000 → 56,400 | 280,007 → 168,807 |
+
+At 200 cells, the budget check used 50.59 CPU seconds to bound the piece count in
+`Recorder._fits_bound`. Complete assembly of the two sums grew 4.79× and 5.39×
+with successive doublings. The solver's own history fit grew 2.26× and 2.27×.

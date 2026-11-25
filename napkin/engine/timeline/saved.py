@@ -187,11 +187,15 @@ def at_stop(run):
     run.ways.sample_at_stop(run.now)
     if run.saved_arrival is not None:
         return run.recorder, run.saved_arrival
-    # A later round can stop with a dense step still installed. If the way already
-    # stands at the stop, its serialized state contains the accepted prefix.
+    # A later round can stop after the transfers were booked but before the
+    # corresponding histories were requested. Only the checkpoint needs those pieces.
     if not run.arriving and not any(
         isinstance(way, Sparse) and way.pending is not None and way.t < run.now for way in run.ways.instances
     ):
+        if any(isinstance(way, Sparse) and way.has_unrecorded(run.now) for way in run.ways.instances):
+            recorder = run.recorder.projection()
+            run.ways.project_sparse(recorder, run.now)
+            return recorder, None
         return run.recorder, None
     projected = copy(run)
     projected.stock_state = copy(run.stock_state)
@@ -199,23 +203,7 @@ def at_stop(run):
     projected.stock_state.balances = dict(run.stock_state.balances)
     projected.stock_state.ranges = dict(run.stock_state.ranges)
     projected.stock_state.ends = dict(run.stock_state.ends)
-    projected.recorder = recorder = copy(run.recorder)
-    recorder.run = projected
-    recorder._private = set()
-    recorder.fits = copy(run.recorder.fits)
-    recorder.fits.closed = dict(run.recorder.fits.closed)
-    recorder.fits.ends = list(run.recorder.fits.ends)
-    recorder._histories = dict(recorder._histories)
-    recorder._flow_reads = dict(recorder._flow_reads)
-    recorder._event_ends = dict(recorder._event_ends)
-    recorder._dirty = set(recorder._dirty)
-    recorder._moving = set(recorder._moving)
-    recorder._raw_positions = dict(recorder._raw_positions)
-    recorder._store_tails = dict(recorder._store_tails)
-    recorder._counted = dict(recorder._counted)
-    recorder._coverage_starts = dict(recorder._coverage_starts)
-    recorder.pieces = {name: list(pieces) for name, pieces in run.recorder.pieces.items()}
-    recorder.trace = list(recorder.trace)
+    projected.recorder = recorder = run.recorder.projection(projected)
     projected.moved = set(run.moved)
     memo = {
         id(run): projected,
@@ -309,7 +297,7 @@ def save(run, recorder, arrival):
         (
             'recorder',
             (
-                ('pieces', tuple(recorder.saved_pieces())),
+                ('pieces', tuple(recorder.saved_pieces(run.now))),
                 ('trace', tuple(recorder.trace)),
                 ('constants', _pairs(recorder.constants)),
                 ('tolerance', _pairs(recorder.tolerance)),

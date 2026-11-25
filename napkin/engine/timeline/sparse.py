@@ -44,7 +44,7 @@ starts there. A reader of a condition that watches the stores reads the form of 
 from __future__ import annotations
 
 import math
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from contextlib import contextmanager
 
 import numpy as np
@@ -73,6 +73,16 @@ from .reads import Reads, lazily
 from .record import fitted
 from .region import Region, key_surfaces
 from .way import MovingTransfers, Way
+
+
+def _opening(row):
+    return row[0]
+
+
+class _RateSample(Exception):
+    def __init__(self, at, problem):
+        self.at, self.problem = at, problem
+
 
 _MISSING = object()
 
@@ -618,6 +628,9 @@ class Sparse(MovingTransfers, Way):
         self.sets, self.set_levels = sets, levels  # which a checkpoint names (`saved.py`)
         self.key, self.alive = key, True
         self.solver, self.pending = None, None
+        self._history_end = None
+        self._history_rows = None
+        self._opening_balances = {}
         self.last_step = None
         self._drift = None  # the rates of the stores at the present state, once read (`drift`)
         self.run, self.recorder = run, run.recorder
@@ -1301,54 +1314,160 @@ class Sparse(MovingTransfers, Way):
         )
 
     def _record(self, solution, start, end):
-        """The pieces of the kept stores and actual rates from start to end."""
-        recorder = self.recorder
+        """Build the incoming history on its original smooth interval using this installation."""
         if self.constant_requests:
             if start == self.held_since:
                 for k in self.kept_stores:
-                    recorder.add(
-                        self.stores[k], start, float(self.held_levels[k]), float(self.held_slopes[k])
-                    )
+                    yield self.stores[k], [(start, float(self.held_levels[k]), float(self.held_slopes[k]))]
         elif self.kept_stores:
             tolerance = np.maximum(self.atol[self.kept_stores], 1e-300)
-            states = lambda times: np.array([solution(at)[self.kept_stores] for at in times])  # noqa: E731
-            names = [self.stores[k] for k in self.kept_stores]
 
-            def fit(left):
-                return fitted(states, left, end, tolerance)
+            def states(times):
+                return np.array([solution(at)[self.kept_stores] for at in times])
 
-            recorder.store_step(names, fit, start, complete=end == self.pending[1])
-        if self.kept_flows:
-            if self.outputs is not None and (self.held_rates or not (self.surfaces or self.stepped)):
-                return  # this branch already has its anchor from the sharing
-            tolerance = np.array([recorder.tolerance.get(self.recorded[k], 1e-9) for k in self.kept_flows])
+            for k, rows in zip(self.kept_stores, fitted(states, start, end, tolerance), strict=True):
+                yield self.stores[k], rows
+
+        if self.kept_flows and not (
+            self.outputs is not None and (self.held_rates or not (self.surfaces or self.stepped))
+        ):
+            tolerance = np.array(
+                [self.recorder.tolerance.get(self.recorded[k], 1e-9) for k in self.kept_flows]
+            )
 
             def delivered(times):
-                return np.array([self.values(at, solution(at))[0][self.kept_flows] for at in times])
+                rows = []
+                for at in times:
+                    try:
+                        rows.append(self.values(at, solution(at))[0][self.kept_flows])
+                    except (SimulationError, ExpressionError, ArithmeticError, ValueError) as problem:
+                        raise _RateSample(float(at), problem) from problem
+                return np.array(rows)
 
-            with self._reading_rates():
-                for k, pieces in zip(self.kept_flows, fitted(delivered, start, end, tolerance)):
-                    recorder.add_pieces(self.recorded[k], pieces)
+            measured = self.measured
+            try:
+                with self._reading_rates():
+                    columns = fitted(delivered, start, end, tolerance)
+            finally:
+                self.measured = measured
+            for k, rows in zip(self.kept_flows, columns, strict=True):
+                yield self.recorded[k], rows
+
+    def _fit_incoming(self, start, end):
+        """A valid fit of the incoming left side, up to the first invalid rate sample."""
+        problem = None
+        while end > start:
+            try:
+                return end, tuple(self._record(self.pending[2], start, end)), problem
+            except _RateSample as failure:
+                # All samples lie strictly before the right endpoint. A failed
+                # sample limits this fit without invalidating an earlier observation.
+                assert start <= failure.at < end
+                end, problem = failure.at, failure.problem.with_traceback(None)
+        return start, (), problem
+
+    def _incoming_rows(self):
+        """Every view of this step reads the same grid and polynomial coefficients."""
+        if self._history_rows is None:
+            self._history_rows = self._fit_incoming(self.pending[0], self._history_end)
+        end, rows, problem = self._history_rows
+        # A coalesced contact can extend the dense step to the authored clock.
+        # All observations use that actual extension, including the terminal flush.
+        extension = max(self.pending[1], self.t)
+        if extension > end and problem is None:
+            end, extra, problem = self._fit_incoming(end, extension)
+            self._history_rows = end, rows + extra, problem
+        return self._history_rows
+
+    def has_unrecorded(self, t):
+        """A positive part of the pending step through t has not yet reached the recorder."""
+        if self.pending is None:
+            return False
+        start, end = self.pending[:2]
+        return (start if self.recorded_through is None else max(start, self.recorded_through)) < min(
+            t, max(end, self.t)
+        )
+
+    def trajectory_columns(self):
+        """Columns that can receive fitted pieces during this step, for the recorder's upper bound."""
+        yield from (self.stores[i] for i in self.kept_stores)
+        if self.outputs is None or (not self.held_rates and (self.surfaces or self.stepped)):
+            yield from (self.recorded[i] for i in self.kept_flows)
+
+    def trajectory_rows(self, t):
+        """Canonical unposted openings strictly before t, shared by demand views and the live recorder."""
+        if not self.has_unrecorded(t):
+            return
+        start, pending_end = self.pending[:2]
+        t = min(t, max(pending_end, self.t))
+        after = start if self.recorded_through is None else max(start, self.recorded_through)
+        end, rows, problem = self._incoming_rows()
+        if problem is not None and t > end:
+            raise problem
+        for name, pieces in rows:
+            first = 0 if after == start else bisect_left(pieces, after, key=_opening)
+            limit = len(pieces) if t >= end else bisect_left(pieces, t, key=_opening)
+            if first == limit:
+                continue
+            group = pieces if first == 0 and limit == len(pieces) else pieces[first:limit]
+            if name in self._opening_balances and group[0][0] == start:
+                at, value, shape = group[0]
+                point = self._opening_balances[name]
+                if float(point) == value:
+                    group = [(at, point, shape), *group[1:]]
+            yield name, group
+
+    def record_through(self, t, recorder=None):
+        """Write a pending prefix. A detached recorder leaves the live history frontier unchanged."""
+        if not self.has_unrecorded(t):
+            return
+        t = min(t, max(self.pending[1], self.t))
+        live = recorder is None or recorder is self.recorder
+        target = self.recorder if live else recorder
+        target.add_trajectory(self._history_token, t, self.trajectory_columns(), self.trajectory_rows(t))
+        if live:
+            self.recorded_through = float(t)
+
+    def record_accepted(self, t):
+        """At a failure, retain only the booked prefix whose rate history can be read."""
+        t = min(t, self.t)
+        if self.has_unrecorded(t):
+            end, _, problem = self._incoming_rows()
+            self.record_through(min(t, end) if problem is not None else t)
+
+    def _history_span(self):
+        """Capture a posted remainder before a later moment can replace its ledger entry."""
+        start, end = self.pending[:2]
+        self._history_token = object()
+        self._history_end = end
+        self._history_rows = None
+        self._opening_balances = {}
+        balances = self.run.stock_state.balances
+        for k in self.kept_stores:
+            name = self.stores[k]
+            point = balances.get(name)
+            if point is not None and point[2] == start and point[0] != float(point[0]):
+                self._opening_balances[name] = point[0]
 
     def commit_through(self, t):
-        """Post the transfers and record the history of the pending step through t once."""
+        """Pay the physical transfer through t once, independent of history observations."""
         if self.pending is None:
             return
-        start, _, solution, _, _ = self.pending
-        if self.recorded_through is not None:
-            start = max(start, self.recorded_through)
+        start, end, solution, _, _ = self.pending
+        start = max(start, self.t)
         if t <= start:
             return
         self.evaluations += self.pending_evaluations
         self.pending_evaluations = 0
         self._accept(solution, start, t)
-        self._record(solution, start, t)
-        self.recorded_through = self.t = float(t)
-        self.y = self.pending[3] if t == self.pending[1] else np.array(solution(t), dtype=float)
+        self.t = float(t)
+        self.y = self.pending[3] if t == end else np.array(solution(t), dtype=float)
         self._drift = None
 
     def incoming_history(self, t):
+        """An explicit request for the incoming history and physical state."""
         self.commit_through(t)
+        self.record_through(t)
 
     def _count(self, start, end):
         """A step of the solver from start to end: after `integrate.STALLED_STEPS` steps in a row
@@ -1500,6 +1619,7 @@ class Sparse(MovingTransfers, Way):
             self.contacts = list(self._turns(lambda at: self.y, self.t, until))
             end = min((at for at, _, _ in self.contacts), default=until)
             self.pending = self.t, end, lambda at: self.y, self.y, bool(self.contacts)
+            self._history_span()
             return end
         if self.solver is None:
             self._start()
@@ -1562,6 +1682,7 @@ class Sparse(MovingTransfers, Way):
         if ended and end <= self.first:
             raise SimulationError(self._failed(end, 'Integration made no progress'))
         self.pending = (start, end, solution, np.array(y, dtype=float), ended)
+        self._history_span()
         return end
 
     def _transfer_amount(self, solution, start, end):
@@ -1609,7 +1730,8 @@ class Sparse(MovingTransfers, Way):
         """Commit the next step: the stores and the rates of the set move through it."""
         _, end, _, y, ended = self.pending
         self.commit_through(end)
-        self.pending, self._drift = None, None
+        self.record_through(end)
+        self.pending, self._history_rows, self._drift = None, None, None
         for name in levels:
             if name in self.place:
                 y[self.place[name]] = levels[name]
@@ -1633,12 +1755,14 @@ class Sparse(MovingTransfers, Way):
         if pending[1] >= limit:
             return
         now, brief, brief_from = self.run.now, self.brief, self.brief_from
+        history = self._history_token, self._history_end, self._history_rows, self._opening_balances
         try:
             while self.pending[1] < limit and not self.pending[4]:
                 self.pending = None
                 self.peek(limit)
         finally:
             self.pending, self.solver = pending, None
+            self._history_token, self._history_end, self._history_rows, self._opening_balances = history
             self.run.now, self.brief, self.brief_from = now, brief, brief_from
 
     def timing_events(self, through):
@@ -1720,7 +1844,9 @@ class Sparse(MovingTransfers, Way):
         Their values agree closely. Inside a long step, the relative difference can exceed rtol."""
         if self.pending is not None:
             self.commit_through(min(t, self.pending[1]))
+            self.record_through(min(t, self.pending[1]))
             self._seal_stores()
+            self._history_rows = None
             if t > self.pending[0]:
                 self.contacted = ()
             self.pending = None

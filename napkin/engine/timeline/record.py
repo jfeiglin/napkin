@@ -86,6 +86,7 @@ the comparison settings of its manifest (`Plan.replay`).
 from __future__ import annotations
 
 import math
+import sys
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from copy import copy
@@ -316,6 +317,33 @@ def recorded_piece(t, value, rate):
     return Piece(t, value, curve=rate) if isinstance(rate, Curve) else Piece(t, value, rate)
 
 
+def _curve_interval(curve, offset, length):
+    """Express a fitted polynomial on a subinterval, without sampling or adding starts."""
+    u = 2 * offset / curve.length - 1
+    ratio = length / curve.length
+    domain = chebyshev.Chebyshev((u + ratio, ratio))
+    coefficients = chebyshev.Chebyshev(curve.coefficients)(domain).coef
+    return Curve(length, tuple(float(c) for c in coefficients))
+
+
+def _curve_prefix(shape, at, stop):
+    if isinstance(shape, Curve) and at < stop < at + shape.length:
+        return _curve_interval(shape, 0, stop - at)
+    return shape
+
+
+def _exported_pieces(pieces, end):
+    """Limit each public curve to the accepted span after dependent formulas have read it."""
+    for k, piece in enumerate(pieces):
+        if piece.curve is not None:
+            stop = pieces[k + 1].t if k + 1 < len(pieces) else end
+            curve = _curve_prefix(piece.curve, piece.t, stop)
+            if curve is not piece.curve:
+                yield replace(piece, curve=curve)
+                continue
+        yield piece
+
+
 def _compact(pieces):
     """Drop a piece only when its predecessor gives the same value and outgoing rate.
 
@@ -447,6 +475,13 @@ class Recorder:
         self._as_of = None
         self._held_upper = None
         self._held_growth = 0
+        self._budget_rules = None
+        self._budget_formulas = 0
+        self._budget_closed = {}
+        self._budget_valid = -math.inf
+        self._budget_safe_at = None
+        self._budget_rows = {}
+        self._capture_budget_rows = False
 
     def entry(self, t, kind, part, owner='', **details):
         """One entry of the trace, in the round where the run is (`round`: 0 is the setup)."""
@@ -459,6 +494,30 @@ class Recorder:
         """The entry of the failure that stopped a run at time t."""
         return Entry(t, self.round, 'failure', '', '', (('message', message), *details.items()))
 
+    def projection(self, run=None):
+        """A private recorder for an observation that must not change the live history."""
+        view = copy(self)
+        if run is not None:
+            view.run = run
+        view._private = set()
+        view.fits = copy(self.fits)
+        view.fits.closed = dict(self.fits.closed)
+        view.fits.ends = list(self.fits.ends)
+        view._histories = dict(self._histories)
+        view._flow_reads = dict(self._flow_reads)
+        view._event_ends = dict(self._event_ends)
+        view._dirty = set(self._dirty)
+        view._moving = set(self._moving)
+        view._raw_positions = dict(self._raw_positions)
+        view._store_tails = dict(self._store_tails)
+        view._counted = dict(self._counted)
+        view._coverage_starts = dict(self._coverage_starts)
+        view._budget_rows = {}
+        view._capture_budget_rows = False
+        view.pieces = {name: list(pieces) for name, pieces in self.pieces.items()}
+        view.trace = list(self.trace)
+        return view
+
     def external(self, store, t, amount, start):
         """An edit at a stop moved `amount` into a store from outside (a withdrawal is negative): its
         books hold it as an external transfer, the history `external` beside the store, what edits
@@ -467,6 +526,7 @@ class Recorder:
         first edit without a piece of its own."""
         self._held_upper, self._held_growth = math.inf, 0
         self.transfers.setdefault(store, (start, []))[1].append((t, amount))
+        self._budget_change(t)
         self._dirty.add(store)
         self._from = min(self._from, t)
 
@@ -533,23 +593,274 @@ class Recorder:
         ):
             return
         if before and self.run.arriving and self.run.saved_arrival is None:
+            from .sparse import Sparse
+
             for registry in (ways.sampled, ways.moving_solvers):
                 for key in registry:
-                    ways.sets[key][1].incoming_history(end)
+                    way = ways.sets[key][1]
+                    if not isinstance(way, Sparse):
+                        way.incoming_history(end)
         self.fits.advance(end)
+        pending = list(ways.pending_sparse(end))
+        if pending:
+            if not self._index_current():
+                self._prepare_histories()
+            # Re-sharing can install a family's raw writer for an existing formula.
+            if self._budget_formulas != len(self.formulas):
+                self._budget_formulas = len(self.formulas)
+                self._budget_rules = None
+                self._budget_safe_at = None
+                self._budget_valid = -math.inf
+                self._budget_rows.clear()
+            if self._budget_safe_at == end:
+                return
+            if self._pending_fits(end, pending):
+                self._budget_safe_at = end
+                return
+            probe = self.projection()
+            # A prior complete view already fitted these immutable intervals.
+            # Never import budget-only pieces or a partial input into the live recorder.
+            probe.fits.closed.update(
+                (k, v) for k, v in self._budget_closed.items() if k[2] < self._budget_valid
+            )
+            probe._capture_budget_rows = True
+            ways.project_sparse(probe, end)
+            fits = probe._check_committed(end, before)
+            self._budget_closed = probe.fits.closed
+            self._budget_valid = end
+            self._budget_rows = probe._budget_rows if fits else {}
+            if (
+                fits
+                and self._budget_rules
+                and not self._checkpoint_observation
+                and not self._extended_stock
+                and not any(t is not None for t in self._coverage_starts.values())
+            ):
+                self._budget_safe_at = end
+            return
         if internal and self._index_current():
             if self._held_upper is None:
                 self._held_upper, self._held_growth = self._held_piece_bound()
             if self._held_upper <= self.plan.configuration.request.pieces:
                 return
+        self._check_committed(end, before)
+
+    def _check_committed(self, end, before):
         self._advance(end)
         view = self._at_cutoff(end)
         if view._total <= self.plan.configuration.request.pieces:
-            return
+            return True
         round_ = int(not self.run.bare) if before else self.round
         prefix = view._record(end, None, Entry(end, round_, 'pause', '', ''), end != self.plan.horizon)
         if prefix.failure is not None and (not before or prefix.failure.t < end):
             raise HistoryFull(prefix)
+        return False
+
+    def _budget_change(self, start):
+        """A new raw piece can change a previously projected open interval."""
+        self._budget_valid = min(self._budget_valid, start)
+        self._budget_safe_at = None
+
+    def _pending_fits(self, end, pending):
+        """Prove headroom without publishing any prefix of an unrelated dense step.
+
+        First reserve the maximum number of leaves of each adaptive fit. If that
+        is inconclusive, read the cached openings of the actual prepared steps.
+        A bound can admit an observation. Only the ordinary recorder can refuse it.
+        """
+        if self._budget_rules is None:
+            self._budget_rules = self._budget_columns()
+        if not self._budget_rules or self._checkpoint_observation or self._extended_stock:
+            return False
+        if any(t is not None for t in self._coverage_starts.values()):
+            return False
+        extra = {}
+        for way in pending:
+            # A coalesced contact can extend just past the accepted polynomial.
+            # Its extension is a second fit.
+            spans = 1 + (way.t > way._history_end)
+            for name in way.trajectory_columns():
+                extra[name] = spans * (MOST + 1), True
+        if self._fits_bound(end, extra):
+            return True
+        rows_by_name = defaultdict(list)
+        for way in pending:
+            for name, rows in way.trajectory_rows(end):
+                rows_by_name[name].extend(rows)
+        return self._fits_bound(end, {}, rows_by_name)
+
+    def _budget_columns(self):
+        """Describe the emitters for which a maximum follows from the fit itself.
+
+        Other emitters, including a root search that can add its own intervals,
+        require the ordinary exact check. Ignore histories outside the request's
+        dependency closure.
+        """
+        plan = self.plan
+        wanted = {n for n in self._order if (k := plan.values[n].key) is not None and self._names(k)}
+        rules = []
+        for name in reversed(self._order):
+            if name not in wanted:
+                continue
+            value = plan.values[name]
+            charged = value.key is not None and self._names(value.key)
+            reads, timed, boolean = (), False, False
+            if name in plan.defined:
+                return ()
+            if name not in self._derived:
+                kind = 'raw'
+            elif plan.occurrence_of(name) is not None or value.kind == RATE:
+                return ()
+            elif name in self.formulas:
+                kind = 'raw'
+            elif value.kind == FORMULA:
+                if isinstance(value.node, nodes.Ref) and value.node.name != 't':
+                    kind, reads = 'alias', (value.node.name,)
+                else:
+                    if any(
+                        isinstance(n, nodes.Call) and n.function in ('min', 'max', 'abs', 'clip')
+                        for n in nodes.breadth_first(value.node)
+                    ):
+                        return ()
+                    kind, reads = 'formula', tuple(_formula_reads(value.node))
+                    timed, boolean = 't' in nodes.names(value.node), value.boolean
+            elif value.kind == REDUCE:
+                reduction = plan.reductions[name]
+                if reduction.op != 'sum' or reduction.names is None or any(reduction.tests):
+                    return ()
+                kind, reads = 'sum', reduction.names
+            else:
+                return ()
+            if any(read not in self._order for read in reads):
+                return ()
+            wanted.update(reads)
+            rules.append((name, kind, reads, timed, boolean, charged))
+        return tuple(reversed(rules))
+
+    def _fits_bound(self, end, extra, projected=None):
+        limit = self.plan.configuration.request.pieces
+        counts, moves, grids = {}, {}, {}
+        magnitudes = {}
+        total = sum(len(rows) for _, rows in self.transfers.values())
+        for name, kind, reads, timed, boolean, charged in self._budget_rules:
+            if kind == 'raw':
+                raw = self.pieces.get(name, ())
+                tail = self._store_tails.get(name, ())
+                count, moving = extra.get(name, (0, False))
+                # Include a seed or late opening even if it compacts into its neighbor.
+                count += len(raw) + len(tail) + 1
+                moving = moving or any(row[2] != 0 for row in raw) or any(row[2] != 0 for row in tail)
+                if projected is not None:
+                    rows = projected.get(name, ())
+                    if rows and name in self.run.stock_state.balances:
+                        rows = [(at, self._posted_value(name, at, v), s) for at, v, s in rows]
+                    count += len(rows)
+                    moving = moving or any(row[2] != 0 for row in rows)
+                    # Exact contributing openings let downstream fits reuse previously
+                    # proved intervals. A false opening can hide a longer adaptive fit.
+                    # Use the same seed and seam compaction as the raw-history owner.
+                    if name in self.formulas:
+                        pieces = self._history(None, [r for r in (*raw, *rows) if r[0] <= end]).pieces
+                    else:
+                        i, seed = self._raw_opening(name, raw, tail or rows, end)
+                        pieces = [Piece(*r) for r in seed]
+                        self._extend(pieces, [r for r in raw[i:] if r[0] <= end])
+                        if tail or rows:
+                            self._extend(pieces, [r for r in (*tail, *rows) if r[0] <= end])
+                    grids[name] = pieces
+            elif kind == 'alias':
+                count, moving = counts[reads[0]], moves[reads[0]]
+                if reads[0] in grids:
+                    grids[name] = grids[reads[0]]
+            else:
+                moving = timed or any(moves[read] for read in reads)
+                count = 1 + sum(counts[read] for read in reads)
+                if moving:
+                    # _switches samples at most len(_CHECKS) distinct stretches.
+                    # An unavailable stretch can split a numeric fit; each available
+                    # stretch has at most MOST cuts. Include the final landed point.
+                    stretch = len(_CHECKS) + 1
+                    cap = stretch if boolean else stretch * (MOST + 1)
+                    count = 1 + (count + len(self.fits.ends)) * cap
+                    if projected is not None and all(read in grids for read in reads):
+                        opening = self._budget_grid(name, kind, reads, grids, end, cap, timed, magnitudes)
+                        if opening is not None:
+                            count = opening
+            counts[name], moves[name] = min(count, limit + 1), moving
+            if charged:
+                total += count
+                if total > limit:
+                    return False
+        return total <= limit
+
+    def _budget_grid(self, name, kind, reads, grids, end, cap, timed, magnitudes):
+        sources = [grids[r] for r in reads]
+        if any(not h or h[0].t > 0 for h in sources):
+            return None  # A selected record can have an overlay at its first late opening.
+        openings = sorted({0.0, end, *(p.t for h in sources for p in h)})
+        if kind == 'sum' and all(
+            p.curve is None and _line_number(p.value) and _line_number(p.rate) for h in sources for p in h
+        ):
+            return len(openings)  # collections.history_of sums the input lines directly.
+        node = self.plan.values[name].node
+        if kind == 'sum' or (
+            isinstance(node, nodes.Binary)
+            and node.op in ('add', 'sub', 'mul')
+            and isinstance(node.left, nodes.Ref)
+            and isinstance(node.right, nodes.Ref)
+        ):
+            # Addition and multiplication of these bounded finite operands cannot
+            # create an unavailable stretch. Each grid interval needs at most one
+            # adaptive fit, even if that fit uses every allowed subdivision.
+            for read in reads:
+                if read not in magnitudes:
+                    magnitudes[read] = self._absolute_bound(grids[read], end)
+            peak = max((magnitudes[r] for r in reads), default=0.0)
+            if peak <= math.sqrt(sys.float_info.max) / max(2, len(reads)):
+                cap = MOST + 1
+        count = 1  # the final landed point
+        for a, b in pairwise(openings):
+            if not timed and all(
+                (p := h[bisect_right(h, a, key=_piece_time) - 1]).curve is None and p.rate == 0
+                for h in sources
+            ):
+                count += 1
+                continue
+            moments = self.fits.intervals(a, b)
+            for left, right in pairwise(_fit_boundaries(a, b, moments, self.plan.numerics.crossing)):
+                key = (name, left, right)
+                fit = self.fits.closed.get(key)
+                if fit is None and right < self._budget_valid:
+                    fit = self._budget_closed.get(key)
+                count += cap if fit is None else max(1, len(fit))
+        return count
+
+    @staticmethod
+    def _absolute_bound(pieces, end):
+        """A finite ceiling on every reading of a raw numeric history, or infinity."""
+        peak = 0.0
+        for i, piece in enumerate(pieces):
+            if not _line_number(piece.value) or not _line_number(piece.rate):
+                return math.inf
+            stop = pieces[i + 1].t if i + 1 < len(pieces) else end
+            width = stop - piece.t
+            try:
+                ceiling = abs(float(piece.value))
+                if (curve := piece.curve) is None:
+                    ceiling += abs(float(piece.rate)) * width
+                elif width > curve.length or curve.length <= 0 or len(curve.coefficients) > DEGREE + 1:
+                    return math.inf
+                else:
+                    # On the piece's own grid |u| <= 1. A Clenshaw recurrence
+                    # can grow by less than four per coefficient. Include both
+                    # evaluations in Curve.increase and a margin for rounding.
+                    ceiling += 4 ** (len(curve.coefficients) + 2) * sum(map(abs, curve.coefficients))
+            except (OverflowError, ValueError):
+                return math.inf
+            if not math.isfinite(ceiling):
+                return math.inf
+            peak = max(peak, ceiling)
+        return peak
 
     def _held_piece_bound(self):
         """Bound retained pieces from raw held lines, their aliases and numeric sums.
@@ -670,6 +981,7 @@ class Recorder:
             self._dirty.add(name)
         self._held_upper, self._held_growth = math.inf, 0
         self._from = min(self._from, start)
+        self._budget_change(start)
 
     def _keeps_stock_prefix(self, name, rows, since):
         """Keep each charged start, including duplicates, and whether the stock holds there."""
@@ -697,10 +1009,16 @@ class Recorder:
         if tail is not None:
             self.pieces[name].extend(tail)
 
-    def saved_pieces(self):
+    def saved_pieces(self, end=None):
         """Raw pieces through the checkpoint, including any accepted, unfinished step."""
         for name in sorted(self.pieces):
-            yield name, tuple(self.pieces[name]) + self._store_tails.get(name, ())
+            rows = tuple(self.pieces[name]) + self._store_tails.get(name, ())
+            if end is not None:
+                rows = tuple(
+                    (at, value, _curve_prefix(shape, at, rows[k + 1][0] if k + 1 < len(rows) else end))
+                    for k, (at, value, shape) in enumerate(rows)
+                )
+            yield name, rows
 
     def add(self, name, t, value, rate):
         """One piece of a value, which a run gives as it goes."""
@@ -713,6 +1031,7 @@ class Recorder:
         self.pieces.setdefault(name, []).append((t, self._posted_value(name, t, value), rate))
         self._dirty.add(name)
         self._from = min(self._from, t)
+        self._budget_change(t)
 
     def add_pieces(self, name, pieces):
         """Pieces of a value, which a run gives as it goes."""
@@ -724,6 +1043,62 @@ class Recorder:
             self.pieces.setdefault(name, []).extend(pieces)
             self._dirty.add(name)
             self._from = min(self._from, pieces[0][0])
+            self._budget_change(pieces[0][0])
+
+    def add_trajectory(self, step, end, names, columns):
+        """Post canonical solver rows. Reuse a prior budget fit only across an identical prefix."""
+        if not self._capture_budget_rows and not self._budget_rows:
+            for name, rows in columns:
+                self.add_pieces(name, rows)
+            return
+        # Evaluate the producer before preserving the frontier. Only these appends can
+        # then change it. A grouped contact can supply two consecutive spans per name.
+        columns = tuple(columns)
+        valid = self._budget_valid
+        offsets = {}
+        for name, rows in columns:
+            offsets.setdefault(name, len(self.pieces.get(name, ())))
+            self.add_pieces(name, rows)
+        if self._capture_budget_rows:
+            for name, offset in offsets.items():
+                self._budget_rows[name] = step, end, offset, self.pieces[name][offset:]
+            return
+        # A publication can omit a row that the private view saw. Compare both
+        # sequences, even if the solver now supplies no rows for that column.
+        for name in dict.fromkeys((*names, *offsets)):
+            seen = self._budget_rows.pop(name, None)
+            offset = offsets.get(name)
+            rows = self.pieces[name][offset:] if offset is not None else ()
+            if seen is None:
+                if rows:
+                    valid = min(valid, rows[0][0])
+                continue
+            token, cutoff, ordinal, expected = seen
+            valid = min(valid, cutoff, end)
+            matched = 0
+            if token is step and ordinal == offset:
+                for a, b in zip(expected, rows):
+                    if not self._same_trajectory_row(a, b):
+                        break
+                    matched += 1
+            if matched < len(expected):
+                valid = min(valid, expected[matched][0])
+            if matched < len(rows):
+                valid = min(valid, rows[matched][0])
+        self._budget_safe_at = None
+        self._budget_valid = valid
+
+    @staticmethod
+    def _same_trajectory_row(left, right):
+        """The same canonical curve and exactly the same posted numbers, including signed zero."""
+        for a, b in zip(left, right, strict=True):
+            if a is b:
+                continue
+            if type(a) is not type(b) or isinstance(a, Curve) or a != b:
+                return False
+            if a == 0 and math.copysign(1, a) != math.copysign(1, b):
+                return False
+        return True
 
     def incoming_piece(self, name, end):
         """The last recorded piece strictly before an incoming segment ends, or None."""
@@ -766,6 +1141,11 @@ class Recorder:
 
     def _prepare_histories(self):
         """Order the histories that this request retains and index their direct readers."""
+        self._budget_safe_at = None
+        if self._indexed_version != self.plan.version:
+            self._budget_valid = -math.inf
+            self._budget_rows.clear()
+        self._budget_rules = None
         plan = self.plan
         request = plan.configuration.request
         wanted = self._wanted
@@ -916,12 +1296,7 @@ class Recorder:
                 # Express the same polynomial on the remaining part of the span.
                 # Both endpoints use its native [-1, 1] coordinates, even at a
                 # large absolute time. The new intercept is the landed reading.
-                u = 2 * (cutoff - source.t) / curve.length - 1
-                length = stop - cutoff
-                ratio = length / curve.length
-                domain = chebyshev.Chebyshev((u + ratio, ratio))
-                coeff = chebyshev.Chebyshev(curve.coefficients)(domain).coef
-                curve = Curve(length, tuple(float(c) for c in coeff))
+                curve = _curve_interval(curve, cutoff - source.t, stop - cutoff)
             else:
                 curve = None
             at.append(Piece(cutoff, source.at(cutoff), source.rate, curve))
@@ -1140,7 +1515,7 @@ class Recorder:
         for name, history in self._histories.items():
             if history.key is None or not history.pieces:
                 continue
-            pieces = tuple(history.pieces)
+            pieces = tuple(_exported_pieces(history.pieces, end))
             if plan.changed_of.get(name) in self._histories:
                 changes = self.run.changes.get(name, ())
                 through_end = bisect_right(changes, end)
@@ -1159,7 +1534,7 @@ class Recorder:
         made = Record(manifest, tuple(held), trace, failure)
         if not ongoing:
             if self.run is not None:
-                made = self.run.stock_state.project(made)
+                made = self.run.stock_state.project(made, self._readers)
             made = _finished(made)
         # At a provisional end the recorded outgoing slopes still count. At a true end
         # they become held points, as do the retained pieces when the budget ends a run.
