@@ -446,12 +446,13 @@ class Triggers:
 
     def next_timer(self):
         """The earliest time after now at which a disarmed trigger rearms, or None."""
-        found = [
-            state.rearm_at
-            for state in self.states
-            if not state.armed and state.rearm_at is not None and state.rearm_at > self.run.now
-        ]
-        return min(found, default=None)
+        return min((at for at, _ in self.rearms()), default=None)
+
+    def rearms(self):
+        """Timers that may fire their trigger again when they expire."""
+        for index, state in enumerate(self.states):
+            if not state.armed and state.rearm_at is not None and state.rearm_at > self.run.now:
+                yield state.rearm_at, ('when', index)
 
     # ---- watching -------------------------------------------------------------------------------------
 
@@ -478,7 +479,11 @@ class Triggers:
         """Predict from the settled state once all rounds, gate changes and rearms are complete."""
         self.contacts, self.windows, self.version, self.readers = [], [], {}, {}
         self.witnesses.clear()
-        for key, node in self.watched():
+        watched = self.watched()
+        for key, node in watched:
+            self._index(key, node)
+        self.run.ways.schedule_deadlines()
+        for key, node in watched:
             self._watch(key, node)
 
     def invalidate(self, names):
@@ -501,6 +506,7 @@ class Triggers:
         if keys:
             for key, node in self.watched():
                 if key in keys:
+                    self._index(key, node)
                     self._watch(key, node)
 
     def next_contact(self):
@@ -510,11 +516,13 @@ class Triggers:
             heapq.heappop(contacts)
         return contacts[0][0] if contacts else math.inf
 
-    def _watch(self, key, node):
-        version = self.version[key] = self.version.get(key, 0) + 1
+    def _index(self, key, node):
         reads = self.plan.reads_now(self.plan.expansion(node))
         for name in set(reads.leaves) | set(reads.formulas):
             self.readers.setdefault(name, set()).add(key)
+
+    def _watch(self, key, node):
+        version = self.version[key] = self.version.get(key, 0) + 1
         at, until, witnesses, band_reads = self._next(node, strict=key[0] != 'assert')
         if witnesses or band_reads:
             self.witnesses[key] = at, node, witnesses, band_reads

@@ -949,8 +949,7 @@ class Moment:
         while True:
             # Sets that integrate together share one numerical trajectory. Rebuild the
             # remaining producers even when the last reader of their rates departs.
-            for instance in {ways.sets[key][1] for key in touched & ways.grouped}:
-                touched.update(ways.set_of[name] for name in instance.flows)
+            touched.update(ways.group_members(touched))
             # The sets in the order of their ids, so that the region is the same whatever the order in
             # which a set of ids was made (a restored run makes its sets of ids afresh, `saved.py`).
             region = [f for key in sorted(touched) for f in ways.sets[key][0].flows if f not in left]

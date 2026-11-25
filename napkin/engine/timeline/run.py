@@ -922,8 +922,12 @@ class Run:
     def changed_names(self):
         """The names that the settling must rebuild: the written and moving stores, rates and
         settings, and the reads of any collection whose membership or fields changed."""
-        names = {item for item in self.changed if isinstance(item, str)} | set(self.written)
-        sources = {item for item in self.changed if isinstance(item, tuple)}
+        return self.names_for(self.changed) | self.written.keys() | self.moved
+
+    def names_for(self, changes):
+        """Resolve written names and collection sources through the current dependency index."""
+        names = {item for item in changes if isinstance(item, str)}
+        sources = {item for item in changes if isinstance(item, tuple)}
         if sources:
             dynamic = self.plan.dynamic
             if self._sources[0] != len(dynamic):  # the plan names dynamic reads as the run reads them
@@ -932,7 +936,7 @@ class Run:
                     index.setdefault(found.source, []).append(name)
                 self._sources = (len(dynamic), index)
             names.update(name for source in sources for name in self._sources[1].get(source, ()))
-        return names | self.moved
+        return names
 
     def settled(self):
         """The changes of a round are settled."""

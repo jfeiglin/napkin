@@ -270,6 +270,9 @@ The engine chooses its own steps. A run that needs finer steps sets `max_step`.
   that reaches the bound records that contact and the flow switches it causes. The firing in the
   other run records the remaining difference and the band. All later decisions must agree.
   [Breakpoints, checkpoints and edits](events.md#breakpoints-checkpoints-and-edits).
+- A checkpoint saves the number of rate evaluations that the run has used. After a restore, the
+  solver can need more rate evaluations to prepare its next step. These evaluations use the remaining
+  `max_evaluations` allowance.
 - A budget of a solver counts work, never seconds. A run that succeeds on one machine succeeds on
   another ([flows-and-solvers.md](flows-and-solvers.md#budgets)).
 - The draws of a sampled run are keyed by the seed, the place of the draw and its owner. Another

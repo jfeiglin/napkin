@@ -60,9 +60,10 @@ from ...core.errors import ExpressionError
 from ...core.units import rational
 from ...program import parts as p
 from ...program.record import Unavailable
+from ...program.refs import Named, Root, This
 from ..errors import SimulationError
 from .moment import in_unit, quantity, span
-from .plan import DESCRIBED, FORMULA, RATE, RESULT, SIDES
+from .plan import DESCRIBED, FORMULA, RATE, RESULT, SIDES, Outside, _statements
 from .reads import lazily
 
 
@@ -88,6 +89,8 @@ class Live:
     active: bool = True
     met: set = field(default_factory=set)
 
+    stage_effects: tuple | None = None  # (step index, possible scheduled writes and sources)
+
     @property
     def id(self):
         return self.plan.id
@@ -106,6 +109,7 @@ class Occurrences:
         self._nodes = {}  # (id of an expression, owner) -> its node over engine names
         self.sources = {}  # the id of such a node -> (its expression, owner, origin), for `saved.py`
         self.awaiting = []  # delays that wait for the round's settling (`delays`)
+        self._start_effects = {}  # (member, event) -> possible changes at a future firing
         self._delays = {}  # a delay's node -> the rates and results that it reads
         # The stores of finished occurrences that a present connection may meet (`carried`), found
         # when first asked from the occurrences that the run holds (`watched`).
@@ -373,6 +377,104 @@ class Occurrences:
                 return run.value(name)
 
             self._schedule(live, run.clock.value(node, read, run.now), step)
+
+    def scheduled_changes(self):
+        """Known due times and the names their stages may change. None means any set may change."""
+        for at, _, owner, version in self.schedule:
+            live = self.live[owner]
+            if live.version != version:
+                continue
+            if live.stage_effects is None or live.stage_effects[0] != live.step:
+                live.stage_effects = live.step, self._stage_effects(live)
+            yield at, live.stage_effects[1]
+
+    def condition_changes(self, key):
+        """What can change when a trigger fires or a waiting gate opens."""
+        kind, number = key
+        if kind == 'gate':
+            return self._stage_effects(self.live[number])
+        trigger = self.run.triggers.states[number].plan
+        event = trigger.member, trigger.event
+        if event not in self._start_effects:
+            self._start_effects[event] = self._stage_effects(None, event)
+        return self._start_effects[event]
+
+    def _stage_effects(self, live, start=None):
+        """Find possible writes, including stages reached with no delay and starts in any arm.
+        A runtime target, a flow entering or leaving, or a new rate definition can change
+        the network itself. These stages keep the ordinary calendar boundary for all sets."""
+        plan = self.plan
+        changes, visited = set(), set()
+        made = live.plan if live is not None else None
+        pending = []
+
+        def starting(event_key):
+            child = plan.events[event_key]
+            if plan.configuration.request.keys or any(isinstance(part, p.Flow) for part in child[3].locals):
+                return False
+            changes.add(('occurrences', *event_key))
+            pending.append((child[:3], child[3], 0, False))
+            return True
+
+        if made is not None:
+            pending.append((made.scope, made.event, live.step, True))
+        elif not starting(start):
+            return None
+        while pending:
+            scope, event, index, due = pending.pop()
+            member = scope[2].id
+            state = (plan.owner_of(scope), event.name, index, due)
+            if state in visited:
+                continue
+            visited.add(state)
+            for i in range(index, len(event.steps)):
+                step = event.steps[i]
+                if isinstance(step, p.Until):
+                    continue  # It may already hold at this moment.
+                if (not due or i != index) and not step.delay.reads:
+                    # An authored positive literal delay ends this chain of same-time stages.
+                    try:
+                        if self.run.clock.value(step.delay.node, {}.__getitem__, 0) > 0:
+                            break
+                    except (ExpressionError, ArithmeticError, ValueError, LookupError):
+                        return None
+                for statement in _statements(step.body):
+                    if isinstance(statement, (p.If, p.Switch)):
+                        continue  # _statements also visits both arms.
+                    if isinstance(statement, p.Assign):
+                        if isinstance(statement.value, p.Formula):
+                            return None
+                        paths = (statement.target,)
+                    elif isinstance(statement, p.Move):
+                        paths = statement.source, statement.destination
+                    elif isinstance(statement, p.Start):
+                        paths = (statement.event,)
+                    else:
+                        return None
+                    for path in paths:
+                        # Do not bind a new lookup or sample a future argument while predicting.
+                        if not isinstance(path.start, (This, Named, Root)) or len(path.steps) != 1:
+                            return None
+                        try:
+                            point = plan.resolve(path, scope, statement.origin)
+                        except Outside:
+                            return None
+                        if isinstance(statement, p.Start):
+                            if point[0] != 'event' or not starting(point[1:]):
+                                return None
+                        elif point[0] == 'value':
+                            changes.add(point[1])
+                        else:
+                            return None
+            else:
+                # The last stage can finish the occurrence at this same instant.
+                changes.add(('occurrences', member, event.name))
+                if made is not None and scope is made.scope:
+                    if made.flows:
+                        return None
+                    changes.update(made.formulas)
+                    changes.update((f'{made.id}.active', f'{made.id}.done'))
+        return changes
 
     def next_due(self):
         """The time of the next step that waits for its time, or None."""

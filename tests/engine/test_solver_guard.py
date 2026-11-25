@@ -6,6 +6,7 @@ import pytest
 
 from napkin.engine.timeline import Plan, Run, resume
 from napkin.engine.timeline.moment import Moment
+from napkin.engine.timeline.sparse import Sparse
 from napkin.engine.timeline.triggers import Triggers
 from napkin.engine.timeline.ways import Ways
 from napkin.model.compile import compile_text
@@ -36,7 +37,7 @@ yard.restrict.start()
 """
 
 
-def _model(monkeypatch, *, horizon=3, limit=3, request='2 L/h', tightened=0.5, threshold=2.5):
+def _model(monkeypatch, *, horizon=3, limit=3, request='2 L/h', tightened=0.5, threshold=2.5, source=SOURCE):
     # Exercise Sparse on both groups even if the planner can solve this small first group by lines.
     connect = Plan.connect
 
@@ -44,7 +45,7 @@ def _model(monkeypatch, *, horizon=3, limit=3, request='2 L/h', tightened=0.5, t
         return [replace(group, way='sparse') for group in connect(plan, *args, **kwargs)]
 
     monkeypatch.setattr(Plan, 'connect', sparse_groups)
-    source = SOURCE.format(
+    source = source.format(
         horizon=horizon, limit=limit, request=request, tightened=tightened, threshold=threshold
     )
     return compile_text(source, {'L': {'volume': 1}, 'h': {'time': 1}})
@@ -77,6 +78,74 @@ def test_new_capacity_restarts_its_group_and_revises_the_crossing(model, monkeyp
     assert guard.report()['stores'] > 0
     fires = [entry.t for entry in record.entries('fire') if 'arrived' in entry.part]
     assert fires == pytest.approx([2])
+
+
+def test_a_changed_capacity_discards_its_future_step_and_preserves_the_other_group(monkeypatch):
+    # A condition on another moving store, at a time outside the authored calendar.
+    source = SOURCE.replace(
+        '        after 1 h:',
+        """        when this.clock >= 1 L:
+            this.restrict.start()
+        after 0 h:""",
+    ).replace(
+        'yard.restrict.start()',
+        """    clock: L = 0 L
+    flow clock_tick: SOURCE -> this.clock
+        request = 1 L/h""",
+    )
+    model = _model(monkeypatch, request='formula(1 L/h + t * 1 L/h/h)', threshold=2, source=source)
+    retired, continued = [], []
+    retire = Sparse.retire
+
+    def observe(destination, way):
+        if (
+            way.run.clock.within(way.run.now, 1)
+            and way.pending
+            and way.pending[1] > way.run.clock.apart(way.t)
+        ):
+            # Both collocation polynomials have supplied their paid prefix at 1 h.
+            assert way.recorded_through == way.run.now and way.pending_evaluations == 0
+            destination.extend(way.stores)
+
+    def retiring(way, key):
+        observe(retired, way)
+        return retire(way, key)
+
+    monkeypatch.setattr(Sparse, 'retire', retiring)
+    monkeypatch.setattr(Ways, '_check_continuation', staticmethod(lambda way, t: observe(continued, way)))
+    record = Run(Plan.of(model.program, model.configuration)).run()
+    assert 'yard.water' in retired and 'yard.spare' in continued and 'yard.spare' not in retired
+    assert record.failure is None
+    assert [e.t for e in record.entries('fire')] == pytest.approx([1, 2])
+
+
+def test_scheduled_parent_bounds_only_the_group_its_child_changes(monkeypatch):
+    source = SOURCE.replace(
+        '    restrict = event():\n        after 1 h:', '    restrict = event():\n        after 0 h:'
+    ).replace(
+        'yard.restrict.start()',
+        """dispatcher:
+    review = event():
+        after 1 h:
+            yard.restrict.start()
+dispatcher.review.start()""",
+    )
+    model = _model(monkeypatch, request='formula(1 L/h + t * 1 L/h/h)', threshold=2, source=source)
+    run = Run(Plan.of(model.program, model.configuration))
+    run.prepare(now=False)
+    run.moment.setup()
+    limited = run.ways.instance_of('yard.water')
+    independent = run.ways.instance_of('yard.spare')
+    assert run.ways.deadlines.get(limited) == 1
+    assert independent not in run.ways.deadlines and run.ways.shared_deadline == 3
+    moment = run.next_moment()
+    assert moment[0] == 1
+    assert limited.pending[2].t <= run.clock.apart(1)
+    assert independent.pending[2].t > run.clock.apart(1)
+    run.moment.at(*moment)
+    assert not limited.alive and independent.alive
+    run.loop()
+    assert [entry.t for entry in run.recorder.trace if entry.kind == 'fire'] == pytest.approx([2])
 
 
 def test_guard_detects_a_deliberately_missing_capacity_dependency(model, monkeypatch):
@@ -250,3 +319,33 @@ tank.clock.start()
         else:
             assert fire.detail('band_entry') is None
     assert ledger == [0.104, 0.104, 0.104]
+
+
+def test_a_newly_scheduled_deadline_preserves_only_the_observed_prefix(monkeypatch):
+    source = SOURCE.replace('        after 1 h:', '        after 0.01 h:').replace(
+        'yard.restrict.start()',
+        """dispatcher:
+    review = event():
+        after 1 h:
+            yard.restrict.start()
+dispatcher.review.start()""",
+    )
+    model = _model(monkeypatch, request='formula(1 L/h + t * 1 L/h/h)', threshold=2, source=source)
+    run = Run(Plan.of(model.program, model.configuration))
+    run.prepare(now=False)
+    run.moment.setup()
+    group = run.ways.instance_of('yard.water')
+    independent = run.ways.instance_of('yard.spare')
+    first = run.next_moment()
+    assert first[0] == 1 and group.pending[2].t > 1.01 and independent.pending[2].t > 1.01
+    earlier, other = group.pending[2], independent.pending[2]
+    run.moment.at(*first)
+    assert group.alive and run.ways.deadlines[group] == 1.01
+    assert float(run.stock_balance('yard.water', 1)) == pytest.approx(earlier(1)[0])
+    second = run.next_moment()
+    assert second[0] == 1.01
+    assert group.pending[2] is not earlier
+    assert group.pending[2].t <= run.clock.apart(second[0])
+    assert independent.pending[2] is other
+    run.moment.at(*second)
+    assert not group.alive and independent.alive

@@ -44,6 +44,8 @@ starts there. A reader of a condition that watches the stores reads the form of 
 from __future__ import annotations
 
 import math
+from bisect import bisect_right
+from contextlib import contextmanager
 
 import numpy as np
 import scipy.sparse as sp
@@ -605,9 +607,9 @@ class Sparse(MovingTransfers, Way):
     """Connected sets on the sparse integrator from the time `t` on (see the module), a way of a run
     (`ways.py`): one set, or the sets of `sets` in the order of their levels (`levels`), where the
     settings of a set read the rates of a set of an earlier level that move, so that they integrate
-    together. A trial reaches at most the next known moment's time band. The run commits its
-    incoming trajectory through each observation. An unchanged set can keep the rest of the
-    step and its solver."""
+    together. An independent group can prepare one dense step past a scheduled observation.
+    The run commits its incoming trajectory through each observation. Settlement retires a
+    group whose equations changed and retains the others."""
 
     def __init__(self, run, sets, values, t, key, levels=None, given=None):
         plan = self.plan = run.plan
@@ -739,6 +741,11 @@ class Sparse(MovingTransfers, Way):
                 mine |= {k for k in range(len(stores)) if levels[int(self.net.store_sets[k])] < level}
             self.reads.append(sorted(mine))
         self.evaluations = 0
+        # Ways.build integrates all moving rate suppliers of a stateful group in
+        # its own solver. A stateless follower still needs its supplier's window.
+        self.local_steps = bool(stores)
+        self.pending_evaluations = 0
+        self.key_times = sorted({float(at) for name in self.stepped for at in run.stepped_of(name).times})
         self.through_stores = (self.net.counts[0] > 0) & (self.net.counts[1] > 0)
         self.held_comparisons = None
         self.held_levels = self.y
@@ -947,13 +954,10 @@ class Sparse(MovingTransfers, Way):
     def answers_at(self, t, incoming, flows):
         pending = self.pending
         y = self.y if pending is None else pending[2](t)
-        evaluations = self.evaluations
-        try:
+        with self._reading_rates():
             if not incoming:
                 self._start()
             primary, carried = self.values(t, y)
-        finally:
-            self.evaluations = evaluations
         answers = dict(zip(self.recorded, map(float, primary)))
         if not self.net.plain:
             answers.update(
@@ -961,12 +965,23 @@ class Sparse(MovingTransfers, Way):
             )
         return answers
 
+    @contextmanager
+    def _reading_rates(self):
+        """Observations of a trajectory use no solver evaluations, even at the limit."""
+        spent = self.evaluations
+        self.evaluations = None
+        try:
+            yield
+        finally:
+            self.evaluations = spent
+
     def values(self, t, y):
         """What the network gives of each flow at time t and state y, with the flags of the segment,
         and the rate of each connection."""
-        self.evaluations += 1
-        if self.evaluations > self.plan.numerics.max_evaluations:
-            raise SimulationError('Numerical evaluation budget exceeded')
+        if self.evaluations is not None:
+            self.evaluations += 1
+            if self.evaluations > self.plan.numerics.max_evaluations:
+                raise SimulationError('Numerical evaluation budget exceeded')
         t, trial = self._held(t, y)
         if self.outputs is not None:
             values = self.outputs(t, trial)
@@ -1139,11 +1154,8 @@ class Sparse(MovingTransfers, Way):
             return None
         k, direction = sides[0]
         if not ends:
-            evaluations = self.evaluations
-            try:
+            with self._reading_rates():
                 ends.extend(self._net(self.values(at, solution(at))[1]) for at in (start, end))
-            finally:
-                self.evaluations = evaluations
         rate = ends[0][k]
         if not rate or rate != ends[1][k]:
             return None
@@ -1309,15 +1321,14 @@ class Sparse(MovingTransfers, Way):
         if self.kept_flows:
             if self.outputs is not None and (self.held_rates or not (self.surfaces or self.stepped)):
                 return  # this branch already has its anchor from the sharing
-            evaluations = self.evaluations
             tolerance = np.array([recorder.tolerance.get(self.recorded[k], 1e-9) for k in self.kept_flows])
 
             def delivered(times):
                 return np.array([self.values(at, solution(at))[0][self.kept_flows] for at in times])
 
-            for k, pieces in zip(self.kept_flows, fitted(delivered, start, end, tolerance)):
-                recorder.add_pieces(self.recorded[k], pieces)
-            self.evaluations = evaluations
+            with self._reading_rates():
+                for k, pieces in zip(self.kept_flows, fitted(delivered, start, end, tolerance)):
+                    recorder.add_pieces(self.recorded[k], pieces)
 
     def commit_through(self, t):
         """Post the transfers and record the history of the pending step through t once."""
@@ -1328,6 +1339,8 @@ class Sparse(MovingTransfers, Way):
             start = max(start, self.recorded_through)
         if t <= start:
             return
+        self.evaluations += self.pending_evaluations
+        self.pending_evaluations = 0
         self._accept(solution, start, t)
         self._record(solution, start, t)
         self.recorded_through = self.t = float(t)
@@ -1404,10 +1417,75 @@ class Sparse(MovingTransfers, Way):
     def peek(self, limit=None):
         """The end of the next step of the solver, which is made now if it is not yet: a store that
         reaches a bound, or leaves the bound that holds it, ends it there."""
+        ways = self.run.ways
+        boundary = min(ways.shared_deadline, ways.deadlines.get(self, self.plan.horizon))
         if self.pending is not None:
-            return self.pending[1]
-        limit = self.run.limit if limit is None else min(limit, self.run.limit)
-        until = self.smooth_until(self.t, limit)
+            if self.pending[1] <= self.run.clock.apart(boundary):
+                return self.pending[1]
+            # A stage just scheduled a change inside a previously prepared step.
+            # Its observed prefix is final. Restart the controller at that prefix.
+            self.cut(self.t)
+        required = self.run.limit if limit is None else min(limit, self.run.limit)
+        until = self.smooth_until(self.t, required)
+        # The first trial selects a branch on the ordinary window. On the smooth field,
+        # a longer dense step can serve observations made by other groups.
+        solver = self.solver
+        if (
+            limit is None
+            and self.local_steps
+            and self.t < until == required
+            and solver is not None
+            and self.t + solver.h_abs > required
+        ):
+            if self.next_clock > self.t:
+                boundary = min(boundary, self.next_clock)
+            if self.key_times:
+                place = bisect_right(self.key_times, self.t)
+                if place < len(self.key_times):
+                    boundary = min(boundary, self.key_times[place])
+            # The incoming row and branch may bracket a simultaneous bound in
+            # the same time band as the scheduled clock.
+            local = self.smooth_until(self.t, self.run.clock.apart(boundary))
+            if local > until:
+                return self._local_trial(until, local)
+        return self._prepare_step(until)
+
+    def _local_trial(self, required, local):
+        """Try one step beyond the calendar. A discarded trial spends no work allowance."""
+        now = self.run.now
+        spent = self.evaluations
+        solver = self.solver
+        # Radau replaces its iteration arrays on acceptance. The transfer sampler
+        # also collects rate samples inside the scalar RHS during a Newton solve.
+        state = vars(solver).copy()
+        rates = self.measured, self.last_carried
+        brief = self.brief, self.brief_from
+        contacts = self.contacts
+        capture = self.capture
+        if capture is not None:
+            samples, previous = capture.samples.copy(), capture.previous
+        try:
+            end = self._prepare_step(local)
+        except (SimulationError, ExpressionError, ArithmeticError, ValueError):
+            vars(solver).update(state)
+            if capture is not None:
+                capture.samples, capture.previous = samples, previous
+            self.measured, self.last_carried = rates
+            self.brief, self.brief_from = brief
+            self.contacts = contacts
+            self.evaluations = spent
+            self.local_steps = False
+            end = self._prepare_step(required)
+            self.run.now = now
+            return end
+        self.run.now = now
+        # A stop at the current instant has used none of the trial. Its first
+        # positive prefix uses the entire collocation polynomial and pays once.
+        self.pending_evaluations = self.evaluations - spent
+        self.evaluations = spent
+        return end
+
+    def _prepare_step(self, until):
         if self.t >= until:
             return math.inf
         if not self.stores:
@@ -1498,8 +1576,7 @@ class Sparse(MovingTransfers, Way):
         def rate_at(t):
             return self.values(t, solution(t))[1]
 
-        evaluations = self.evaluations
-        try:
+        with self._reading_rates():
             return checked_amount(
                 solution,
                 end,
@@ -1508,8 +1585,6 @@ class Sparse(MovingTransfers, Way):
                 self.amounts.tolerances(self.run, (f'{name}.actual_rate' for name in self.net.connections)),
                 start=start,
             )
-        finally:
-            self.evaluations = evaluations
 
     def _accept(self, solution, start, end):
         if self.stores and start < end:
@@ -1617,12 +1692,9 @@ class Sparse(MovingTransfers, Way):
         their pieces. The evaluations count for no budget of the run."""
         if self.pending is not None or self.t != t or self.outputs is not None:
             return
-        evaluations = self.evaluations
-        try:
+        with self._reading_rates():
             self._start()
             values, carried = self.values(t, self.y)
-        finally:
-            self.evaluations = evaluations
         slopes = self.incidence @ carried  # the rate of each store there
         for k in self.kept_stores:
             self.recorder.add(self.stores[k], t, float(self.y[k]), float(slopes[k]))
@@ -1652,6 +1724,7 @@ class Sparse(MovingTransfers, Way):
             if t > self.pending[0]:
                 self.contacted = ()
             self.pending = None
+            self.pending_evaluations = 0
         self.solver, self._drift = None, None
 
     def _step_state(self, t, *, incoming=False):
@@ -1673,11 +1746,8 @@ class Sparse(MovingTransfers, Way):
         # An incoming read must not call _start: it can be part of closing the
         # old face constraints while the outgoing branch is being selected.
         y = self._step_state(t, incoming=True)
-        evaluated = self.evaluations
-        try:
+        with self._reading_rates():
             carried = self.values(t, y)[1]
-        finally:
-            self.evaluations = evaluated
         return lambda name: float(carried[self.leg_rows[name]])
 
     def level_at(self, store, t):
@@ -1693,26 +1763,20 @@ class Sparse(MovingTransfers, Way):
         (`triggers.AFTER`) follows before the next step is made, as a line follows its rate. The
         evaluation counts for no budget of the run."""
         if self._drift is None:
-            evaluations = self.evaluations
-            try:
+            with self._reading_rates():
                 if self.pending is None and self.solver is None:
                     self._start()  # the rates that the next step starts with
                 self._drift = self.field(self.t, self.y)
-            finally:
-                self.evaluations = evaluations
         return self._drift
 
     def rate_at(self, name, t):
         """What the network gives of a flow at time t (an actual rate, a route's signed rate or a
         served fraction)."""
         y = self._step_state(t)
-        evaluations = self.evaluations
-        try:
+        with self._reading_rates():
             if self.pending is None and self.solver is None:
                 self._start()  # the rates that the next step starts with
             return float(self.values(t, y)[0][self.recorded.index(name)])
-        finally:
-            self.evaluations = evaluations
 
     def linear(self, store):
         """A store of the sparse integrator moves on a curve."""

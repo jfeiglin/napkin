@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import replace
+from itertools import chain
 
 from ...core import expr as nodes
 from ..continuous.walk import walked
@@ -60,7 +61,7 @@ from .component import ComponentWay
 from .declared import DeclaredWay, MovingDeclared
 from .family import Family
 from .lines import Lines
-from .plan import COMPONENT, DECLARED, FAMILY, LINES, ROUTE, SPARSE
+from .plan import COMPONENT, DECLARED, FAMILY, FORMULA, LINES, ROUTE, SPARSE
 from .sparse import Sparse
 
 
@@ -89,6 +90,8 @@ class Ways:
         self.followers = set()  # ids of sets that sample another instance's incoming segment
         self.grouped = set()  # the ids of the sets that integrate with others in one instance
         self._next = 0
+        self.deadlines = {}  # Sparse instance -> earliest scheduled change of its equations
+        self.shared_deadline = self.plan.horizon
 
     # ---- what the ways hold now ----------------------------------------------------------------
 
@@ -274,6 +277,68 @@ class Ways:
                 found.add(self.result_of[name])
             found |= self.readers.get(name, set())
         return found
+
+    def schedule_deadlines(self):
+        """Give each group its earliest known stage that can change its settled equations.
+        Use the same installed readers and group membership that settlement uses. A later
+        condition can act anywhere when these writes or the new sharing affect its test."""
+        run = self.run
+        self.deadlines = {}
+        self.shared_deadline = self.plan.horizon
+        changes_due = chain(
+            run.occurrences.scheduled_changes(),
+            ((at, run.occurrences.condition_changes(key)) for at, key in run.triggers.rearms()),
+            ((at, run.keyed_changes(at)) for at in run.key_times() if at > run.now),
+        )
+        for at, changes in changes_due:
+            if at >= self.shared_deadline:
+                continue
+            touched = self.scheduled_sets(changes)
+            if touched is None:
+                self.shared_deadline = at
+            else:
+                for key in touched:
+                    way = self.sets[key][1]
+                    self.deadlines[way] = min(at, self.deadlines.get(way, at))
+
+    def scheduled_sets(self, changes):
+        """Transitive effect of possible writes, new sharings and same-time firings on installed sets."""
+        run, plan = self.run, self.plan
+        if changes is None:
+            return None
+        pending = set(changes)
+        seen, watched, touched = set(), set(), set()
+        while pending:
+            names = run.names_for(pending)
+            for name in tuple(names):
+                value = plan.values.get(name)
+                if value is not None and value.kind == FORMULA and name in pending:
+                    return None  # a replacing definition can connect a previously independent producer
+                names.update(plan.described_of.get(name, ()))
+                if name in plan.changed_of:
+                    names.add(plan.changed_of[name])
+            seen.update(pending)
+            pending.clear()
+            affected = self.touched_by(names) - touched
+            while affected:
+                affected.update(self.group_members(affected))
+                touched.update(affected)
+                for key in affected:
+                    names.update(self._given(self.sets[key][0]))
+                affected = self.readers_of_rates(affected) - touched
+            keys = {key for name in names for key in run.triggers.readers.get(name, ()) if key[0] != 'assert'}
+            for key in keys - watched:
+                next_changes = run.occurrences.condition_changes(key)
+                if next_changes is None:
+                    return None
+                pending.update(next_changes - seen)
+            watched.update(keys)
+        return touched
+
+    def group_members(self, touched):
+        """Sets that share the trajectory of any touched group."""
+        instances = {self.sets[key][1] for key in touched & self.grouped}
+        return {self.set_of[name] for instance in instances for name in instance.flows}
 
     def moving_sources(self, sets):
         """The ids of the sets now whose rates move between moments and that the settings of the
