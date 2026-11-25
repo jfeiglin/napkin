@@ -241,7 +241,7 @@ class Ways:
                 yield way
 
     def project_sparse(self, recorder, t):
-        """Materialize the pending sparse prefixes in one detached recorder view."""
+        """Publish the native sparse rows into the terminal or checkpoint recorder."""
         for way in self.pending_sparse(t):
             way.record_through(t, recorder)
 

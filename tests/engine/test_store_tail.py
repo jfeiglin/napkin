@@ -130,7 +130,7 @@ def test_disk_checkpoint_exposes_only_the_accepted_stock_prefix(model, tmp_path)
         assert_resume_parity(model.program, model.configuration, direct, record)
 
 
-def test_first_excess_on_either_side_of_each_charged_start(model):
+def test_latest_eligible_check_on_either_side_of_each_charged_start(model):
     def run(request):
         return Run(Plan.of(model.program, replace(model.configuration, request=request))).run()
 
@@ -144,7 +144,8 @@ def test_first_excess_on_either_side_of_each_charged_start(model):
         bounded = run(replace(request, pieces=budget))
         oracle = requested(whole.within(budget), model.program)
         assert bounded == oracle
-        assert bounded.end == (charged[budget] if budget < len(charged) else 2)
+        cutoff = max(t for t in whole.manifest.check_times if sum(at < t for at in charged) <= budget)
+        assert bounded.end == cutoff
         if bounded.failure:
             assert all(not isinstance(p, BalancePoint) for h in bounded.histories for p in h.pieces)
             assert isinstance(bounded.value(WATER, bounded.end), Unavailable)
@@ -371,5 +372,7 @@ tank.observe.start()
     # subdivision. An early cutoff could erase the observer's commit and finish.
     for budget in (2, 3, limit - 1, limit, limit + 1):
         direct = run(budget)
-        assert direct.end == starts[budget]
+        assert direct.end == max(
+            t for t in whole.manifest.check_times if sum(at < t for at in starts) <= budget
+        )
         assert direct == requested(whole.within(budget), model.program)

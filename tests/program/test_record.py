@@ -5,11 +5,25 @@ spec's: the tank of 8 L that a delivery of 3 L/h empties at 2 h 40 min, and the 
 sets to 8 g and a later stage of the same round raises to 12 g.
 """
 
+import json
+from dataclasses import replace
 from fractions import Fraction
 
 import pytest
 
-from napkin.program.record import Entry, History, Key, Manifest, Piece, Record, Unavailable
+from napkin.program.checkpoint import decode, encode
+from napkin.program.record import (
+    BalancePoint,
+    ChangeHistory,
+    Curve,
+    Entry,
+    History,
+    Key,
+    Manifest,
+    Piece,
+    Record,
+    Unavailable,
+)
 
 WATER = Key('tank', ('water',))
 
@@ -128,3 +142,81 @@ def test_a_budget_of_pieces_ends_a_record_before_the_first_piece_that_does_not_f
     assert sum(len(history.pieces) for history in three.histories if three.manifest.names(history.key)) == 3
     one = record.within(1)
     assert one.end == 0 and not one.histories and isinstance(one.value(WATER, 0), Unavailable)
+
+
+def test_offline_quota_uses_the_completed_prefix_at_a_recorded_check():
+    # A fit splits the two half-hour intervals into sixteen pieces. A budget
+    # of nine fits more than the first half's eight, but does not reach the next check.
+    manifest = Manifest(1, check_times=(0.0, 0.5, 1.0))
+    starts = tuple(Piece(i / 16, i) for i in range(16))
+    record = decode(encode(Record(manifest, (History(WATER, starts),))))
+    cut = record.within(9)
+    assert cut.end == 0.5
+    assert cut.history(WATER).pieces == starts[:8]
+    assert cut.manifest.check_times == (0.0, 0.5)
+    assert cut.within(8) == record.within(8)
+    assert cut.within(6) == record.within(6)
+    assert record.within(16) is record
+    assert cut.within(9) is cut
+
+    # An older file has no clock. Its original first-piece cutoff is still available.
+    old = json.loads(encode(record))
+    del old['manifest']['check_times']
+    historical = decode(json.dumps(old))
+    assert historical.manifest.check_times is None
+    assert historical.within(9).end == 9 / 16
+    assert historical.within(9, check_times=(1.0, 0.5, 0.5)) == cut
+    assert historical.within(9).within(9, check_times=manifest.check_times) == cut
+
+
+def test_an_open_steps_late_pieces_can_disqualify_earlier_checks():
+    # The last step was still open at .75 and 1 h. Once complete, its
+    # genuine opening at .375 makes both retrospective prefix counts five.
+    times = (0.0, 0.003, 0.037, 0.375, 0.75, 1.0, 2.0)
+    starts = tuple(Piece(t, i) for i, t in enumerate((0, 0, 0.003, 0.037, 0.375)))
+    record = Record(Manifest(2, check_times=times), (History(WATER, starts),))
+    cut = record.within(4)
+    assert cut.end == 0.375
+    assert cut.history(WATER).pieces == starts[:4]
+    assert isinstance(cut.value(WATER, 0.375), Unavailable)
+    assert cut.value(WATER, 0.374) == 3
+    assert record.within(1).end == 0
+
+
+def test_boundary_rollback_keeps_only_prior_rounds_metadata_and_curve_bases():
+    old, new = 'tank.tick#0', 'tank.tick#1'
+    ledger = Key('tank', ('water', 'external'))
+    hidden = Key('tank', ('helper',))
+    manifest = Manifest(
+        2,
+        everything=False,
+        keys=(WATER,),
+        comparison_scales=(('tank.water', 8.0), (f'{old}.capacity', 1.0), (f'{new}.capacity', 2.0)),
+        unchecked_time_rates=(('first', 0.5), ('second', 1.0)),
+        check_times=(0.0, 1.0, 2.0),
+    )
+    moving = Piece(0, 4, curve=Curve(1.25, (5, 1)))
+    rows = (moving, Piece(1.25, 2), BalancePoint(2, 2))
+    changes = ChangeHistory(hidden, (Piece(0, False), Piece(1, True)), (0.0, 1.0))
+    transfers = History(ledger, (Piece(0.5, 1), Piece(1.5, 2)))
+    trace = (
+        Entry(0, 0, 'start', 'tank.tick', old),
+        Entry(1, 1, 'finish', 'tank.tick', old),
+        Entry(1, 2, 'start', 'tank.tick', new),
+    )
+    record = Record(manifest, (History(WATER, rows), changes, transfers), trace)
+    assert record.within(4) is record  # physical postings count, display-only endpoint does not
+    cut = record.within(2)
+    assert cut.end == 1 and cut.failure.round == 0
+    assert cut.trace == (trace[0], cut.failure)
+    assert cut.manifest == replace(
+        manifest,
+        comparison_scales=manifest.comparison_scales[:2],
+        unchecked_time_rates=manifest.unchecked_time_rates[:1],
+        check_times=(0.0, 1.0),
+    )
+    assert cut.history(WATER).pieces == (moving,)
+    assert cut.history(hidden) == ChangeHistory(hidden, changes.pieces[:1], (0.0,))
+    assert cut.history(ledger).pieces == transfers.pieces[:1]
+    assert cut.value(WATER, 0.75) == record.value(WATER, 0.75)
+    assert isinstance(cut.value(WATER, 1.0), Unavailable)

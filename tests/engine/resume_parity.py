@@ -1,7 +1,7 @@
 """Assertions for a run continued from a breakpoint and the corresponding uninterrupted run."""
 
 from collections import defaultdict
-from dataclasses import fields, is_dataclass
+from dataclasses import fields, is_dataclass, replace
 from itertools import pairwise
 from math import inf, isfinite, nextafter
 from numbers import Integral, Real
@@ -93,14 +93,29 @@ def _readings(key, times, windows, first, second, scale):
             _compare(first(t), second(t), {}, (key, t), scale)
 
 
+def assert_same_manifest_settings(*records):
+    """A resumed solver can use a different step sequence. Each record keeps its own check times."""
+    expected = replace(records[0].manifest, check_times=None)
+    for record in records:
+        assert replace(record.manifest, check_times=None) == expected
+        times = record.manifest.check_times
+        assert times and times[0] == 0 and times[-1] == record.end
+        assert all(earlier < later for earlier, later in pairwise(times))
+        if record.failure is not None and (budget := record.failure.detail('budget')) is not None:
+            charged = sum(h.charged_pieces() for h in record.histories if record.manifest.names(h.key))
+            assert charged <= budget and record.failure.round == 0
+            assert all(p.t < record.end for h in record.histories for p in h.pieces)
+
+
 def assert_resume_parity(program, configuration, straight, resumed, *, sample_times=()):
     """Compare trace, coverage, stored and public values on the same clock and both sides of jumps."""
     assert type(straight) is type(resumed)
+    checkpoint = isinstance(straight, Checkpoint)
+    a, b = (straight.record, resumed.record) if checkpoint else (straight, resumed)
+    assert_same_manifest_settings(a, b)
     if straight == resumed:
         return
     numerics = configuration.numerics
-    checkpoint = isinstance(straight, Checkpoint)
-    a, b = (straight.record, resumed.record) if checkpoint else (straight, resumed)
     ar, br = Reader(a, program), Reader(b, program)
     scales = _scales(ar)
     if checkpoint:
@@ -108,7 +123,6 @@ def assert_resume_parity(program, configuration, straight, resumed, *, sample_ti
             assert getattr(straight, name) == getattr(resumed, name), name
         for name in ('state', 'stop', 'stops'):
             _compare(getattr(straight, name), getattr(resumed, name), scales, name)
-    assert a.manifest == b.manifest
     _compare(a.end, b.end, scales, 'record cutoff')
     trace_a, trace_b = decisions(a.trace), decisions(b.trace)
     omissions = band_preemptions(trace_a, trace_b, ar, br, numerics.crossing)

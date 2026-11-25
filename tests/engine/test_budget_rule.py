@@ -2,7 +2,7 @@
 (the readiness audit of `8b3a01a`, rows 11 and 18; `program/record.py`, `Recorder`, `Breaks`,
 `store.run`).
 
-A run stops when the next trajectory piece or posting for a requested value exceeds the budget.
+A limited run returns the latest check boundary whose exclusive prefix fits its piece budget.
 The record can also contain a point that gives a stock's exact balance at its cutoff.
 A store's ledger begins with the edit that changed it. The same request has one outcome and set
 of values on a fresh run, on a store hit and on a run resumed from its checkpoint.
@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import random
 from dataclasses import replace
-from fractions import Fraction
 
 import pytest
 
@@ -68,8 +67,12 @@ def test_exclusive_budget_failure_has_round_zero_with_or_without_a_later_pause()
     water = Key('plant', ('water',))
     history = History(water, tuple(Piece(t, t) for t in range(146)))
     observation = Entry(129, 1, 'finish', 'plant.observe', 'plant.observe#0')
-    whole = Record(Manifest(146), (history,), (observation,))
-    at_check = replace(whole, trace=(observation, Entry(145, 1, 'pause', '')))
+    whole = Record(Manifest(146, check_times=tuple(range(147))), (history,), (observation,))
+    at_check = replace(
+        whole,
+        manifest=replace(whole.manifest, check_times=tuple(range(146))),
+        trace=(observation, Entry(145, 1, 'pause', '')),
+    )
     for budget in range(130, 145):
         expected = whole.within(budget)
         assert expected.failure.t == budget
@@ -77,8 +80,8 @@ def test_exclusive_budget_failure_has_round_zero_with_or_without_a_later_pause()
         assert at_check.within(budget) == expected
 
 
-@pytest.mark.parametrize(('path', 'proved'), [('water', True), ('report', False)])
-def test_unrelated_tick_checks_the_budget_without_publishing_the_open_step(monkeypatch, path, proved):
+@pytest.mark.parametrize('path', ['water', 'report'])
+def test_unrelated_tick_checks_the_budget_without_publishing_the_open_step(monkeypatch, path):
     from napkin.engine.timeline import plan
     from napkin.engine.timeline.record import Recorder
     from napkin.model.compile import compile_text
@@ -103,8 +106,8 @@ tank.tick.start()
     key = Key('tank', (path,))
     config = Configuration(Request(2, everything=False, keys=(key,)))
     live = Run(Plan.of(program, config))
-    checks, proofs, exact = [], [], []
-    check, bound, assemble = Recorder.check_budget, Recorder._pending_fits, Recorder._check_committed
+    checks = []
+    check = Recorder.check_budget
 
     def observed(recorder, end, **options):
         pending = list(live.ways.pending_sparse(end)) if recorder is live.recorder and end == 1 else []
@@ -119,25 +122,15 @@ tank.tick.start()
                 assert after == before
                 checks.append(end)
 
-    def admission(recorder, end, pending):
-        result = bound(recorder, end, pending)
-        if recorder is live.recorder and end == 1:
-            proofs.append(result)
-        return result
-
-    def committed(recorder, end, before):
-        if recorder.run is live and recorder is not live.recorder and end == 1:
-            exact.append(end)
-        return assemble(recorder, end, before)
-
     with monkeypatch.context() as observed_run:
         observed_run.setattr(Recorder, 'check_budget', observed)
-        observed_run.setattr(Recorder, '_pending_fits', admission)
-        observed_run.setattr(Recorder, '_check_committed', committed)
+
+        def private_view(*args, **kwargs):
+            pytest.fail('An unlimited run must not assemble a private record at a budget check')
+
+        observed_run.setattr(Recorder, 'projection', private_view)
         whole = live.run()
-    assert whole.failure is None
-    assert checks and proofs and all(result == proved for result in proofs)
-    assert bool(exact) != proved
+    assert whole.failure is None and checks
     # water(t) = 10 + t/2 + 3t²/8. The report follows that stock after its bend.
     assert whole.history(key).at(1) == pytest.approx(10.875)
     assert whole.history(key).at(2) == pytest.approx(12.5)
@@ -147,83 +140,127 @@ tank.tick.start()
         bounded = replace(config, request=replace(config.request, pieces=limit))
         actual = Run(Plan.of(program, bounded)).run()
         expected = requested(whole.within(limit), program)
-        assert actual.failure == expected.failure and actual.trace == expected.trace
-        assert charged_starts(actual) == charged_starts(expected)
+        assert actual == expected
+        assert len(charged_starts(actual)) <= limit
 
-    # An exact private view can certify a live step at this stop. A checkpoint
-    # restores the record from its data and starts with no private fit evidence.
-    if not proved:
-        stopped = Run(Plan.of(program, config), (Breakpoint('tank.tick.step[0]'),))
-        cutoff = stopped.run()
-        assert isinstance(cutoff, Checkpoint) and cutoff.stop.t == 1
-        assert stopped.recorder._budget_rows
-        restored = Run.restored(Plan.of(program, config), loads(dumps(cutoff)))
-        assert not restored.recorder._budget_rows
-        assert_resume_parity(program, config, whole, restored.resume())
+    stopped = Run(Plan.of(program, config), (Breakpoint('tank.tick.step[0]'),))
+    cutoff = stopped.run()
+    assert isinstance(cutoff, Checkpoint) and cutoff.stop.t == 1
+    restored = Run.restored(Plan.of(program, config), loads(dumps(cutoff)))
+    assert_resume_parity(program, config, whole, restored.resume())
 
 
-@pytest.mark.parametrize(
-    ('change', 'frontier'),
-    [
-        ('unchanged', 5),
-        ('other step', 1),
-        ('posting order', 2),
-        ('intercept type', 1),
-        ('omitted tail', 4),
-        ('omitted column', 1),
-        ('early publication', 3),
-        ('ordinal', 1),
-    ],
-)
-def test_only_the_matching_prefix_of_a_solver_publication_certifies_closed_fits(change, frontier):
-    program = plant(random.Random(1))
-    recorder = Run(Plan.of(program, Configuration(Request(7)))).recorder
-    name, step = 'plant.want', object()
-    rows = [(1, Fraction(2), 0), (2, 3.0, 0), (2, 8.0, 0), (4, 9.0, 0)]
-    view = recorder.projection()
-    view._capture_budget_rows = True
-    view.add_trajectory(step, 5, [name], [(name, rows)])
-    recorder._budget_rows, recorder._budget_valid = view._budget_rows, 5
+@pytest.mark.parametrize('stage_fails', [False, True], ids=['horizon', 'stage-failure'])
+def test_four_charged_tank_pieces_stop_at_the_last_solver_boundary_that_fits(monkeypatch, stage_fails):
+    from napkin.engine.timeline.record import Recorder
+    from napkin.model.compile import compile_text
 
-    posted, through = list(rows), 6
-    if change == 'other step':
-        step = object()
-    elif change == 'posting order':
-        posted[1], posted[2] = posted[2], posted[1]
-    elif change == 'intercept type':
-        posted[0] = (1, 2.0, 0)
-    elif change == 'omitted tail':
-        posted.pop()
-    elif change == 'omitted column':
-        posted.clear()
-    elif change == 'early publication':
-        through, posted = 3, posted[:3]
-    elif change == 'ordinal':
-        recorder.add(name, 5, 12, 0)
-    recorder.add_trajectory(step, through, [name], [(name, posted)] if posted else [])
-    assert recorder._budget_valid == frontier and not recorder._budget_rows
+    final_write = 'this.marker = 1 / (this.marker - 1)' if stage_fails else 'this.marker = 2'
+    model = compile_text(
+        f"""scenario "A stock with unpublished incoming pieces"
+    horizon 2 h
+tank:
+    water: L = 10 L
+    flow fill: SOURCE -> this.water
+        request = formula(1 L/h + t * 1 L/h/h)
+    flow spare: SOURCE -> this.water
+        request = 0.1 L/h
+    flow drain: this.water -> SINK
+        request = formula(0.5 L/h + t * 0.25 L/h/h)
+clock:
+    marker = 0
+    tick = event():
+        after 0.75 h:
+            this.marker = 1
+        after 0.25 h:
+            {final_write}
+clock.tick.start()
+""",
+        UNITS,
+    )
+    request = replace(model.configuration.request, everything=False, keys=(WATER,))
+    times = []
+    boundary = Recorder.boundary
+
+    def observe(recorder, end, **options):
+        times.append(end)
+        return boundary(recorder, end, **options)
+
+    def run(request):
+        return Run(Plan.of(model.program, replace(model.configuration, request=request))).run()
+
+    with monkeypatch.context() as witness:
+        witness.setattr(Recorder, 'boundary', observe)
+        whole = run(request)
+    if stage_fails:
+        assert whole.failure.t == 1 and 'division by zero' in whole.failure.detail('message')
+    else:
+        assert whole.failure is None
+    starts = charged_starts(whole)
+    assert 0.75 in times and 1 in times
+    assert sum(at < 0.75 for at in starts) == sum(at < 1 for at in starts) == 5
+    cutoff = max(t for t in times if sum(at < t for at in starts) <= 4)
+    assert 0 < cutoff < 0.75 and sum(at < cutoff for at in starts) == 4
+    limited = run(replace(request, pieces=4))
+    assert limited == requested(whole.within(4), model.program)
+    assert limited.failure.t == cutoff and limited.failure.round == 0
+    assert charged_starts(limited) == [at for at in starts if at < cutoff]
+    assert isinstance(limited.value(WATER, cutoff), Unavailable)
 
 
-def test_rolled_back_posting_cannot_make_an_older_budget_certificate_valid_again():
+def test_a_formula_landing_cleared_in_the_same_moment_does_not_exhaust_one_piece():
+    from napkin.model.compile import compile_text
+
+    model = compile_text(
+        """scenario "Two rounds at the same moment"
+    horizon 2 h
+box:
+    x = 0
+    reading = formula(2 * this.x)
+    tick = event():
+        after 1 h:
+            this.x = 1
+            this.clear_flag.start()
+    clear_flag = event():
+        after 0 h:
+            this.x = 0
+box.tick.start()
+""",
+        {'h': {'time': 1}},
+    )
+    key = Key('box', ('reading',))
+    request = replace(model.configuration.request, everything=False, keys=(key,))
+
+    def run(request):
+        return Run(Plan.of(model.program, replace(model.configuration, request=request))).run()
+
+    whole = run(request)
+    limited = run(replace(request, pieces=1))
+    assert whole.end == 2 and whole.failure is None
+    writes = [entry for entry in whole.trace if entry.kind == 'commit' and entry.t == 1]
+    assert len(writes) == 2 and writes[0].round < writes[1].round
+    assert whole.history(key).pieces == (Piece(0, 0),)
+    assert limited == whole.within(1) == whole
+
+
+def test_a_rolled_back_posting_does_not_use_the_budget():
     from napkin.engine.timeline.moment import Tx, _Savepoint
 
     program = plant(random.Random(1))
-    run = Run(Plan.of(program, Configuration(Request(7))))
+    name = 'plant.want'
+    key = Key('plant', ('want',))
+    run = Run(Plan.of(program, Configuration(Request(7, everything=False, keys=(key,), pieces=1))))
     run.prepare()
     recorder = run.recorder
-    name, step, rows = 'plant.want', object(), [(1, 3.0, 0)]
-    view = recorder.projection()
-    view._capture_budget_rows = True
-    view.add_trajectory(step, 3, [name], [(name, rows)])
-    recorder._budget_rows, recorder._budget_valid = view._budget_rows, 3
+    original = recorder.record(0, ongoing=True)
     tx = Tx('plant.tick#0')
     tx.writes[name] = 4.0
     point = _Savepoint(run, tx)
     recorder.add(name, 2, 4.0, 0)
     point.discard()
-    recorder.add_trajectory(step, 4, [name], [(name, rows)])
-    assert recorder._budget_valid == 2
-    assert recorder.pieces[name][-1] == rows[0]
+    after = recorder.record(2, ongoing=True)
+    assert after.failure is None
+    assert after.history(key) == original.history(key)
 
 
 def plant(rng, curved=False):
@@ -514,10 +551,9 @@ def test_checkpoint_after_a_child_starts_counts_projected_pieces_separately():
     configuration = Configuration(Request(2, everything=False, keys=(count,), pieces=2))
     engine = Run(Plan.of(program, configuration), (Breakpoint('plant.watch.step[0]'),))
     checkpoint = engine.run()
-    # The driver's write and start precede the watch in the same round. Only the projection
-    # has assembled that write. The live run still has one piece counted from setup.
+    # The driver writes once before the watch in the same round. The checkpoint keeps that write.
     assert [piece.value for piece in checkpoint.record.history(count).pieces] == [0, 1]
-    assert engine.recorder._counted['plant.count'] == engine.recorder._total == 1
+    assert checkpoint.record.within(2) == checkpoint.record
     record = engine.resume()
     assert_resume_parity(program, configuration, Run(Plan.of(program, configuration)).run(), record)
     assert record.failure.t == 1 and record.failure.detail('budget') == 2
@@ -578,7 +614,7 @@ def test_a_rate_at_the_horizon_is_the_one_that_its_last_round_committed():
             assert read(record, program, ['plant.pipe.actual_rate'], [1])[0].values == (1,), (curved, horizon)
 
 
-def test_history_budget_stops_work_at_the_first_excess_piece(monkeypatch):
+def test_committed_posting_stops_at_the_last_boundary_that_fits(monkeypatch):
     b = Builder(UNITS)
     b.entity(
         'plant',
@@ -605,7 +641,7 @@ def test_history_budget_stops_work_at_the_first_excess_piece(monkeypatch):
 def test_a_clock_formula_exhausts_its_budget_on_the_first_completed_span(first_stage):
     """The first completed span is [0,1] with hourly stages, otherwise [0,10].
     The former needs one piece. With the default fit tolerance, the first piece
-    of the longer span covers [0,0.625]."""
+    of the longer span covers [0,0.625], but there is no check at 0.625 h."""
     from napkin.program.build import call, t
 
     b = Builder(UNITS)
@@ -633,10 +669,20 @@ def test_a_clock_formula_exhausts_its_budget_on_the_first_completed_span(first_s
     request = Request(10, everything=False, keys=(key,), pieces=1)
     made = Run(Plan.of(b.finish(), Configuration(request)))
     record = made.run()
-    cutoff = 1 if first_stage == 1 else 0.625
+    full_request = replace(request, pieces=1_000)
+    whole = Run(Plan.of(made.plan.program, Configuration(full_request))).run()
+    assert record == requested(whole.within(1), made.plan.program)
+    if first_stage != 1:
+        starts = charged_starts(whole)
+        assert 0 < starts[1] < 10
+        assert whole.manifest.check_times == (0, 10)
+    cutoff = 1 if first_stage == 1 else 0
     assert record.failure is not None and record.failure.t == cutoff
     assert record.failure.round == 0
-    assert record.history(key).pieces[0].curve.length == cutoff
+    if cutoff:
+        assert record.history(key).pieces[0].curve.length == cutoff
+    else:
+        assert not record.histories
     assert made.env['plant.ticks'] == (1 if first_stage == 1 else 0)
 
 
@@ -801,7 +847,7 @@ def test_a_breakpoint_preserves_the_completed_fits_and_the_budget_cutoff(formula
 @pytest.mark.parametrize(
     'seed', [*range(8), *[pytest.param(k, marks=pytest.mark.deep) for k in range(8, 40)]]
 )
-def test_budget_cutoffs_follow_the_complete_records_committed_piece_starts(seed):
+def test_budget_cutoffs_follow_the_last_check_boundary_that_fits(seed):
     rng = random.Random(seed)
     program = fitting_plant(
         rng.choice(['exponential', 'fast decay']),
@@ -824,6 +870,11 @@ def test_budget_cutoffs_follow_the_complete_records_committed_piece_starts(seed)
             assert_resume_parity(program, config, record, restored)
             expected = requested(whole.within(budget), program)
             assert record == expected, differences(record, expected)
-            assert record.end == (times[budget] if budget < len(times) else horizon)
+            if budget < len(times):
+                boundary = max(t for t in whole.manifest.check_times if sum(at < t for at in times) <= budget)
+                assert record.end == boundary
+                assert len(charged_starts(record)) <= budget
+            else:
+                assert record.end == horizon
             assert (record.failure is not None) == (budget < len(times))
             assert all(cp.stop.t <= record.end for cp in held_stops)

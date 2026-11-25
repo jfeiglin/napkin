@@ -8,6 +8,7 @@ from napkin.engine.timeline import Plan, Run
 from napkin.model.compile import compile_text
 from napkin.program.checkpoint import Breakpoint, dumps, loads
 from napkin.program.record import Key
+from tests.engine.resume_parity import assert_same_manifest_settings
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
 
@@ -72,7 +73,7 @@ def test_budget_cutoff_excludes_a_rate_first_installed_at_that_time():
     pipe = record.history(key)
     starts = sorted(row.t for row in pipe.pieces[: pipe.charged_pieces()])
     budget = bisect_left(starts, 1)
-    assert starts[budget] == 1
+    assert starts[budget] == 1 and 1 in record.manifest.check_times
     small = replace(configuration, request=replace(selected, pieces=budget))
     limited = Run(Plan.of(model.program, small)).run()
     assert limited.end == 1 and limited.failure.detail('budget') == budget
@@ -149,7 +150,7 @@ def test_checkpoint_keeps_the_omission_from_a_finished_occurrence():
     assert checkpoint.stop.t == 3
     restored = Run.restored(make(), loads(dumps(checkpoint))).resume()
     straight = Run(make()).run()
-    assert live.resume().manifest == restored.manifest == straight.manifest == checkpoint.record.manifest
+    assert_same_manifest_settings(live.resume(), restored, straight, checkpoint.record)
     assert 'excluded 3 time-dependent settings' in restored.rate_guard_note
 
 

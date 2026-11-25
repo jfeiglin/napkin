@@ -180,7 +180,7 @@ def test_each_selected_value_and_the_full_record_have_their_own_entries(tmp_path
         _, whole = counted(lambda: store.run(model.program, model.configuration))
     assert used == {'hits': 0, 'misses': 1} and again == {'hits': 1, 'misses': 0}
     assert whole == {'hits': 0, 'misses': 1}  # every value is more than the two
-    assert level.manifest == Manifest(4, everything=False, keys=(LEVEL,))
+    assert level.manifest == Manifest(4, everything=False, keys=(LEVEL,), check_times=(0, 4))
     assert read(level, model.program, ['tank.level'], [4])[0].values == pytest.approx((1,))
     (unheld,) = water(level, model, [4])
     assert unheld == Unavailable(
@@ -205,7 +205,7 @@ def test_a_shorter_request_runs_to_its_own_horizon(tmp_path):
     alone = fresh(model.program, to_two)
     assert water(stored, model, [4]) == pytest.approx((13,))
     assert [entry.t for entry in stored.entries('commit')] == [3] and shorter.entries('commit') == ()
-    assert shorter.manifest == alone.manifest == Manifest(2)
+    assert shorter.manifest == alone.manifest == Manifest(2, check_times=(0, 2))
     assert water(shorter, model, [0, 1, 2]) == pytest.approx(water(alone, model, [0, 1, 2]), rel=1e-12)
 
 

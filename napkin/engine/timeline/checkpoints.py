@@ -21,7 +21,7 @@ difference between readings can exceed `rtol`. The engine checks the restored lo
 against the checkpoint (`State`). If they differ, it raises `CheckpointError`.
 
 **The budget of the record** holds at every stop. If the checkpoint's record exceeds its budget,
-`HistoryFull` returns the prefix ending at the first excess piece (`Record.within`).
+`HistoryFull` returns the prefix before the last check time that fits the budget (`Record.within`).
 
 The checkpoint's logical state (`State`) is what a caller inspects and edits.
 """

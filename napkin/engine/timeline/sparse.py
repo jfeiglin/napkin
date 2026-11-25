@@ -1388,12 +1388,6 @@ class Sparse(MovingTransfers, Way):
             t, max(end, self.t)
         )
 
-    def trajectory_columns(self):
-        """Columns that can receive fitted pieces during this step, for the recorder's upper bound."""
-        yield from (self.stores[i] for i in self.kept_stores)
-        if self.outputs is None or (not self.held_rates and (self.surfaces or self.stepped)):
-            yield from (self.recorded[i] for i in self.kept_flows)
-
     def trajectory_rows(self, t):
         """Canonical unposted openings strictly before t, shared by demand views and the live recorder."""
         if not self.has_unrecorded(t):
@@ -1424,7 +1418,8 @@ class Sparse(MovingTransfers, Way):
         t = min(t, max(self.pending[1], self.t))
         live = recorder is None or recorder is self.recorder
         target = self.recorder if live else recorder
-        target.add_trajectory(self._history_token, t, self.trajectory_columns(), self.trajectory_rows(t))
+        for name, rows in self.trajectory_rows(t):
+            target.add_pieces(name, rows)
         if live:
             self.recorded_through = float(t)
 
@@ -1438,7 +1433,6 @@ class Sparse(MovingTransfers, Way):
     def _history_span(self):
         """Capture a posted remainder before a later moment can replace its ledger entry."""
         start, end = self.pending[:2]
-        self._history_token = object()
         self._history_end = end
         self._history_rows = None
         self._opening_balances = {}
@@ -1755,14 +1749,14 @@ class Sparse(MovingTransfers, Way):
         if pending[1] >= limit:
             return
         now, brief, brief_from = self.run.now, self.brief, self.brief_from
-        history = self._history_token, self._history_end, self._history_rows, self._opening_balances
+        history = self._history_end, self._history_rows, self._opening_balances
         try:
             while self.pending[1] < limit and not self.pending[4]:
                 self.pending = None
                 self.peek(limit)
         finally:
             self.pending, self.solver = pending, None
-            self._history_token, self._history_end, self._history_rows, self._opening_balances = history
+            self._history_end, self._history_rows, self._opening_balances = history
             self.run.now, self.brief, self.brief_from = now, brief, brief_from
 
     def timing_events(self, through):

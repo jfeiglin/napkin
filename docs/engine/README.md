@@ -259,11 +259,13 @@ A run gives one record (`napkin/program/record.py`). It holds:
 - **Near-ties.** The detail `near` of an entry gives, for each comparison that decided within its
   band: the origin, the comparison, the difference and the tolerance. A `contact` entry gives a switch
   or a bound that joined a scheduled moment, with its located time and its signed difference in hours.
-- **The manifest.** The horizon, the values that the record holds, and the comparison settings.
+- **The manifest.** The horizon, the values that the record holds, the comparison settings and
+  the times when the engine checked the piece budget.
 - **The failure,** when the run stopped. A value after the stop is `Unavailable`, with the reason.
 
 **The budget of pieces.** `request.pieces` sets the limit for the requested histories. The engine
-counts each trajectory piece and each stock posting. A posting at the cutoff also counts.
+counts committed trajectory pieces and actual stock postings. At an inclusive cutoff, a
+posting at that time also counts.
 
 At an inclusive cutoff, the engine can add a held point to show the exact balance of a stock.
 This applies at the horizon, at a checkpoint, and at a failure that includes the cutoff.
@@ -273,14 +275,31 @@ stock and one for each direct alias. This exemption applies only to a point that
 to show the balance at the cutoff. If the last piece is a held piece with that balance, the
 engine keeps it.
 
-The first counted piece that exceeds the budget sets the stop time. The last trace entry gives
-the time and the budget. The record keeps only the pieces before this stop. It has no balance
-point at the excluded time. You can read values only before the stop time.
+If the record exceeds the budget, the engine selects the latest check time whose complete
+history before that time fits the limit. It counts all charged pieces that start strictly
+before the check time. A piece that starts exactly at that time stays outside the prefix.
+When a solver publishes pieces from an earlier interval, those pieces count at their own start
+times.
 
-If you apply the same budget to a completed record of the same run, you get the same stop time,
-trace and recorded pieces. For a request with selected keys, use the definitions and occurrences
-in the retained trace to select the required histories. A curve keeps its original coefficients
-and fit length when the stop falls inside its interval. Its coverage ends at the stop.
+The first check time is 0 h. A run can also check at a moment or at an internal solver step.
+An internal step supplies a check time when the moving solver groups have reached a common
+recording boundary. Repeated checks at one time give one boundary. For example, suppose the
+run checks at 0, 1 and 2 h. If a curve fit uses the first piece over budget at 1.4 h, the
+budget stop is at 1 h.
+
+The failure entry has round zero and gives the cutoff and the budget. The record excludes all
+rounds and pieces at the cutoff. It has no exact-balance point there. You can read values only
+before the cutoff. If the full record fits the limit, it keeps its original end and all its
+readings.
+
+`Record.within(limit)` uses the check times in the manifest to give the same cutoff, trace and
+pieces as a run with that limit. For a request with selected keys, the engine uses the
+definitions and occurrences in the retained trace to select the required histories. A curve
+keeps its original coefficients and fit length when the stop falls inside its interval.
+
+An older record can have no saved check times. For that record, `Record.within(limit)` uses the
+start time of the first piece over budget. If you have the original check times, pass them with
+`Record.within(limit, check_times=times)` to use the check-boundary rule.
 
 ## `read` and `report`
 
@@ -482,7 +501,7 @@ of one that it cannot calculate.
 | A limit | `max_occurrences`, `max_active` or `max_rounds`. The message names the limit and the event, and for `max_active` the oldest occurrence and the step where it waits. |
 | A budget of a solve | `fair-sharing budget exceeded` or `distance budget exceeded` ([solver.md](solver.md#failure-names)). |
 | `Numerical evaluation budget exceeded` | A Component or Sparse instance evaluated its rates more than `max_evaluations` times. |
-| The budget of pieces | The next counted piece exceeds `request.pieces`. |
+| The budget of pieces | The completed history needs more pieces than `request.pieces`. The failure gives the latest check boundary whose exclusive prefix fits. |
 | Chattering | The rates switch back and forth at a condition, or a segment takes 1,000 accepted steps in a row, each shorter than the crossing tolerance. |
 | Retirement | An occurrence finishes with material in its stock, above its conservation allowance. |
 | A write to a frozen occurrence | An assignment, a nonzero `move`, or a flow that carries more than the allowance into or out of a stock of a finished occurrence. |

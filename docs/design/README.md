@@ -121,8 +121,10 @@ The piece budget counts the trajectory pieces of each requested formula history.
 that only names a stock or a direct alias of a stock can also have one extra point at an
 inclusive cutoff. The engine adds this point only to show the stock's exact balance.
 A design that builds the history when a reader asks for it must count the same trajectory
-pieces, even if nobody reads the formula. The first counted piece that exceeds the budget sets
-the stop time. A reader can read values only before that time.
+pieces, even if nobody reads the formula. If the record exceeds its budget, use the latest
+check time whose complete prefix fits. Count only pieces that start before that time. A reader
+can read values only before the stop. The manifest keeps the check times so that the same
+limit gives the same prefix on a completed record.
 See [the record and its budget](../engine/README.md#the-record).
 
 ### The methods of the engine

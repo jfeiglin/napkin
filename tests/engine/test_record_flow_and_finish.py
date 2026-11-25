@@ -1,4 +1,4 @@
-"""Flow turnover, the first over-budget piece, and the histories of retired occurrences."""
+"""Flow turnover, budget stops at the handoff boundary, and the histories of retired occurrences."""
 
 from dataclasses import replace
 
@@ -101,12 +101,15 @@ def test_equal_rate_handoff_adds_the_new_pump_to_the_endpoint_reads(monkeypatch)
 
 
 @pytest.mark.parametrize(('cutoff', 'budget'), [(2, 3), (3, 4)])
-def test_first_excess_at_and_after_handoff_matches_both_continuations(cutoff, budget, tmp_path, monkeypatch):
+def test_budget_stop_at_and_after_handoff_matches_both_continuations(cutoff, budget, tmp_path, monkeypatch):
     reference = check_history_rebuilds(monkeypatch)
     program, configuration = selected(ENDPOINT_TURNOVER, ENDPOINT_PATHS)
     full = run(program, configuration)
     assert full.failure is None
-    starts = sorted(p.t for h in full.histories if full.manifest.names(h.key) for p in h.pieces)
+    starts = sorted(
+        p.t for h in full.histories if full.manifest.names(h.key) for p in h.pieces[: h.charged_pieces()]
+    )
+    assert cutoff in full.manifest.check_times
     assert sum(t < cutoff for t in starts) == budget and starts[budget] == cutoff
     bounded = replace(configuration, request=replace(configuration.request, pieces=budget))
     straight = run(program, bounded)

@@ -59,19 +59,20 @@ manifest of what it holds (R-A4a-07, R-A4a-08).
   the record can hold one extra point for each stock and each direct alias of that stock.
   Only a point added to show the exact balance is exempt. An exclusive budget stop has no such
   point.
-  A record that would exceed the budget ends at the time of the first counted piece that
-  does not fit, with a failure entry there that names the budget (the detail `budget`): it holds the
-  values before that time, and from it on every value is `Unavailable` with that reason. Only the
-  requested values use the budget. A run whose record so far would exceed its budget at a stop
-  ends there by its budget, and gives no checkpoint (`napkin/engine/timeline/checkpoints.py`): a run
-  stops by its budget where its record does, before any later stop.
+  If the complete record exceeds the budget, find the last check time for which the pieces
+  strictly before that time fit. The record ends before all rounds at that time. Its failure
+  entry names the budget. A read at or after that time gives `Unavailable`. Only requested
+  values use the budget. At a breakpoint the run checks the complete prefix before it gives
+  a checkpoint. Older records that do not include check times use the first excess opening
+  as their cutoff, unless the caller supplies the check times.
 """
 
 from __future__ import annotations
 
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass, replace
 from fractions import Fraction
+from math import isfinite
 from typing import Any
 
 from ..core.units import rational
@@ -255,6 +256,8 @@ class Manifest:
     comparison_scales: tuple[tuple[str, float], ...] = ()
     # First committed installation at which each mixed time-dependent rate was outside the pulse guard.
     unchecked_time_rates: tuple[tuple[str, Number], ...] = ()
+    # Distinct quota check times, in increasing order. Older records have no check clock.
+    check_times: tuple[float, ...] | None = None
 
     def names(self, key):
         """Whether a record with this manifest holds the value of a key: every value, or a key of its
@@ -372,20 +375,45 @@ class Record:
         except LookupError as problem:
             return Unavailable(str(problem))
 
-    def within(self, pieces):
-        """The record within a budget of pieces (see the module): itself, when the values that it holds
-        have no more pieces; else the record before the time of the first piece that does not fit (its
-        histories and its trace), which a failure entry at that time ends, naming the budget.
-        The failure has round zero because the record excludes every round at that time.
-        The cutoff ends coverage of a retained curve. Its original basis stays
-        with it, so a second trim gives the same pieces as a direct trim."""
+    def within(self, pieces, *, check_times=None):
+        """Return the prefix that fits the piece budget.
+
+        If the full record exceeds the budget, use the last check time whose complete
+        prefix fits. Time zero is always available. Exclude every opening and round at
+        the cutoff and keep the original basis of each earlier curve.
+
+        The manifest supplies the run's check times. For an older record the caller can
+        supply them explicitly. With no clock, retain the legacy first-excess cutoff.
+        """
+        if check_times is None:
+            check_times = self.manifest.check_times
+        else:
+            check_times = tuple(sorted({0.0, *check_times}))
+            if any(t < 0 or not isfinite(t) for t in check_times):
+                raise ValueError('check times must be finite and nonnegative')
         held = [history for history in self.histories if self.manifest.names(history.key)]
         if sum(history.charged_pieces() for history in held) <= pieces:
-            return self
-        times = sorted(
-            float(piece.t) for history in held for piece in history.pieces[: history.charged_pieces()]
-        )
-        end = times[pieces]
+            # Tightening a previously trimmed budget can select the same boundary.
+            # The earlier excess still ends the record, now under the tighter limit.
+            prior = self.failure.detail('budget') if self.failure is not None else None
+            if (
+                check_times is None
+                or prior is None
+                or pieces > prior
+                or (pieces == prior and check_times == self.manifest.check_times)
+            ):
+                return self
+            end = self.end
+        else:
+            times = sorted(
+                float(piece.t) for history in held for piece in history.pieces[: history.charged_pieces()]
+            )
+            end = times[pieces]
+        if check_times is not None:
+            # All openings at end are excluded. Exactly the check times through
+            # this first excess can therefore have a completed prefix within budget.
+            check_times = check_times[: bisect_right(check_times, end)]
+            end = check_times[-1] if check_times else 0.0
         histories = []
         for history in self.histories:
             kept = tuple(piece for piece in history.pieces if piece.t < end)
@@ -397,9 +425,12 @@ class Record:
                     histories.append(replace(history, pieces=kept))
         trace = tuple(entry for entry in self.trace if entry.t < end)
         unit = 'piece' if pieces == 1 else 'pieces'
-        message = (
-            f'from this time the values that it holds would have more than its budget of {pieces} {unit}'
-        )
+        if check_times is None:
+            message = (
+                f'from this time the values that it holds would have more than its budget of {pieces} {unit}'
+            )
+        else:
+            message = f'this is the last check whose complete prefix fits the budget of {pieces} {unit}'
         failure = Entry(
             end,
             0,
@@ -415,7 +446,9 @@ class Record:
             for name, scale in self.manifest.comparison_scales
             if (owner := occurrence_owner(name)) is None or owner in started
         )
-        manifest = replace(self.manifest, unchecked_time_rates=covered, comparison_scales=scales)
+        manifest = replace(
+            self.manifest, unchecked_time_rates=covered, comparison_scales=scales, check_times=check_times
+        )
         return Record(manifest, tuple(histories), (*trace, failure), failure)
 
     def entries(self, kind=None, part=None):

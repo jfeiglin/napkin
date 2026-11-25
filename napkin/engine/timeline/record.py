@@ -64,8 +64,11 @@ at the record's end holds its value there (`_finished`). The budget counts traje
 actual postings, including postings at the cutoff. At an inclusive cutoff, each stock and each
 of its direct aliases can have one extra point. The point shows the exact balance. The engine
 excludes only these added points from the count. An exclusive budget stop has no such point.
-The record ends before the first piece that exceeds the budget (`Record.within`).
-This rule also applies when the run stops for a checkpoint (`checkpoints.Breaks`).
+If the record exceeds the budget, use the latest check time whose completed prefix fits
+(`Record.within`). The prefix includes only pieces and rounds before that time. A piece from
+a solver that publishes later counts at its own start. The manifest keeps time zero and each
+distinct check time at a moment or a common solver boundary. The same rule applies at a
+checkpoint (`checkpoints.Breaks`).
 
 Numbers are in the canonical unit of their dimension. `read` gives them in the declared unit of each
 path, from what the record holds and from nothing else (`Record.unavailable`): any other value is
@@ -88,7 +91,6 @@ the comparison settings of its manifest (`Plan.replay`).
 from __future__ import annotations
 
 import math
-import sys
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from copy import copy
@@ -114,8 +116,6 @@ from ..continuous.integrate import crossing_time, switch_layers, switch_pairs
 from ..continuous.kernels import Affine, MatrixExponential
 from ..errors import SimulationError
 from .collections import dynamic_value, exact_member, history_of, index_of, kept, known, looked_up, reduced
-from .family import Family
-from .lines import Lines
 from .plan import (
     BUILTINS,
     CHANGED,
@@ -467,15 +467,7 @@ class Recorder:
         self._counted = {}
         self._total = 0
         self._as_of = None
-        self._held_upper = None
-        self._held_growth = 0
-        self._budget_rules = None
-        self._budget_formulas = 0
-        self._budget_closed = {}
-        self._budget_valid = -math.inf
-        self._budget_safe_at = None
-        self._budget_rows = {}
-        self._capture_budget_rows = False
+        self._raw_due = set()
 
     def entry(self, t, kind, part, owner='', **details):
         """One entry of the trace, in the round where the run is (`round`: 0 is the setup)."""
@@ -504,8 +496,7 @@ class Recorder:
         view._store_tails = dict(self._store_tails)
         view._counted = dict(self._counted)
         view._coverage_starts = dict(self._coverage_starts)
-        view._budget_rows = {}
-        view._capture_budget_rows = False
+        view._raw_due = set(self._raw_due)
         view.pieces = {name: list(pieces) for name, pieces in self.pieces.items()}
         view.trace = list(self.trace)
         return view
@@ -516,9 +507,7 @@ class Recorder:
         brought in so far, a piece at each edit. `start` is when the store started, which the run's
         savepoint keeps with the transfers (`moment._Savepoint`); the ledger reads 0 from then to its
         first edit without a piece of its own."""
-        self._held_upper, self._held_growth = math.inf, 0
         self.transfers.setdefault(store, (start, []))[1].append((t, amount))
-        self._budget_change(t)
         self._dirty.add(store)
         self._from = min(self._from, t)
 
@@ -569,362 +558,55 @@ class Recorder:
             ):
                 self.add_pieces(name, pieces)
 
-    def boundary(self, end, *, before=False, internal=False):
-        """Close a recording interval when its producers have reached a common boundary."""
+    def boundary(self, end, *, internal=False):
+        """Commit available rows. Fit formulas when the incoming producers have all published."""
         ways = self.run.ways
-        if (
-            internal
-            and len(ways.sampled) + len(ways.moving_solvers) > 1
-            and any(
-                ways.sets[key][1].recorded_through != end
+        common = (
+            not internal
+            or len(ways.sampled) + len(ways.moving_solvers) <= 1
+            or all(
+                ways.sets[key][1].recorded_through == end
                 for registry in (ways.sampled, ways.moving_solvers)
                 for key in registry
             )
-        ):
+        )
+        if not common:
             return
         self.fits.advance(end)
-        pending = list(ways.pending_sparse(end))
         if not self._index_current():
             self._prepare_histories()
-        if not pending:
+        if not any(ways.pending_sparse(end)):
             self._advance(end)
-        self.check_budget(end, before=before, internal=internal, pending=pending)
-
-    def check_budget(self, end, *, before=False, internal=False, pending=()):
-        """Observe the completed histories, or a private view of outstanding solver rows."""
-        if pending:
-            # Re-sharing can install a family's raw writer for an existing formula.
-            if self._budget_formulas != len(self.formulas):
-                self._budget_formulas = len(self.formulas)
-                self._budget_rules = None
-                self._budget_safe_at = None
-                self._budget_valid = -math.inf
-                self._budget_rows.clear()
-            if self._budget_safe_at == end:
-                return
-            if self._pending_fits(end, pending):
-                self._budget_safe_at = end
-                return
-            probe = self.projection()
-            # A prior complete view already fitted these immutable intervals.
-            # Never import budget-only pieces or a partial input into the live recorder.
-            probe.fits.closed.update(
-                (k, v) for k, v in self._budget_closed.items() if k[2] < self._budget_valid
-            )
-            probe._capture_budget_rows = True
-            self.run.ways.project_sparse(probe, end)
-            probe._advance(end)
-            fits = probe._check_committed(end, before)
-            self._budget_closed = probe.fits.closed
-            self._budget_valid = end
-            self._budget_rows = probe._budget_rows if fits else {}
-            if (
-                fits
-                and self._budget_rules
-                and not self._checkpoint_observation
-                and not self._extended_stock
-                and not any(t is not None for t in self._coverage_starts.values())
-            ):
-                self._budget_safe_at = end
-            return
-        if internal:
-            if self._held_upper is None:
-                self._held_upper, self._held_growth = self._held_piece_bound()
-            if self._held_upper <= self.plan.configuration.request.pieces:
-                return
-        self._check_committed(end, before)
-
-    def _check_committed(self, end, before):
-        view = self._at_cutoff(end)
-        if view._total <= self.plan.configuration.request.pieces:
-            return True
-        round_ = int(not self.run.bare) if before else self.round
-        prefix = view._record(end, None, Entry(end, round_, 'pause', '', ''), end != self.plan.horizon)
-        if prefix.failure is not None and (not before or prefix.failure.t < end):
+        else:
+            # A closed raw column can be counted while another solver still owns an open step.
+            # Keep the change notification for the formulas that will read it at a complete boundary.
+            for name in self._raw_due:
+                if name in self._counted and name not in self._derived and name not in self._store_tails:
+                    self._put(name, self._raw_history(name, self.plan.values[name], end))
+        self._raw_due.clear()
+        if self.check_budget(end):
+            # The strict committed prefix already exceeds the limit. Complete this terminal
+            # boundary once, so the ordinary trim can find the latest safe earlier check.
+            ways.project_sparse(self, end)
+            prefix = self.record(end, pause=Entry(end, self.round, 'pause', '', ''), ongoing=True)
+            if prefix.failure is None:
+                raise AssertionError('a committed overrun must exceed the piece budget')
             raise HistoryFull(prefix)
-        return False
 
-    def _budget_change(self, start):
-        """A new raw piece can change a previously projected open interval."""
-        self._budget_valid = min(self._budget_valid, start)
-        self._budget_safe_at = None
-
-    def _pending_fits(self, end, pending):
-        """Prove headroom without publishing any prefix of an unrelated dense step.
-
-        First reserve the maximum number of leaves of each adaptive fit. If that
-        is inconclusive, read the cached openings of the actual prepared steps.
-        A bound can admit an observation. Only the ordinary recorder can refuse it.
-        """
-        if self._budget_rules is None:
-            self._budget_rules = self._budget_columns()
-        if not self._budget_rules or self._checkpoint_observation or self._extended_stock:
-            return False
-        if any(t is not None for t in self._coverage_starts.values()):
-            return False
-        extra = {}
-        for way in pending:
-            # A coalesced contact can extend just past the accepted polynomial.
-            # Its extension is a second fit.
-            spans = 1 + (way.t > way._history_end)
-            for name in way.trajectory_columns():
-                extra[name] = spans * (MOST + 1), True
-        if self._fits_bound(end, extra):
-            return True
-        rows_by_name = defaultdict(list)
-        for way in pending:
-            for name, rows in way.trajectory_rows(end):
-                rows_by_name[name].extend(rows)
-        return self._fits_bound(end, {}, rows_by_name)
-
-    def _budget_columns(self):
-        """Describe the emitters for which a maximum follows from the fit itself.
-
-        Other emitters, including a root search that can add its own intervals,
-        require the ordinary exact check. Ignore histories outside the request's
-        dependency closure.
-        """
-        plan = self.plan
-        wanted = {n for n in self._order if (k := plan.values[n].key) is not None and self._names(k)}
-        rules = []
-        for name in reversed(self._order):
-            if name not in wanted:
-                continue
-            value = plan.values[name]
-            charged = value.key is not None and self._names(value.key)
-            reads, timed, boolean = (), False, False
-            if name in plan.defined:
-                return ()
-            if name not in self._derived:
-                kind = 'raw'
-            elif plan.occurrence_of(name) is not None or value.kind == RATE:
-                return ()
-            elif name in self.formulas:
-                kind = 'raw'
-            elif value.kind == FORMULA:
-                if isinstance(value.node, nodes.Ref) and value.node.name != 't':
-                    kind, reads = 'alias', (value.node.name,)
-                else:
-                    if any(
-                        isinstance(n, nodes.Call) and n.function in ('min', 'max', 'abs', 'clip')
-                        for n in nodes.breadth_first(value.node)
-                    ):
-                        return ()
-                    kind, reads = 'formula', tuple(_formula_reads(value.node))
-                    timed, boolean = 't' in nodes.names(value.node), value.boolean
-            elif value.kind == REDUCE:
-                reduction = plan.reductions[name]
-                if reduction.op != 'sum' or reduction.names is None or any(reduction.tests):
-                    return ()
-                kind, reads = 'sum', reduction.names
-            else:
-                return ()
-            if any(read not in self._order for read in reads):
-                return ()
-            wanted.update(reads)
-            rules.append((name, kind, reads, timed, boolean, charged))
-        return tuple(reversed(rules))
-
-    def _fits_bound(self, end, extra, projected=None):
+    def check_budget(self, end):
+        """Only irrevocable pieces count. A later round can replace a landing at this time."""
         limit = self.plan.configuration.request.pieces
-        counts, moves, grids = {}, {}, {}
-        magnitudes = {}
-        total = sum(len(rows) for _, rows in self.transfers.values())
-        for name, kind, reads, timed, boolean, charged in self._budget_rules:
-            if kind == 'raw':
-                raw = self.pieces.get(name, ())
-                tail = self._store_tails.get(name, ())
-                count, moving = extra.get(name, (0, False))
-                # Include a seed or late opening even if it compacts into its neighbor.
-                count += len(raw) + len(tail) + 1
-                moving = moving or any(row[2] != 0 for row in raw) or any(row[2] != 0 for row in tail)
-                if projected is not None:
-                    rows = projected.get(name, ())
-                    if rows and name in self.run.stock_state.balances:
-                        rows = [(at, self._posted_value(name, at, v), s) for at, v, s in rows]
-                    count += len(rows)
-                    moving = moving or any(row[2] != 0 for row in rows)
-                    # Exact contributing openings let downstream fits reuse previously
-                    # proved intervals. A false opening can hide a longer adaptive fit.
-                    # Use the same seed and seam compaction as the raw-history owner.
-                    if name in self.formulas:
-                        pieces = self._history(None, [r for r in (*raw, *rows) if r[0] <= end]).pieces
-                    else:
-                        i, seed = self._raw_opening(name, raw, tail or rows, end)
-                        pieces = [Piece(*r) for r in seed]
-                        self._extend(pieces, [r for r in raw[i:] if r[0] <= end])
-                        if tail or rows:
-                            self._extend(pieces, [r for r in (*tail, *rows) if r[0] <= end])
-                    grids[name] = pieces
-            elif kind == 'alias':
-                count, moving = counts[reads[0]], moves[reads[0]]
-                if reads[0] in grids:
-                    grids[name] = grids[reads[0]]
-            else:
-                moving = timed or any(moves[read] for read in reads)
-                count = 1 + sum(counts[read] for read in reads)
-                if moving:
-                    # _switches samples at most len(_CHECKS) distinct stretches.
-                    # An unavailable stretch can split a numeric fit; each available
-                    # stretch has at most MOST cuts. Include the final landed point.
-                    stretch = len(_CHECKS) + 1
-                    cap = stretch if boolean else stretch * (MOST + 1)
-                    count = 1 + (count + len(self.fits.ends)) * cap
-                    if projected is not None and all(read in grids for read in reads):
-                        opening = self._budget_grid(name, kind, reads, grids, end, cap, timed, magnitudes)
-                        if opening is not None:
-                            count = opening
-            counts[name], moves[name] = min(count, limit + 1), moving
-            if charged:
-                total += count
+        if self._total <= limit:
+            return False
+        total = 0
+        for name, count in self._counted.items():
+            if count:
+                through = (self._as_of or 0.0) if name in self._derived else end
+                pieces = self._histories[name].pieces
+                total += bisect_left(pieces, through, key=_piece_time)
                 if total > limit:
-                    return False
-        return total <= limit
-
-    def _budget_grid(self, name, kind, reads, grids, end, cap, timed, magnitudes):
-        sources = [grids[r] for r in reads]
-        if any(not h or h[0].t > 0 for h in sources):
-            return None  # A selected record can have an overlay at its first late opening.
-        openings = sorted({0.0, end, *(p.t for h in sources for p in h)})
-        if kind == 'sum' and all(
-            p.curve is None and _line_number(p.value) and _line_number(p.rate) for h in sources for p in h
-        ):
-            return len(openings)  # collections.history_of sums the input lines directly.
-        node = self.plan.values[name].node
-        if kind == 'sum' or (
-            isinstance(node, nodes.Binary)
-            and node.op in ('add', 'sub', 'mul')
-            and isinstance(node.left, nodes.Ref)
-            and isinstance(node.right, nodes.Ref)
-        ):
-            # Addition and multiplication of these bounded finite operands cannot
-            # create an unavailable stretch. Each grid interval needs at most one
-            # adaptive fit, even if that fit uses every allowed subdivision.
-            for read in reads:
-                if read not in magnitudes:
-                    magnitudes[read] = self._absolute_bound(grids[read], end)
-            peak = max((magnitudes[r] for r in reads), default=0.0)
-            if peak <= math.sqrt(sys.float_info.max) / max(2, len(reads)):
-                cap = MOST + 1
-        count = 1  # the final landed point
-        for a, b in pairwise(openings):
-            if not timed and all(
-                (p := h[bisect_right(h, a, key=_piece_time) - 1]).curve is None and p.rate == 0
-                for h in sources
-            ):
-                count += 1
-                continue
-            moments = self.fits.intervals(a, b)
-            for left, right in pairwise([a, *moments, b]):
-                key = (name, left, right)
-                fit = self.fits.closed.get(key)
-                if fit is None and right < self._budget_valid:
-                    fit = self._budget_closed.get(key)
-                count += cap if fit is None else max(1, len(fit))
-        return count
-
-    @staticmethod
-    def _absolute_bound(pieces, end):
-        """A finite ceiling on every reading of a raw numeric history, or infinity."""
-        peak = 0.0
-        for i, piece in enumerate(pieces):
-            if not _line_number(piece.value) or not _line_number(piece.rate):
-                return math.inf
-            stop = pieces[i + 1].t if i + 1 < len(pieces) else end
-            width = stop - piece.t
-            try:
-                ceiling = abs(float(piece.value))
-                if (curve := piece.curve) is None:
-                    ceiling += abs(float(piece.rate)) * width
-                elif width > curve.length or curve.length <= 0 or len(curve.coefficients) > DEGREE + 1:
-                    return math.inf
-                else:
-                    # On the piece's own grid |u| <= 1. A Clenshaw recurrence
-                    # can grow by less than four per coefficient. Include both
-                    # evaluations in Curve.increase and a margin for rounding.
-                    ceiling += 4 ** (len(curve.coefficients) + 2) * sum(map(abs, curve.coefficients))
-            except (OverflowError, ValueError):
-                return math.inf
-            if not math.isfinite(ceiling):
-                return math.inf
-            peak = max(peak, ceiling)
-        return peak
-
-    def _held_piece_bound(self):
-        """Bound retained pieces from raw held lines, their aliases and numeric sums.
-
-        An alias copies its input. A sum of lines has at most one new piece per input
-        piece time, even when a member is projected twice. Count every path from a raw
-        value to a retained history. The largest such count bounds the growth from any
-        later raw line. An addition of held physical rates stays constant between their
-        changes. Compaction can only reduce the count. Other formulas may split
-        between input pieces, so their budget needs the ordinary committed histories.
-        """
-        plan = self.plan
-        if (
-            plan.events
-            or plan.defined
-            or self.transfers
-            or not all(isinstance(way, (Family, Lines)) for way in self.run.ways.instances)
-        ):
-            return math.inf, 0
-        uses, numeric = defaultdict(int), set()
-        upper, growth = 0, 0
-        for name in reversed(self._order):
-            value = plan.values[name]
-            count = uses.pop(name, 0) + int(value.key is not None)
-            if not count:
-                continue
-            if name not in self._derived or name in self.formulas:
-                raw = self.pieces.get(name, ())
-                if name in numeric and (
-                    (name in self.constants and not _line_number(self.constants[name]))
-                    or any(not (_line_number(v) and _line_number(rate)) for _, v, rate in raw)
-                ):
-                    return math.inf, 0
-                upper += count * (len(raw) + int(name in self.constants))
-                growth = max(growth, count)
-            elif value.kind == FORMULA and isinstance(value.node, nodes.Ref):
-                source = value.node.name
-                uses[source] += count
-                if name in numeric:
-                    numeric.add(source)
-            elif value.kind == FORMULA and isinstance(value.node, nodes.Binary) and name not in numeric:
-                # An endpoint can add several held actual rates. Each is a raw zero-slope
-                # history, so formula() takes its held branch between consecutive changes.
-                # A consumer that requires a numeric sum can need the ordinary overflow checks.
-                pending = [value.node]
-                while pending:
-                    node = pending.pop()
-                    if isinstance(node, nodes.Binary) and node.op == 'add':
-                        pending.extend((node.left, node.right))
-                    elif (
-                        isinstance(node, nodes.Ref)
-                        and node.name not in self._derived
-                        and node.name in plan.values
-                        and plan.values[node.name].kind == RATE
-                    ):
-                        uses[node.name] += count
-                        numeric.add(node.name)
-                    else:
-                        return math.inf, 0
-            elif value.kind == REDUCE:
-                reduction = plan.reductions[name]
-                upper += count  # the constant result of an empty collection or member count
-                if reduction.names is not None:
-                    if reduction.op != 'sum':
-                        return math.inf, 0
-                    try:
-                        entries = self.run.kept_of(name)
-                    except FAILURES:
-                        return math.inf, 0  # an unavailable sum can make its reader need a fit
-                    for entry in entries:
-                        source = reduction.names[entry]
-                        uses[source] += count
-                        numeric.add(source)
-            else:
-                return math.inf, 0
-        return (math.inf, 0) if uses else (upper, growth)
+                    return True
+        return False
 
     def _posted_value(self, name, t, value):
         """Keep a physical posting's exact intercept when its public float loses a remainder."""
@@ -967,9 +649,7 @@ class Recorder:
             else:
                 self._store_tails[name] = tuple(rows)
             self._dirty.add(name)
-        self._held_upper, self._held_growth = math.inf, 0
         self._from = min(self._from, start)
-        self._budget_change(start)
 
     def _keeps_stock_prefix(self, name, rows, since):
         """Keep each charged start, including duplicates, and whether the stock holds there."""
@@ -1007,83 +687,22 @@ class Recorder:
 
     def add(self, name, t, value, rate):
         """One piece of a value, which a run gives as it goes."""
-        if self._held_growth:
-            if _line_number(value) and _line_number(rate):
-                self._held_upper += self._held_growth
-            else:
-                self._held_upper, self._held_growth = math.inf, 0
         self.seal_store(name)
         self.pieces.setdefault(name, []).append((t, self._posted_value(name, t, value), rate))
+        self._raw_due.add(name)
         self._dirty.add(name)
         self._from = min(self._from, t)
-        self._budget_change(t)
 
     def add_pieces(self, name, pieces):
         """Pieces of a value, which a run gives as it goes."""
         if pieces:
             self.seal_store(name)
-            self._held_upper, self._held_growth = math.inf, 0
             if self.run is not None and name in self.run.stock_state.balances:
                 pieces = [(t, self._posted_value(name, t, value), rate) for t, value, rate in pieces]
             self.pieces.setdefault(name, []).extend(pieces)
+            self._raw_due.add(name)
             self._dirty.add(name)
             self._from = min(self._from, pieces[0][0])
-            self._budget_change(pieces[0][0])
-
-    def add_trajectory(self, step, end, names, columns):
-        """Post canonical solver rows. Reuse a prior budget fit only across an identical prefix."""
-        if not self._capture_budget_rows and not self._budget_rows:
-            for name, rows in columns:
-                self.add_pieces(name, rows)
-            return
-        # Evaluate the producer before preserving the frontier. Only these appends can
-        # then change it. A grouped contact can supply two consecutive spans per name.
-        columns = tuple(columns)
-        valid = self._budget_valid
-        offsets = {}
-        for name, rows in columns:
-            offsets.setdefault(name, len(self.pieces.get(name, ())))
-            self.add_pieces(name, rows)
-        if self._capture_budget_rows:
-            for name, offset in offsets.items():
-                self._budget_rows[name] = step, end, offset, self.pieces[name][offset:]
-            return
-        # A publication can omit a row that the private view saw. Compare both
-        # sequences, even if the solver now supplies no rows for that column.
-        for name in dict.fromkeys((*names, *offsets)):
-            seen = self._budget_rows.pop(name, None)
-            offset = offsets.get(name)
-            rows = self.pieces[name][offset:] if offset is not None else ()
-            if seen is None:
-                if rows:
-                    valid = min(valid, rows[0][0])
-                continue
-            token, cutoff, ordinal, expected = seen
-            valid = min(valid, cutoff, end)
-            matched = 0
-            if token is step and ordinal == offset:
-                for a, b in zip(expected, rows):
-                    if not self._same_trajectory_row(a, b):
-                        break
-                    matched += 1
-            if matched < len(expected):
-                valid = min(valid, expected[matched][0])
-            if matched < len(rows):
-                valid = min(valid, rows[matched][0])
-        self._budget_safe_at = None
-        self._budget_valid = valid
-
-    @staticmethod
-    def _same_trajectory_row(left, right):
-        """The same canonical curve and exactly the same posted numbers, including signed zero."""
-        for a, b in zip(left, right, strict=True):
-            if a is b:
-                continue
-            if type(a) is not type(b) or isinstance(a, Curve) or a != b:
-                return False
-            if a == 0 and math.copysign(1, a) != math.copysign(1, b):
-                return False
-        return True
 
     def incoming_piece(self, name, end):
         """The last recorded piece strictly before an incoming segment ends, or None."""
@@ -1131,11 +750,6 @@ class Recorder:
 
     def _prepare_histories(self):
         """Order the histories that this request retains and index their direct readers."""
-        self._budget_safe_at = None
-        if self._indexed_version != self.plan.version:
-            self._budget_valid = -math.inf
-            self._budget_rows.clear()
-        self._budget_rules = None
         plan = self.plan
         request = plan.configuration.request
         wanted = self._wanted
@@ -1178,8 +792,6 @@ class Recorder:
                 self._dirty.add(name)
                 if (key := plan.values[name].key) is not None and self._names(key):
                     self._counted[name] = 0
-        self._held_upper = None
-        self._held_growth = 0
         self._indexed_value_count = len(plan.values)
         self._indexed_version = plan.version
 
@@ -1492,6 +1104,7 @@ class Recorder:
             plan.units.comparisons.factor,
             tuple(sorted(plan.comparison_scales.items())),
             tuple(sorted(self.run.unchecked_time_rates.items())) if self.run is not None else (),
+            (*self.fits.ends, end) if end > self.fits.ends[-1] else tuple(self.fits.ends),
         )
         made = Record(manifest, tuple(held), trace, failure)
         if not ongoing:
@@ -1944,13 +1557,26 @@ def _numbers(at, tried, a, b, first, tolerance, crossing):
 
 
 def _reader(history):
-    """`History.at` of a history, by bisection over the times of its pieces."""
+    """Read the current input piece throughout a fit. Search again when a sample leaves it."""
+    pieces = history.pieces
+    start = stop = 0.0
+    piece = None
+    held = False
+    value = None
 
     def at(time):
-        k = bisect_right(history.pieces, time, key=_piece_time) - 1
-        if k < 0:
-            raise LookupError(f'{history.key} has no value at {time} h')
-        return history.pieces[k].at(time)
+        nonlocal start, stop, piece, held, value
+        if not start <= time < stop:
+            k = bisect_right(pieces, time, key=_piece_time) - 1
+            if k < 0:
+                raise LookupError(f'{history.key} has no value at {time} h')
+            piece = pieces[k]
+            start = piece.t
+            stop = pieces[k + 1].t if k + 1 < len(pieces) else math.inf
+            held = piece.curve is None and piece.rate == 0
+            if held:
+                value = piece.at(time)
+        return value if held else piece.at(time)
 
     return at
 

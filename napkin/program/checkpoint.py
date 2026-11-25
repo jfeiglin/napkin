@@ -292,6 +292,8 @@ def _data(value):
         data = {'$': name, **{item.name: _data(getattr(value, item.name)) for item in fields(value)}}
         if name == 'Manifest' and not value.unchecked_time_rates:
             del data['unchecked_time_rates']  # an absent field gives the usual empty coverage note
+        if name == 'Manifest' and value.check_times is None:
+            del data['check_times']  # Older records did not include their check times.
         return data
     raise TypeError(f'a checkpoint holds no {type(value).__name__}')
 

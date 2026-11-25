@@ -1095,7 +1095,7 @@ class Run:
             moment = self.next_moment()
             if self.arriving and self.saved_arrival is None:
                 self.ways.accept_incoming(moment[0])
-            self.recorder.boundary(moment[0], before=True)
+            self.recorder.boundary(moment[0])
             self.moment.at(*moment)
         self.ways.finish(horizon, not self.bare)
 
