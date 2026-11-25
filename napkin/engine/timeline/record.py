@@ -93,7 +93,7 @@ from copy import copy
 from dataclasses import dataclass, replace
 from fractions import Fraction
 from itertools import pairwise
-from operator import attrgetter
+from operator import attrgetter, itemgetter
 
 import numpy as np
 from numpy.polynomial import chebyshev
@@ -111,7 +111,7 @@ from ...program.record import ChangeHistory, Curve, Entry, History, Key, Manifes
 from ..continuous.integrate import crossing_time, switch_layers, switch_pairs
 from ..continuous.kernels import Affine, MatrixExponential
 from ..errors import SimulationError
-from .collections import dynamic_value, history_of, index_of, kept, known, looked_up, reduced
+from .collections import dynamic_value, exact_member, history_of, index_of, kept, known, looked_up, reduced
 from .family import Family
 from .lines import Lines
 from .plan import (
@@ -134,22 +134,22 @@ FAILURES = (ExpressionError, ArithmeticError, ValueError, LookupError, Simulatio
 _piece_time = attrgetter('t')
 
 
+def _window(pieces, start, end, *, key=_piece_time):
+    """The opening in force at start and the actual postings through end, in source order."""
+    left = bisect_left(pieces, start, key=key)
+    right = bisect_right(pieces, end, lo=left, key=key)
+    if left and (left == right or key(pieces[left]) > start):
+        left -= 1
+    return pieces[left:right]
+
+
+def _native_rows(source, epoch, start, end):
+    """Keep the source basis, except where the binding itself begins inside a piece."""
+    return [_row_from(piece, max(epoch, piece.t)) for piece in _window(source.pieces, start, end)]
+
+
 def _formula_reads(node):
     return sorted(set(nodes.names(node)) - {'t'})
-
-
-def _restart_point(start, since, histories, reads, anchors=()):
-    """The last boundary of the formula's own grid at or before the earliest change."""
-    if since <= start:
-        return start
-    boundary = max((at for at in anchors if start <= at <= since), default=start)
-    for name in reads:
-        history = histories.get(name)
-        if history is not None:
-            i = bisect_right(history.pieces, since, key=_piece_time)
-            if i:
-                boundary = max(boundary, history.pieces[i - 1].t)
-    return boundary
 
 
 def _freeze_pieces(pieces, finish, value):
@@ -318,31 +318,24 @@ def recorded_piece(t, value, rate):
     return Piece(t, value, curve=rate) if isinstance(rate, Curve) else Piece(t, value, rate)
 
 
-def _curve_interval(curve, offset, length):
-    """Express a fitted polynomial on a subinterval, without sampling or adding starts."""
+def _row_from(piece, start):
+    """Move the left edge of a native piece. Its basis is independent of the observation end."""
+    if start == piece.t:
+        return piece.t, piece.value, piece.curve or piece.rate
+    value = piece.at(start)
+    curve = piece.curve
+    if curve is None:
+        return start, value, piece.rate
+    offset = start - piece.t
+    remaining = curve.length - offset
+    # A curve stays in force until the next opening, even if the clock rounds
+    # to its last node. A nonzero basis still represents that same polynomial.
+    length = remaining if remaining > 0 else curve.length
     u = 2 * offset / curve.length - 1
     ratio = length / curve.length
     domain = chebyshev.Chebyshev((u + ratio, ratio))
     coefficients = chebyshev.Chebyshev(curve.coefficients)(domain).coef
-    return Curve(length, tuple(float(c) for c in coefficients))
-
-
-def _curve_prefix(shape, at, stop):
-    if isinstance(shape, Curve) and at < stop < at + shape.length:
-        return _curve_interval(shape, 0, stop - at)
-    return shape
-
-
-def _exported_pieces(pieces, end):
-    """Limit each public curve to the accepted span after dependent formulas have read it."""
-    for k, piece in enumerate(pieces):
-        if piece.curve is not None:
-            stop = pieces[k + 1].t if k + 1 < len(pieces) else end
-            curve = _curve_prefix(piece.curve, piece.t, stop)
-            if curve is not piece.curve:
-                yield replace(piece, curve=curve)
-                continue
-        yield piece
+    return start, value, Curve(length, tuple(float(c) for c in coefficients))
 
 
 def _compact(pieces):
@@ -468,8 +461,6 @@ class Recorder:
         self._private = None
         self._moving = set()
         self._histories = {}
-        self._flow_reads = {}  # contributors when an endpoint sum was last assembled
-        self._event_ends = {}  # fitted event histories: None while live, else their assembled finish
         self._raw_positions = {}
         self._counted = {}
         self._total = 0
@@ -505,8 +496,6 @@ class Recorder:
         view.fits.closed = dict(self.fits.closed)
         view.fits.ends = list(self.fits.ends)
         view._histories = dict(self._histories)
-        view._flow_reads = dict(self._flow_reads)
-        view._event_ends = dict(self._event_ends)
         view._dirty = set(self._dirty)
         view._moving = set(self._moving)
         view._raw_positions = dict(self._raw_positions)
@@ -1011,14 +1000,11 @@ class Recorder:
             self.pieces[name].extend(tail)
 
     def saved_pieces(self, end=None):
-        """Raw pieces through the checkpoint, including any accepted, unfinished step."""
+        """Raw openings through the checkpoint, each in its original polynomial basis."""
         for name in sorted(self.pieces):
             rows = tuple(self.pieces[name]) + self._store_tails.get(name, ())
-            if end is not None:
-                rows = tuple(
-                    (at, value, _curve_prefix(shape, at, rows[k + 1][0] if k + 1 < len(rows) else end))
-                    for k, (at, value, shape) in enumerate(rows)
-                )
+            if end is not None and rows and rows[-1][0] > end:
+                rows = rows[: bisect_right(rows, end, key=lambda row: row[0])]
             yield name, rows
 
     def add(self, name, t, value, rate):
@@ -1119,6 +1105,11 @@ class Recorder:
         self._coverage_starts.setdefault(name, None)
         return False
 
+    def binding_changed(self, name, at):
+        """Invalidate this binding and its readers from the commit onward."""
+        self._dirty.add(name)
+        self._from = min(self._from, at)
+
     def refresh_needed(self):
         """Refresh a selected record after a commit changes membership or definitions."""
         request = self.plan.configuration.request
@@ -1181,18 +1172,8 @@ class Recorder:
                 or (name in plan.keyed and plan._chosen(plan.keyed[name]) is None)
             ):
                 self._clock.add(name)
-        # A redefinition can change an existing formula without writing a raw piece.
-        # An occurrence start only adds names and readers to the committed history.
-        if self._indexed_version != plan.version:
-            self._histories = {}
-            self._flow_reads.clear()
-            self._event_ends.clear()
-            self._raw_positions.clear()
-            self._moving.clear()
-            self._counted.clear()
-            self._total = 0
-            self._as_of = None
-            self._dirty.update(self.transfers)
+        # Each binding starts at its commit. Re-index its readers without invalidating
+        # the closed history of this or any other value.
         self._names = Manifest(request.horizon, request.everything, request.keys).names
         for name in names:
             if name not in self._histories:
@@ -1212,10 +1193,8 @@ class Recorder:
     def _advance(self, end):
         """Update only histories whose inputs changed or whose current interval moves."""
         plan = self.plan
-        # A redefinition or a cold restore can rebuild the index. The last public
-        # observation still owns the starts it has seen before this physical step.
+        # A checkpoint or an observed stock tail already owns its closed readings.
         observed = self._as_of if self._extended_stock else None
-        previous = self._histories
         checkpoint = self._checkpoint_observation
         self._checkpoint_observation = None
         if not self._index_current():
@@ -1233,19 +1212,21 @@ class Recorder:
             value = plan.values[name]
             if name in self._derived:
                 start = since if name in self._histories else plan.start_of(name)
-                cutoff = observed
-                prior = previous.get(name)
                 if checkpoint and name in checkpoint[1]:
-                    cutoff, prior = checkpoint[0], checkpoint[1][name]
+                    start = checkpoint[0]
+                    saved = checkpoint[1][name]
+                    self._histories[name] = History(saved.key, list(saved.pieces))
+                elif observed is not None and name in self._histories:
+                    start = max(start, observed)
                 history = self._derived_history(name, value, end, start)
-                if cutoff is not None and prior is not None:
-                    history = self._observed_formula(prior, history, cutoff, end)
             else:
                 history = self._raw_history(name, value, end)
                 if not history.pieces and self._coverage_starts.get(name) is not None:
                     # At the join only the private cutoff view can see this opening.
                     self._moving.add(name)
-                elif history.pieces and (history.pieces[-1].curve is not None or history.pieces[-1].rate != 0):
+                elif history.pieces and (
+                    history.pieces[-1].curve is not None or history.pieces[-1].rate != 0
+                ):
                     self._moving.add(name)
                 else:
                     self._moving.discard(name)
@@ -1264,53 +1245,6 @@ class Recorder:
             self._put(ledger_name, self._history(ledger, pieces))
         self._as_of = end
 
-    @staticmethod
-    def _observed_formula(prior, history, cutoff, end):
-        """An extended stock fit cannot relocate a formula start already observed.
-
-        Keep the ordinary fitted result whenever its charged prefix is stable.
-        Otherwise retain the observed prefix, then take the new fit from the
-        observation forward. This applies equally to fits, reductions and aliases.
-        """
-        before, after = prior.pieces, history.pieces
-        if not before or before is after:
-            return history
-        old_left = bisect_left(before, cutoff, key=_piece_time)
-        new_left = bisect_left(after, cutoff, key=_piece_time)
-        old_right = bisect_right(before, cutoff, lo=old_left, key=_piece_time)
-        new_right = bisect_right(after, cutoff, lo=new_left, key=_piece_time)
-        if (
-            old_left == new_left
-            and old_right <= new_right
-            and all(before[k].t == after[k].t for k in range(old_left))
-        ):
-            return history
-
-        # Keep every earlier start, including the multiplicity of actual postings
-        # at the observation. An outgoing piece may replace the last one there.
-        at = list(after[new_left:new_right])
-        if not at and new_left and (cutoff < end or old_right > old_left):
-            source = after[new_left - 1]
-            curve = source.curve
-            stop = after[new_right].t if new_right < len(after) else end
-            if curve is not None and stop > cutoff:
-                # Express the same polynomial on the remaining part of the span.
-                # Both endpoints use its native [-1, 1] coordinates, even at a
-                # large absolute time. The new intercept is the landed reading.
-                curve = _curve_interval(curve, cutoff - source.t, stop - cutoff)
-            else:
-                curve = None
-            at.append(Piece(cutoff, source.at(cutoff), source.rate, curve))
-        missing = max(0, old_right - old_left - len(at))
-        pieces = list(before[: old_left + missing])
-        if at and old_right == old_left and new_right == new_left:
-            # A held continuation often needs no extra start at the observation.
-            Recorder._extend(pieces, [(p.t, p.value, p.curve or p.rate) for p in at])
-        else:
-            pieces.extend(at)
-        pieces.extend(after[new_right:])
-        return History(history.key, pieces)
-
     def _affected(self, changed):
         """The changed histories and their transitive readers, in assembly order."""
         pending = list(changed)
@@ -1326,15 +1260,14 @@ class Recorder:
         if not self._coverage_starts:
             return self
         openings = {
-            name for name, start in self._coverage_starts.items()
+            name
+            for name, start in self._coverage_starts.items()
             if start == end and name in self._histories and not self._histories[name].pieces
         }
         if not openings:
             return self
         view = copy(self)
         view._histories = dict(self._histories)
-        view._flow_reads = dict(self._flow_reads)
-        view._event_ends = dict(self._event_ends)
         view._counted = dict(self._counted)
         view._private = set()
         view.fits = copy(self.fits)
@@ -1382,22 +1315,22 @@ class Recorder:
         raw = self.pieces.get(name, ())
         tail = self._store_tails.get(name)
         if tail and tail[-1][0] > end:
-            tail = tail[:bisect_right(tail, end, key=lambda piece: piece[0])]
+            tail = tail[: bisect_right(tail, end, key=lambda piece: piece[0])]
         prior, i, old_tail, sealed = self._raw_positions.get(name, (None, 0, None, 0))
         if prior is raw and i <= len(raw):
             kept = self._histories[name].pieces
             if i == len(raw) and old_tail is tail:
                 return self._histories[name]
-            if old_tail is not None:
-                del kept[sealed:]  # the previous provisional fit can have compacted at its opening
+            retained = sealed if old_tail is not None else len(kept)
         else:
             i, opening = self._raw_opening(name, raw, tail, end)
             kept = [Piece(*piece) for piece in opening]
+            retained = len(kept)
         j = len(raw)
         if j and raw[-1][0] > end:
             j = bisect_right(raw, end, lo=i, key=lambda piece: piece[0])
         new = raw[i:j]
-        self._extend(kept, new)
+        self._extend(kept, new, retained)
         sealed = len(kept)
         if tail is not None:
             self._extend(kept, list(tail))
@@ -1406,102 +1339,126 @@ class Recorder:
         return History(value.key, kept)
 
     @staticmethod
-    def _extend(kept, new):
+    def _extend(kept, new, retained=None):
+        """Append native rows after the closed prefix. Compact only across its last seam."""
+        if retained is not None:
+            del kept[retained:]
         if kept and new:
             last = kept.pop()
             new.insert(0, (last.t, last.value, last.curve if last.curve is not None else last.rate))
         kept.extend(recorded_piece(*piece) for piece in _compact(new))
 
-    def _derived_history(self, name, value, end, since):
-        plan, run, histories = self.plan, self.run, self._histories
+    def _interval_history(self, name, value, histories, start, end):
+        """Assemble this observation from the definitions and inputs in force on its interval."""
+        plan, run = self.plan, self.run
+        birth = plan.start_of(name)
+        start = max(start, birth)
+        if start > end:
+            return History(value.key, ())
         owner = plan.occurrence_of(name)
-        start = 0.0 if owner is None else histories[f'{owner}.started'].pieces[0].t
-        if value.kind == CHANGED:
-            stored = plan.changed[name]
-            times = [run.changed_start(stored), *run.changes.get(stored, ())]
-            return self._history(None, [(t, t, 0.0) for t in times if t <= end])
-        if name in plan.defined:
-            return self._history(value.key, self._defined(name, histories, end))
         finish = None
         if name in run.frozen or (owner is not None and value.kind == RATE):
             active = histories[f'{owner}.active'].pieces
             finish = next((piece.t for piece in active if piece.value is False), None)
-        if value.kind == RATE:
-            # Re-shares supply the point at each switch, key and write. Between those
-            # points the amount follows its request and capacity as they move.
-            anchors = {
-                at: (amount, slope) for at, amount, slope in self.pieces.get(name, ()) if start <= at <= end
-            }
-            pieces = [] if anchors else self.formula(name, histories, end, start=start)
-            for at, following in pairwise([*anchors, None]):
-                amount, slope = anchors[at]
-                if slope is not None:
-                    pieces.append((at, amount, slope))
-                    continue
-                until = end if following is None else following
-                fitted_input = self.formula(name, histories, until, start=at, anchors={at: (amount, None)})
-                pieces.extend(piece for piece in fitted_input if following is None or piece[0] < until)
-        elif name in self.formulas:
-            pieces = [piece for piece in self.pieces.get(name, ()) if piece[0] <= end]
+            if finish is not None and finish <= start:
+                return History(value.key, (Piece(finish, run.frozen.get(name, 0.0), 0.0),))
+        stop = end if finish is None else min(end, finish)
+        if value.kind == CHANGED:
+            stored = plan.changed[name]
+            times = [run.changed_start(stored), *run.changes.get(stored, ())]
+            pieces = [(t, t, 0.0) for t in _window(times, start, stop, key=float)]
+        elif name in plan.defined:
+            pieces = self._defined(name, histories, stop, start=start)
+        elif value.kind == RATE:
+            pieces = self._rate_interval(name, histories, start, stop)
         elif value.kind == REDUCE:
-            pieces = self._reduction(name, histories, end)
+            pieces = self._reduction(name, histories, stop, start=start)
         elif value.kind == LOOKUP:
-            pieces = self._lookup(name, histories, end)
+            pieces = self._lookup(name, histories, stop, start=start)
         elif value.kind == DYNAMIC:
-            return self._dynamic_history(name, histories, end, since)
-        elif (
-            isinstance(value.node, nodes.Ref)
-            and name not in run.frozen
-            and (source := histories.get(value.node.name)) is not None
-            and (not source.pieces or source.pieces[0].t >= start)
-        ):
-            # Borrow only a history covered by the alias's lifetime. An older
-            # source needs an opening at the occurrence's start, like any formula.
-            return History(value.key, source.pieces)
-        elif owner is None and name not in run.frozen:
-            return self._formula_tail(name, end, start, since)
+            pieces = self._dynamic_rows(name, histories, start, stop)
         else:
-            if finish is not None and self._event_ends.get(name) == finish and since >= finish:
-                return histories[name]
-            # A live alias can borrow its source's pieces. Its first fit at retirement
-            # starts at the occurrence's own beginning, just like a cold restore.
-            if name not in self._event_ends:
-                since = start
-            history = self._formula_tail(name, end, start, since, finish=finish)
-            self._event_ends[name] = finish
-            return history
-        if finish is not None:
-            # A checkpoint can follow the finish in the same round, before the set is
-            # retired. Its occurrence's rate history already ends at zero there.
+            pieces = self._binding_rows(name, value, histories, birth, start, stop)
+        if finish is not None and finish <= end:
             _freeze_pieces(pieces, finish, run.frozen.get(name, 0.0))
         return self._history(value.key, pieces)
 
-    def _formula_tail(self, name, end, start, since, *, reads=None, point=None, anchors=None, finish=None):
-        """Keep the prefix preceding the restart boundary and replace the remainder."""
-        value = self.plan.values[name]
-        inputs = _formula_reads(value.node) if reads is None else reads
-        if finish is not None:
-            end = min(end, finish)
-            since = min(since, end)
-        boundary = _restart_point(start, since, self._histories, inputs, anchors or ())
-        pieces = self.formula(
-            name, self._histories, end, reads=reads, start=boundary, point=point, anchors=anchors
-        )
-        if finish is not None:
-            _freeze_pieces(pieces, finish, self.run.frozen[name])
+    def _binding_rows(self, name, value, histories, epoch, start, end):
+        """A scalar formula, with a native alias restricted to the lifetime of its binding."""
+        raw = self.pieces.get(name, ()) if name in self.formulas and value is self.plan.original(name) else ()
+        begin = raw[0][0] if raw else math.inf
+        pieces = []
+        if start < begin:
+            stop = min(begin, end)
+            if isinstance(value.node, nodes.Ref) and (source := histories.get(value.node.name)) is not None:
+                pieces = _native_rows(source, epoch, start, stop)
+            else:
+                pieces = self.formula(name, histories, stop, start=start, node=value.node)
+            if begin <= end:
+                pieces = [piece for piece in pieces if piece[0] < begin]
+        if begin <= end:
+            # The first family-supplied piece changes the source for this binding from that instant.
+            pieces.extend(_window(raw, max(start, begin), end, key=itemgetter(0)))
+        return pieces
+
+    def _rate_interval(self, name, histories, start, end):
+        """An allocated rate follows its last settled anchor until it receives another."""
+        raw = _window(self.pieces.get(name, ()), start, end, key=itemgetter(0))
+        anchors = {at: (amount, slope) for at, amount, slope in raw}
+        pieces = []
+        if not anchors or start < next(iter(anchors)):
+            stop = min(anchors, default=end)
+            pieces = self.formula(name, histories, stop, start=start)
+            if anchors:
+                pieces = [piece for piece in pieces if piece[0] < stop]
+        for at, following in pairwise([*anchors, None]):
+            amount, slope = anchors[at]
+            if slope is not None:
+                pieces.append((at, amount, slope))
+                continue
+            opening = max(at, start)
+            stop = end if following is None else following
+            anchor = {at: (amount, None)} if opening == at else None
+            found = self.formula(name, histories, stop, start=opening, anchors=anchor)
+            pieces.extend(piece for piece in found if following is None or piece[0] < stop)
+        return pieces
+
+    def _derived_history(self, name, value, end, since):
+        """Keep the closed prefix and ask the producer for its next interval."""
+        birth = self.plan.start_of(name)
         prior = self._histories.get(name)
-        kept = [] if prior is None or boundary == start else prior.pieces
-        if self._extended_stock:
-            # The previous history witnesses its charged starts. Keep it intact
-            # while the new suffix is assembled, including for aliases that share it.
-            kept = list(kept[: bisect_left(kept, boundary, key=_piece_time)])
+        start = birth if prior is None else max(birth, since)
+        if start == end and start > birth:
+            # A second check of the same instant has no outgoing interval. Find
+            # the incoming fit again so that only a real landing adds a point.
+            i = bisect_left(self.fits.ends, end)
+            origin = max(birth, self.fits.ends[i - 1]) if i else birth
         else:
-            if self._private is not None and name not in self._private:
-                kept = list(kept)
-                self._private.add(name)
-            del kept[bisect_left(kept, boundary, key=_piece_time) :]
-        self._extend(kept, pieces)
-        return History(value.key, kept)
+            origin = start
+        history = self._interval_history(name, value, self._histories, origin, end)
+        if prior is None or start == birth:
+            return history
+        private = self._private is None or name in self._private
+        if self._private is not None:
+            self._private.add(name)
+        return self._join_history(prior, history, start, end, private=private)
+
+    @staticmethod
+    def _join_history(prior, history, boundary, end, *, private=False):
+        """Keep native pieces before the boundary and compact the new rows at their seam."""
+        old, new = prior.pieces, history.pieces
+        left = bisect_left(old, boundary, key=_piece_time)
+        right = bisect_left(new, boundary, key=_piece_time)
+        rows = []
+        if right and (right == len(new) or new[right].t > boundary):
+            source = new[right - 1]
+            if (not left or old[left - 1] != source) and boundary < end:
+                # Native producers can supply the piece already in force at the seam.
+                rows.append(_row_from(source, boundary))
+        rows.extend((p.t, p.value, p.curve or p.rate) for p in new[right:])
+        kept = old if private and isinstance(old, list) else list(old[:left])
+        Recorder._extend(kept, rows, left)
+        return History(history.key, kept)
 
     def record(self, end, failure=None, pause=None, *, ongoing=False):
         """The run's committed histories and trace up to the stop or horizon."""
@@ -1516,7 +1473,7 @@ class Recorder:
         for name, history in self._histories.items():
             if history.key is None or not history.pieces:
                 continue
-            pieces = tuple(_exported_pieces(history.pieces, end))
+            pieces = tuple(history.pieces)
             if plan.changed_of.get(name) in self._histories:
                 changes = self.run.changes.get(name, ())
                 through_end = bisect_right(changes, end)
@@ -1551,7 +1508,7 @@ class Recorder:
             return History(key, (Piece(*pieces[0]),))
         return History(key, tuple(recorded_piece(*piece) for piece in _compact(pieces)))
 
-    def _lookup(self, name, histories, end):
+    def _lookup(self, name, histories, end, *, start=0.0):
         """The pieces of a keyed read: of a stepped one, over each of its key intervals, the pieces of
         the value of the member that it selects there (below its first key `Unavailable`); of any
         other, from the histories of what it reads, as a formula's."""
@@ -1563,7 +1520,7 @@ class Recorder:
             if stepped is None and plan.fixed_filter(name):
                 run.kept_of(name)
         except FAILURES as problem:
-            return [(0.0, Unavailable(str(problem)), 0.0)]
+            return [(start, Unavailable(str(problem)), 0.0)]
         if stepped is None:
             # What can change of what it reads has a history; what the inputs fix holds its start. A
             # constant key over the natural keys reads the entry that it selects alone (`Plan.reads`),
@@ -1581,65 +1538,89 @@ class Recorder:
                 sorted(plan.reads(name)),
                 compute,
                 boolean,
+                start=start,
                 timed=plan.lookup_reads(name).time,
             )
         times = stepped.times.tolist()
         pieces = []
         try:
-            stepped.place(0.0)
+            stepped.place(start)
         except ExpressionError as problem:
-            pieces.append((0.0, Unavailable(str(problem)), 0.0))
-        for k, at in enumerate(times):
-            a = max(float(at), 0.0)
+            pieces.append((start, Unavailable(str(problem)), 0.0))
+        for k in range(max(0, bisect_right(times, start) - 1), bisect_right(times, end)):
+            a = max(float(times[k]), start)
             b = min(float(times[k + 1]), end) if k + 1 < len(times) else end
-            if a > end or (b <= a and k + 1 < len(times)):
+            if k + 1 < len(times) and times[k + 1] <= a:
                 continue
             selected = stepped.names[k]
             found = self.formula(
                 name, histories, b, [selected], lambda env, selected=selected: env[selected], boolean, start=a
             )
-            pieces += [piece for piece in found if piece[0] < b or k + 1 == len(times)]
+            pieces += [piece for piece in found if piece[0] < b or k + 1 == len(times) or times[k + 1] > end]
         return pieces
 
-    def _reduction(self, name, histories, end):
-        """The pieces of a reduction from the histories of its kept entries."""
-        plan, run = self.plan, self.run
+    def _reduction(self, name, histories, end, *, start=0.0):
+        """Use each member's representation only where that piece is in force."""
+        plan = self.plan
         reduction = plan.reductions[name]
         try:
-            entries = run.kept_of(name)
+            entries = self.run.kept_of(name)
         except FAILURES as problem:
-            return [(0.0, Unavailable(str(problem)), 0.0)]
+            return [(start, Unavailable(str(problem)), 0.0)]
         if reduction.names is None:
-            return [(0.0, len(entries), 0.0)]
+            return [(start, len(entries), 0.0)]
         reads = [reduction.names[k] for k in entries]
-        own = [
-            [
-                (piece.t, piece.value, piece.rate if piece.curve is None else piece.curve)
-                for piece in histories[read].pieces
-            ]
-            for read in reads
-        ]
-        exact = history_of(reduction, entries, own, end)
-        if exact is not None:
-            return exact
         if not reads:
             try:
-                return [(0.0, reduced(reduction, histories.__getitem__, plan.units, entries), 0.0)]
+                return [(start, reduced(reduction, histories.__getitem__, plan.units, entries), 0.0)]
             except FAILURES as problem:
-                return [(0.0, Unavailable(str(problem)), 0.0)]
-        boolean = plan.values[name].boolean
-        return self.formula(
-            name,
-            histories,
-            end,
-            reads,
-            lambda env: reduced(reduction, env.__getitem__, plan.units, entries),
-            boolean,
-        )
+                return [(start, Unavailable(str(problem)), 0.0)]
 
-    def _dynamic_history(self, name, histories, end, since):
-        """The pieces of a dynamic read from the histories of what its members project and of the
-        fields that say when each is a member."""
+        members = []
+        switches = set()
+        for read in reads:
+            rows = []
+            previous = None
+            for piece in _window(histories[read].pieces, start, end):
+                shape = piece.curve or piece.rate
+                use_exact = exact_member(reduction.op, piece.value, shape)
+                if use_exact != previous and piece.t > start:
+                    switches.add(piece.t)
+                previous = use_exact
+                rows.append((piece.t, piece.value, shape))
+            members.append(rows)
+
+        pieces = []
+        breaks = sorted(switches)
+        for a, next_break in pairwise([start, *breaks, None]):
+            b = end if next_break is None else next_break
+            rows = []
+            for member in members:
+                part = _window(member, a, b, key=itemgetter(0))
+                if next_break is not None:
+                    part = part[: bisect_left(part, b, key=itemgetter(0))]
+                rows.append(part)
+            found = history_of(reduction, entries, rows, b)
+            if found is None:
+                found = self.formula(
+                    name,
+                    histories,
+                    b,
+                    reads,
+                    lambda env: reduced(reduction, env.__getitem__, plan.units, entries),
+                    plan.values[name].boolean,
+                    start=a,
+                )
+            pieces.extend(row for row in found if next_break is None or row[0] < b)
+        birth = plan.start_of(name)
+        if pieces and pieces[0][0] < birth:
+            # Exact lines can carry their native origin across an ordinary observation.
+            # An occurrence cannot borrow a member's line from before its own birth.
+            pieces = _native_rows(self._history(plan.values[name].key, pieces), birth, birth, end)
+        return pieces
+
+    def _dynamic_rows(self, name, histories, start, end):
+        """Read membership and each projected value only where the binding is live."""
         plan = self.plan
         dynamic = plan.dynamic[name]
 
@@ -1653,19 +1634,7 @@ class Recorder:
             return dynamic_value(dynamic, members, plan, value, t, plan.units)
 
         reads = tuple(sorted(plan.dynamic_reads(name)))
-        if (
-            dynamic.source[0] == 'flows'
-            and dynamic.op == 'sum'
-            and dynamic.steps == ('actual_rate',)
-            and dynamic.keep is None
-        ):
-            # The dynamic sum is defined from zero, including its empty collection.
-            if self._flow_reads.get(name) != reads:
-                since = 0.0
-            history = self._formula_tail(name, end, 0.0, since, reads=reads, point=point)
-            self._flow_reads[name] = reads
-            return history
-        return self._history(plan.values[name].key, self.formula(name, histories, end, reads, point=point))
+        return self.formula(name, histories, end, reads, start=start, point=point)
 
     def formula(
         self,
@@ -1763,6 +1732,7 @@ class Recorder:
             return bool(found) if boolean else float(found)
 
         scale = self.run.own_scale(name) if not discrete else 1.0
+
         def operand(expression, t):
             return evaluate(expression, environment(t), plan.units)
 
@@ -1807,33 +1777,28 @@ class Recorder:
                     pieces.extend(self.fits.cached(name, lo, hi, fit))
         return pieces
 
-    def _defined(self, name, histories, end):
-        """The pieces of a value that commits gave new definitions (`Plan.defined`): over the time of
-        each definition, a formula's from the histories of what it reads, and a captured number's
-        from what the run wrote; from the finish of its occurrence, the value that froze then (D7)."""
-        plan, run = self.plan, self.run
-        definitions = plan.defined[name]
-        owner = plan.occurrence_of(name)
-        finish = None
-        if name in run.frozen:
-            active = histories[f'{owner}.active'].pieces
-            finish = next(piece.t for piece in active if piece.value is False)
-        stop = end if finish is None else min(end, finish)
-        written = [(0.0, self.constants[name], 0.0)] if name in self.constants else []
-        written += self.pieces.get(name, ())
+    def _defined(self, name, histories, end, *, start=0.0):
+        """Each binding uses the same source as its declaration, from its own epoch."""
+        definitions = self.plan.defined[name]
+        first = max(0, bisect_right(definitions, start, key=itemgetter(0)) - 1)
+        written = self.pieces.get(name, ())
         pieces = []
-        for k, (a, value) in enumerate(definitions):
-            last = k + 1 == len(definitions)
-            b = stop if last else min(definitions[k + 1][0], stop)
-            if a > stop or (b <= a and not last):
-                continue  # replaced at the time that it was given, or after the finish
+        for k in range(first, len(definitions)):
+            epoch, value = definitions[k]
+            a = max(epoch, start)
+            if a > end:
+                break
+            following = definitions[k + 1][0] if k + 1 < len(definitions) else math.inf
+            if following <= a:
+                continue
+            b = min(following, end)
             if value.kind == FORMULA:
-                found = self.formula(name, histories, b, start=a, node=value.node)
+                found = self._binding_rows(name, value, histories, epoch, a, b)
             else:
-                found = [piece for piece in written if a <= piece[0] <= b]
-            pieces += [piece for piece in found if piece[0] < b or (last and piece[0] <= b)]
-        if finish is not None and finish <= end:
-            pieces = [piece for piece in pieces if piece[0] < finish] + [(finish, run.frozen[name], 0.0)]
+                found = [row for row in _window(written, a, b, key=itemgetter(0)) if row[0] >= epoch]
+                if name in self.constants and k == 0 and (not found or found[0][0] > a):
+                    found.insert(0, (epoch, self.constants[name], 0.0))
+            pieces.extend(row for row in found if row[0] < following)
         return pieces
 
 

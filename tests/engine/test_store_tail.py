@@ -7,11 +7,11 @@ import pytest
 
 from napkin.engine.timeline import Plan, Run, plan, resume, saved
 from napkin.engine.timeline.moment import Tx, _Savepoint
-from napkin.engine.timeline.record import read, requested
+from napkin.engine.timeline.record import requested
 from napkin.model.compile import compile_text
 from napkin.program.checkpoint import Breakpoint, dumps, loads
 from napkin.program.config import Request
-from napkin.program.record import BalancePoint, Key, Unavailable
+from napkin.program.record import BalancePoint, Entry, Key, Unavailable
 from tests.engine.resume_parity import assert_resume_parity
 
 WATER = Key('tank', ('water',))
@@ -58,10 +58,12 @@ def test_projected_first_step_has_its_own_raw_and_assembled_history(model):
         way.observe(at)
         view, _ = saved.at_stop(run)
         assert view is not run.recorder and way.recorded_through is None
-        projected = view.record(at, ongoing=True).history(WATER).pieces
-        assert projected[-1].curve.length == at
-        assert view._histories['tank.water'].pieces[-1].curve.length == end
+        observation = view.record(at, pause=Entry(at, 0, 'pause', ''), ongoing=True)
+        projected = observation.history(WATER).pieces
+        assert projected[-1] == view._histories['tank.water'].pieces[-1]
+        assert projected[-1].curve.length == end
         assert projected[-1].at(at) == pytest.approx(way.pending[2](at)[0], rel=1e-14)
+        assert isinstance(observation.value(WATER, math.nextafter(at, math.inf)), Unavailable)
         assert tuple(run.recorder.pieces.get('tank.water', ())) == live_raw
         assert run.recorder._histories == live_histories
 
@@ -110,11 +112,14 @@ def test_disk_checkpoint_exposes_only_the_accepted_stock_prefix(model, tmp_path)
     start, end = way.pending[:2]
     assert start < time < end
     raw = dict(dict(dict(checkpoint.saved)['recorder'])['pieces'])['tank.water']
-    assert raw[-1][0] == start and raw[-1][2].length == time - start
+    assert raw[-1][0] == start
     stock = checkpoint.record.history(WATER)
-    assert stock.pieces[-2].curve.length == time - start
+    assert stock.pieces[-2].curve == raw[-1][2]
+    assert start + stock.pieces[-2].curve.length > time
     assert isinstance(stock.pieces[-1], BalancePoint)
+    assert stock.pieces[-1].t == time
     assert stock.pieces[-1].value == float(live.stock_balance('tank.water', time))
+    assert isinstance(checkpoint.record.value(WATER, math.nextafter(time, math.inf)), Unavailable)
 
     path = tmp_path / 'inside-step.napkin'
     path.write_bytes(dumps(checkpoint))
@@ -135,34 +140,53 @@ def test_first_excess_on_either_side_of_each_charged_start(model):
         p.t for h in whole.histories if whole.manifest.names(h.key) for p in h.pieces[: h.charged_pieces()]
     )
     assert 1 in charged
-    changed = []
     for budget in range(1, len(charged) + 2):
         bounded = run(replace(request, pieces=budget))
         oracle = requested(whole.within(budget), model.program)
-        assert bounded.trace == oracle.trace and bounded.failure == oracle.failure
+        assert bounded == oracle
         assert bounded.end == (charged[budget] if budget < len(charged) else 2)
-        for h in bounded.histories:
-            expected = oracle.history(h.key)
-            assert [p.t for p in h.pieces] == [p.t for p in expected.pieces]
-            assert h.charged_pieces() == expected.charged_pieces()
-            if h == expected:
-                continue
-            assert h.key == WATER and h.pieces[:-1] == expected.pieces[:-1]
-            first, other = h.pieces[-1], expected.pieces[-1]
-            assert first.curve and other.curve and first.value == other.value
-            assert first.curve.length == bounded.end - first.t
-            times = (first.t, (first.t + bounded.end) / 2, math.nextafter(bounded.end, first.t))
-            a, b = (
-                read(record, model.program, ['tank.water'], times)[0].values for record in (bounded, oracle)
-            )
-            assert a == pytest.approx(b, rel=1e-12, abs=1e-12)
-            changed.append((budget, bounded.end))
         if bounded.failure:
             assert all(not isinstance(p, BalancePoint) for h in bounded.histories for p in h.pieces)
             assert isinstance(bounded.value(WATER, bounded.end), Unavailable)
         else:
             assert bounded == whole
-    assert set(changed) <= {(charged.index(1), 1)}
+
+
+def test_live_and_offline_cuts_inside_the_same_stock_step_are_identical(monkeypatch):
+    from napkin.program.checkpoint import decode, encode
+
+    monkeypatch.setattr(plan, 'LIMIT', 0)
+    source = (
+        SOURCE.split('    tick = event():')[0]
+        + """    tick = event():
+        after 0.125 h:
+            this.pulse = 1
+        after 0.125 h:
+            this.pulse = 2
+tank.tick.start()
+"""
+    )
+    model = compile_text(source, {'L': {'volume': 1}, 'h': {'time': 1}})
+    request = Request(2, everything=False, keys=(WATER, PULSE))
+
+    def run(request):
+        return Run(Plan.of(model.program, replace(model.configuration, request=request))).run()
+
+    whole = run(request)
+    postings = whole.history(PULSE).pieces
+    assert [(p.t, p.value) for p in postings] == [(0, 0), (0.125, 1), (0.25, 2)]
+    stock = whole.history(WATER)
+    crossing = next(p for p in reversed(stock.pieces) if p.t < 0.125)
+    assert crossing.curve is not None and crossing.t + crossing.curve.length > 0.25
+    starts = sorted(p.t for h in whole.histories for p in h.pieces[: h.charged_pieces()])
+    first, second = starts.index(0.125), starts.index(0.25)
+    live = run(replace(request, pieces=first))
+    offline = whole.within(first)
+    retrimmed = decode(encode(whole.within(second))).within(first)
+    assert live.end == offline.end == 0.125
+    assert encode(live) == encode(retrimmed) == encode(offline)
+    at = math.nextafter(live.end, 0)
+    assert live.value(WATER, at) == pytest.approx(10 + at / 2 + 0.375 * at**2, rel=1e-12)
 
 
 def test_real_posting_ends_the_moving_step_and_the_new_balance_holds(monkeypatch):
@@ -173,7 +197,7 @@ def test_real_posting_ends_the_moving_step_and_the_new_balance_holds(monkeypatch
     assert record.failure is None
     stock = record.history(WATER)
     last_moving = next(p for p in reversed(stock.pieces) if p.curve)
-    assert last_moving.curve.length == 1 - last_moving.t
+    assert last_moving.t < 1 <= last_moving.t + last_moving.curve.length
     assert stock.at(math.nextafter(1, 0)) == pytest.approx(10.875)
     assert [stock.at(t) for t in (1, 1.5, 2)] == [20, 20, 20]
     (posting,) = [p for p in stock.pieces if p.t >= 1]

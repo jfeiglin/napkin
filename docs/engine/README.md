@@ -274,10 +274,10 @@ The first counted piece that exceeds the budget sets the stop time. The last tra
 the time and the budget. The record keeps only the pieces before this stop. It has no balance
 point at the excluded time. You can read values only before the stop time.
 
-If you apply the same budget to a completed record, you get the same stop time, counted piece
-starts, trace and stock balances. Each recorded quantity covers the same times in both records.
-The last stock curve before the stop can use a different length. Its readings agree within the
-value tolerance.
+If you apply the same budget to a completed record of the same run, you get the same stop time,
+trace and recorded pieces. For a request with selected keys, use the definitions and occurrences
+in the retained trace to select the required histories. A curve keeps its original coefficients
+and fit length when the stop falls inside its interval. Its coverage ends at the stop.
 
 ## `read` and `report`
 

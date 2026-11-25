@@ -58,9 +58,10 @@ def test_stock_extension_preserves_subdivisions_in_readers_and_aliases(landed):
     if landed:
         # A new hard input start shortly after the observation must still land.
         live.add('plant.offset', edge, -2, 0)
-    put_stock(live, 1, end, 1 + 1e-9, True)
+    put_stock(live, 1, end, 1 + 1e-7, True)
     second = observe(live, end)
-    assert not any(p.t == 1 for p in visible(second, 'twice'))
+    # The observation at hour one permanently closed the incoming fit.
+    assert any(p.t == 1 for p in visible(second, 'twice'))
     for name in ('crossed', 'again'):
         pieces = visible(second, name)
         assert [p.t for p in pieces if p.t <= 1] == [p.t for p in old]
@@ -90,7 +91,9 @@ def test_preserving_a_start_restricts_the_outgoing_polynomial_to_its_new_interva
     prior = History(key, (Piece(0, 0), Piece(0.65, 1)))
     curve = Piece(0.6, 1.2, curve=Curve(2.4, (1, 0.4, 0.5, -0.6, 0.125)))
     candidate = History(key, (Piece(0, 0), curve))
-    result = Recorder._observed_formula(prior, candidate, 1, 3)
+    result = Recorder._join_history(prior, candidate, 1, 3)
+    shorter = Recorder._join_history(prior, candidate, 1, 2)
+    assert shorter.pieces == result.pieces
     assert [p.t for p in result.pieces] == [0, 0.65, 1]
     assert result.pieces[-1].curve.length == 2
     for at in (1, 1.25, 1.5, 2, 2.75, 3):

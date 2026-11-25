@@ -116,6 +116,14 @@ class Key:
         return None
 
 
+def occurrence_owner(name):
+    """The occurrence ID in an engine name, or None for a member or root value."""
+    head, mark, rest = name.partition('#')
+    if not mark:
+        return None
+    return f'{head}#{rest.split(".", 1)[0]}'
+
+
 @dataclass(frozen=True)
 class Unavailable:
     """A value that could not be read, with the reason: a report can show it, and a model read of it
@@ -126,10 +134,10 @@ class Unavailable:
 
 @dataclass(frozen=True)
 class Curve:
-    """The shape of a curved piece over `length` hours from its time: the Chebyshev series
-    `coefficients` (of T0, T1, ...) in u = 2 * elapsed / length - 1, which runs from -1 at the time
-    of the piece to 1 at its end. The piece reads its value plus the increase of the series since
-    its time (`increase`)."""
+    """A Chebyshev series fitted over `length` hours from the piece start.
+    Its coordinate is u = 2 * elapsed / length - 1. The next piece or the
+    record cutoff can end coverage earlier. Keep this length and these
+    coefficients together when a record ends inside the fitted span."""
 
     length: Number
     coefficients: tuple[float, ...]
@@ -365,7 +373,9 @@ class Record:
         """The record within a budget of pieces (see the module): itself, when the values that it holds
         have no more pieces; else the record before the time of the first piece that does not fit (its
         histories and its trace), which a failure entry at that time ends, naming the budget.
-        The failure has round zero because the record excludes every round at that time."""
+        The failure has round zero because the record excludes every round at that time.
+        The cutoff ends coverage of a retained curve. Its original basis stays
+        with it, so a second trim gives the same pieces as a direct trim."""
         held = [history for history in self.histories if self.manifest.names(history.key)]
         if sum(history.charged_pieces() for history in held) <= pieces:
             return self
@@ -396,7 +406,13 @@ class Record:
             (('message', message), ('budget', pieces)),
         )
         covered = tuple(row for row in self.manifest.unchecked_time_rates if row[1] < end)
-        manifest = replace(self.manifest, unchecked_time_rates=covered)
+        started = {entry.owner for entry in trace if entry.kind == 'start'}
+        scales = tuple(
+            (name, scale)
+            for name, scale in self.manifest.comparison_scales
+            if (owner := occurrence_owner(name)) is None or owner in started
+        )
+        manifest = replace(self.manifest, unchecked_time_rates=covered, comparison_scales=scales)
         return Record(manifest, tuple(histories), (*trace, failure), failure)
 
     def entries(self, kind=None, part=None):

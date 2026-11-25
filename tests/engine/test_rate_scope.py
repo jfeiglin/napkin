@@ -80,6 +80,41 @@ def test_budget_cutoff_excludes_a_rate_first_installed_at_that_time():
     assert limited.manifest.unchecked_time_rates == (('yard.tabulated.request', 0),)
 
 
+def test_budget_cutoff_keeps_only_the_scales_of_occurrences_that_started_before_it():
+    model = compile_text(
+        """scenario "Comparison scales at the cutoff"
+    horizon 3 h
+yard:
+    measure: L = 1 L scale 4 L
+    ticks = 0
+    work = event():
+        held: L = this.measure scale 7 L
+        after 1 h
+    clock = event():
+        after 1 h:
+            this.ticks = 1
+            this.work.start()
+        after 1 h:
+            this.work.start()
+yard.work.start()
+yard.clock.start()
+""",
+        UNITS,
+    )
+    ticks = Key('yard', ('ticks',))
+    request = replace(model.configuration.request, everything=False, keys=(ticks,))
+
+    def run(request):
+        return Run(Plan.of(model.program, replace(model.configuration, request=request))).run()
+
+    whole = run(request)
+    assert len(whole.manifest.comparison_scales) == 4
+    limited = run(replace(request, pieces=1))
+    assert limited.end == 1
+    assert limited == whole.within(1)
+    assert dict(limited.manifest.comparison_scales) == {'yard.measure': 4, 'yard.work#0.held': 7}
+
+
 def test_an_occurrence_rate_starts_using_the_piece_budget_at_its_birth():
     model = compile_text(SCOPE, UNITS)
     config = model.configuration

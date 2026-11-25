@@ -135,7 +135,7 @@ from ...expressions import UnitSystem, evaluate
 from ...program import parts as p
 from ...program.check import Resolver, Scope
 from ...program.config import ConfigurationError, Quantity
-from ...program.record import Key
+from ...program.record import Key, occurrence_owner
 from ...program.refs import (
     By,
     Distribution,
@@ -2638,13 +2638,7 @@ class Plan:
             return self.members(source)
         return [('flow', connection) for connection in self.end_history.get((source[1], source[2]), ())]
 
-    def occurrence_of(self, name):
-        """The id of the occurrence that owns an engine name (a value, a flow or a connection), or
-        None for one of a member or of the root."""
-        head, mark, rest = name.partition('#')
-        if not mark:
-            return None
-        return f'{head}#{rest.split(".", 1)[0]}'
+    occurrence_of = staticmethod(occurrence_owner)
 
     def members_at(self, source, value, t=None):
         """The points of the members of a dynamic collection at the time at which `value` reads: the

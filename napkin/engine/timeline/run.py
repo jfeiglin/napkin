@@ -853,6 +853,7 @@ class Run:
         source = None if node is None else self.occurrences.sources[id(node)]
         plan.log.append(('define', name, source, self.now, plan.start_of(name)))
         self.changed.add(name)
+        self.recorder.binding_changed(name, self.now)
         self.refresh_recording()
         owner = plan.occurrence_of(name)
         if owner is not None:

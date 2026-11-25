@@ -382,6 +382,13 @@ def _changes(histories, end):
     return found
 
 
+def exact_member(op, value, rate):
+    """Whether this member's current piece can participate in an exact reduction."""
+    if isinstance(rate, Curve) or isinstance(value, (str, Unavailable)):
+        return False
+    return not isinstance(value, bool) if op == 'sum' else rate == 0
+
+
 def history_of(reduction, entries, histories, end):
     """The pieces (time, value, rate) of a reduction from the pieces of the values of its kept
     entries (`histories`, one list for each kept entry, as the recorder holds them), or None when no
@@ -391,12 +398,10 @@ def history_of(reduction, entries, histories, end):
     if reduction.names is None or not entries:
         return None
     flat = [piece for pieces in histories for piece in pieces]
-    if any(isinstance(rate, Curve) or isinstance(value, (str, Unavailable)) for _, value, rate in flat):
+    if any(not exact_member(op, value, rate) for _, value, rate in flat):
         return None
     changes = _changes(histories, end)
     if op == 'sum':
-        if any(isinstance(value, bool) for _, value, _ in flat):
-            return None
         # Each member is a line: value(t) = intercept + rate * t. Two trees hold the intercepts and
         # the rates, so the sum at a time reads the present lines only.
         intercepts, rates = Pairwise(np.zeros(count)), Pairwise(np.zeros(count))
@@ -407,8 +412,6 @@ def history_of(reduction, entries, histories, end):
             rates.set_many(members, slopes)
 
         return _walk(changes, count, lines, lambda t: (intercepts.total + rates.total * t, rates.total))
-    if any(rate != 0 for _, _, rate in flat):
-        return None  # a count, an any or an all of values that move, or a least value of lines
     if op in ('count', 'any', 'all'):
         state = np.zeros(count, dtype=bool)
         total = [0]
