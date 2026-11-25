@@ -241,3 +241,34 @@ The traces matched in both cases. In heat wave, a change of 3.628e-12 in a fitte
 was multiplied by about 931 people. At 39.188080006 h the stored value of
 `confined_65_to_74.die_well.capacity` differed by 3.378e-9, above its 1e-10 allowance.
 The public reading there was identical. The recorder retains its existing formula boundaries.
+
+## Composing a sum of many stock histories
+
+Revisit this design when a real model has a fixed sum over about 50 collection members.
+Across 210 catalogue runs, the largest such sum had five members, in Washington DC.
+All catalogue reductions together used 5.60 CPU seconds. The immediate benefit is in
+the synthetic `instances` benchmark.
+
+For each interval between input changes, express the members' recorded polynomials in the
+same time coordinates. Add their coefficients in the existing pairwise sum order. When one
+member changes, recompute its path to the root. Use the configured tolerance and the sum's
+own scale to bound the numerical error, including cancellation. At a change or cutoff, read
+the landed values with the ordinary evaluator. The evaluator also handles missing coverage
+and any interval where the arithmetic cannot establish the error bound. In particular,
+a moving stock can carry an exact rational remainder. The ordinary fitter preserves how the
+stock uses that remainder between postings. The recorder still owns observed starts and the
+piece budget.
+
+At 100 cells, a complete run took 71.29 CPU seconds. Its record matched the reference for all
+84,000 pieces and 717 trace entries. The two global sums took 25.30 CPU seconds across 292
+observations in a separately instrumented run. Replaying their actual inputs took 1.68 CPU
+seconds for composition, including changes to previously observed inputs. Applying the native
+fitter to 1,878 affected intervals, reading 2,094 landed points and finding those intervals
+added 1.22 CPU seconds. This gives a **projected whole-run saving of 31.4%**. A fallback for
+an entire observation would retain 24.70 seconds of the original sum work. The interval
+fallback accounts for the difference.
+
+The engine still uses its existing sum implementation. The 31.4% figure is an external
+replay estimate. A production speedup remains unverified. Before adopting the design, time
+the whole engine, verify small collections and compare the first budget excess across a
+checkpoint, including postings that land exactly at the cutoff.
