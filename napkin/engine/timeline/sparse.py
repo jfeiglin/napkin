@@ -54,7 +54,7 @@ from ...core import expr as nodes
 from ...core.errors import ExpressionError
 from .. import departure
 from ..allocation import StockFaces
-from ..continuous import dense, integrate
+from ..continuous import dense, integrate, rate_guard
 from ..continuous.transfers import (
     CollocationRates,
     MovingAmounts,
@@ -1454,7 +1454,7 @@ class Sparse(MovingTransfers, Way):
                 solver.status = 'running'
         self.run.now = solver.t
         try:
-            message = solver.step()
+            message = rate_guard.step(solver, self.guard_for(self.region.signs))
         except (ExpressionError, ArithmeticError, ValueError) as problem:
             raise SimulationError(f'Rate evaluation failed at {solver.t:g} h: {problem}') from None
         if solver.status == 'failed':
@@ -1518,6 +1518,7 @@ class Sparse(MovingTransfers, Way):
             if self.amounts.clocks:
                 self.amounts.select_clocks(self.lower_flags.__getitem__, self.upper_flags.__getitem__)
             self.accept_amounts(start, end, self._transfer_amount(solution, start, end))
+            self.mark_rates(solution, start, end)
 
     def _clock_bounds(self):
         return self.lower_flags.__getitem__, self.upper_flags.__getitem__

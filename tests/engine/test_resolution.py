@@ -17,11 +17,29 @@ import napkin.engine.continuous.integrate as integrate
 from napkin.engine import read, run
 from napkin.program.build import SINK, SOURCE, Builder, flow, formula, input_, q, this, value
 from napkin.program.config import Configuration, Numerics, Request
+from tests.engine.test_threshold_transfer_placement import use_method
 
 YEAR_H = 8760.0
 HORIZON = 20 * YEAR_H  # twenty years of hours
 X0, CAPACITY = 10.0, 1000.0  # people at the start, and the most that the population reaches
 GROWTH = 0.5 / YEAR_H  # per hour: half a year's growth rate
+
+
+@pytest.mark.parametrize('method', ['component', 'sparse', 'moving_declared'])
+def test_an_explicit_time_pulse_supplies_its_integral(method, monkeypatch):
+    source = """scenario "A short delivery"
+    horizon 4 h
+yard:
+    water: L = 0 L scale 1 L
+    flow fill: SOURCE -> this.water
+        request = formula(10 L/h * exp(-((t - 2 h) / 0.01 h) ** 2))
+"""
+    model = use_method(source, method, monkeypatch, 'fill')
+    record = run(model.program, model.configuration)
+    assert record.failure is None
+    water = read(record, model.program, ['yard.water'], [4])[0].values[0]
+    expected = 0.1 * math.sqrt(math.pi) * math.erf(200)
+    assert water == pytest.approx(expected, rel=1e-8, abs=1e-9)
 
 
 def logistic():

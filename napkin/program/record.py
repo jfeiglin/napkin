@@ -92,6 +92,7 @@ KINDS = (
     'release',
     'settle',
     'contact',
+    'rate_unresolved',  # A committed step whose explicit-time input could not be bounded.
 )
 
 
@@ -241,6 +242,8 @@ class Manifest:
 
     comparison_factor: float = 1e-9
     comparison_scales: tuple[tuple[str, float], ...] = ()
+    # First committed installation at which each mixed time-dependent rate was outside the pulse guard.
+    unchecked_time_rates: tuple[tuple[str, Number], ...] = ()
 
     def names(self, key):
         """Whether a record with this manifest holds the value of a key: every value, or a key of its
@@ -260,6 +263,15 @@ class Record:
     histories: tuple[History, ...] = ()
     trace: tuple[Entry, ...] = ()
     failure: Entry | None = None
+
+    @property
+    def rate_guard_note(self):
+        """The number of distinct rate settings outside the explicit-time guard in this record."""
+        count = len(self.manifest.unchecked_time_rates)
+        noun = 'setting' if count == 1 else 'settings'
+        return (
+            f'The explicit-time rate check excluded {count} time-dependent {noun} with state or lookup reads.'
+        )
 
     def history(self, key):
         """The history that the record keeps of a value, or KeyError: what a reader evaluates a held
@@ -383,7 +395,9 @@ class Record:
             '',
             (('message', message), ('budget', pieces)),
         )
-        return Record(self.manifest, tuple(histories), (*trace, failure), failure)
+        covered = tuple(row for row in self.manifest.unchecked_time_rates if row[1] < end)
+        manifest = replace(self.manifest, unchecked_time_rates=covered)
+        return Record(manifest, tuple(histories), (*trace, failure), failure)
 
     def entries(self, kind=None, part=None):
         """The entries of the trace of a kind, of a part, or both."""

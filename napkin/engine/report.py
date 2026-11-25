@@ -172,6 +172,7 @@ class Report:
     violations: tuple[tuple[str, str, str], ...] = ()
     attempts: tuple[tuple[str, str, str, float, float], ...] = ()
     placements: tuple[tuple[str, float, float], ...] = ()
+    rate_guard_note: str = ''
 
 
 def reading_scale(reader, program, path, at):
@@ -253,6 +254,7 @@ def report(record, program, configuration, paths, times, lags=None, model=None, 
         failure_details('violations'),
         failure_details('attempts'),
         failure_details('placements'),
+        record.rate_guard_note,
     )
 
 

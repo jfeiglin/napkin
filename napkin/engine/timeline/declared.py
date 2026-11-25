@@ -112,7 +112,7 @@ from ...core.units import rational
 from ...program.proofs import always
 from .. import departure
 from ..allocation import StockFaces
-from ..continuous import dense, integrate
+from ..continuous import dense, integrate, rate_guard
 from ..continuous.transfers import (
     HeldAmounts,
     MovingAmounts,
@@ -1488,6 +1488,10 @@ class Segment:
         self.start, self.end, self.solution, self.event = start, end, solution, event
         self.plain = plain
 
+    def due(self, through):
+        """Contacts on the last trial step in the settled instant's time band."""
+        return [event for event in self.event or () if event[0] <= through]
+
 
 class MovingDeclared(MovingTransfers, DeclaredWay):
     """A declared solver's set whose problem reads what moves between moments: a store of the set,
@@ -1829,7 +1833,7 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
                         atol=self.step_atol,
                         max_step=numerics.max_step,
                     )
-                message = solver.step()
+                message = rate_guard.step(solver, self.guard_for(self.region.signs))
                 if solver.status == 'failed':
                     raise SimulationError(f'the solver {self.declared.id}: {message} at {now:g} h')
                 start, end = float(solver.t_old), float(solver.t)
@@ -1972,8 +1976,10 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
         """Apply the incoming prefix, then bring the stores to the moment."""
         self.incoming_history(end)
         if end > self.amounts.through:
+            start = self.amounts.through
             self.amounts.select_clocks(self.low.__getitem__, self.high.__getitem__)
-            self.accept_amounts(self.amounts.through, end, self.pending.solution(end)[len(self.stores) :])
+            self.accept_amounts(start, end, self.pending.solution(end)[len(self.stores) :])
+            self.mark_rates(self.pending.solution, start, end)
         self.y = self._state(end)
         self.time = end
         self.pending = self.prefix = None
@@ -2002,15 +2008,16 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
         segment = self.pending
         self._commit(segment.end)
         self.run.now = segment.end
-        if segment.event:
-            self._put_contacts(segment.event, self.run.clock.apart(segment.end))
+        due = segment.due(self.run.clock.apart(segment.end))
+        if due:
+            self._put_contacts(due)
         for name in levels:
             if name in self.place:
                 self.y[self.place[name]] = levels[name]
         if segment.plain:
             return list(self.stores), sorted(set(self.recorded) | set(self.connected.results)), False
-        contacted = {pair: at for at, pair, kind in segment.event or () if kind == 'switch'}
-        departing = [name for _, name, kind in segment.event or () if kind == 'release']
+        contacted = {pair: at for at, pair, kind in due if kind == 'switch'}
+        departing = [name for _, name, kind in due if kind == 'release']
         changed = self._settle(segment.end, contacted, departing)
         return list(self.stores), sorted(set(changed) | set(self.recorded)), bool(segment.event)
 
@@ -2018,8 +2025,7 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
         if self.pending is not None:
             yield from ((at, pair) for at, pair, kind in self.pending.event or () if kind == 'switch')
 
-    def _put_contacts(self, events, through):
-        due = [event for event in events if event[0] <= through]
+    def _put_contacts(self, due):
         for _, name, kind in due:
             if kind == 'release':
                 self.low[self.place[name]] = self.high[self.place[name]] = False
@@ -2030,8 +2036,8 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
     def timing_events(self, through):
         """The physical switches and bounds in the pending segment."""
         if self.pending is not None:
-            for at, name, kind in self.pending.event or ():
-                if at > through or kind in ('release', 'band exit'):
+            for at, name, kind in self.pending.due(through):
+                if kind in ('release', 'band exit'):
                     continue
                 if kind != 'switch':
                     yield at, name, kind
@@ -2047,7 +2053,7 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
         segment = self.pending
         t = segment.end if t is None else t
         self._commit(t)
-        met = self._put_contacts(segment.event or (), t if through is None else through)
+        met = self._put_contacts(segment.due(t if through is None else through))
         self.snapped = True
         return [*self.stores, *self.flows, *self.recorded, *self.connected.results], met
 

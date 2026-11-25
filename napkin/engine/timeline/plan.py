@@ -2764,14 +2764,19 @@ class Plan:
     def settings_of(self, flow):
         """The engine names of what a flow's value reads: the request and capacity of each of its
         connections, and the request and capacity of the endpoints at their ends."""
-        names = []
-        for connection in flow.connections:
-            names += [connection.request] + ([connection.capacity] if connection.capacity is not None else [])
-            for side, store in zip(SIDES, (connection.source, connection.sink)):
-                end = self.ends.get((store, side)) if store is not None else None
-                if end is not None:
-                    names += [end.request] + ([end.capacity] if end.capacity is not None else [])
-        return list(dict.fromkeys(names))
+        return list(dict.fromkeys(name for c in flow.connections for name in self.connection_settings(c)))
+
+    def connection_settings(self, connection):
+        """The rate settings of one physical connection and its two endpoints."""
+        yield connection.request
+        if connection.capacity is not None:
+            yield connection.capacity
+        for side, store in zip(SIDES, (connection.source, connection.sink)):
+            end = self.ends.get((store, side))
+            if end is not None:
+                yield end.request
+                if end.capacity is not None:
+                    yield end.capacity
 
     def settled(self, end):
         """Whether an endpoint has a capacity or a request that is not left out, or one that a run can

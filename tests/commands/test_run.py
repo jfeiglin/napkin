@@ -48,6 +48,7 @@ def test_napkin_run_gives_the_closed_form_of_the_piano_tuners(capsys):
     doc = found.doc
     assert doc['title'] == 'Piano tuners'
     assert doc['mode'] == 'median'
+    assert 'excluded 0 time-dependent settings' in doc['rate_guard_note']
     assert doc['times'] == [0, 4380, 8760]
     values = doc['values']
     assert values['tuners.rate']['unit'] == 'tunings/tuner/year'

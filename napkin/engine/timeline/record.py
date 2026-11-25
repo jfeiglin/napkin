@@ -1151,6 +1151,7 @@ class Recorder:
             request.keys,
             plan.units.comparisons.factor,
             tuple(sorted(plan.comparison_scales.items())),
+            tuple(sorted(self.run.unchecked_time_rates.items())) if self.run is not None else (),
         )
         made = Record(manifest, tuple(held), trace, failure)
         if not ongoing:

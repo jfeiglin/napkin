@@ -1,16 +1,77 @@
 """What an installed set publishes and reports when the timeline reaches a moment."""
 
 from bisect import bisect_right
+from functools import cached_property
 from math import inf
 
 from ...core import expr as nodes
 from ...core.units import rational
+from ..continuous import rate_guard
 from ..continuous.transfers import ClockLeg, HeldAmounts, certified_amount, clock_primitive, held_elapsed
+from .rate_scope import clock_rates, rate_node
 from .stocks import RestingAmounts, RestingRates
 
 
 class MovingTransfers:
     """Read one directed connection's accepted prefix using the installed method's dense output."""
+
+    @cached_property
+    def _authored_guard(self):
+        if not self.clock_rates:
+            return None
+        guard = rate_guard.RateGuard(self.run, self.clock_rates, self.place, rate_node)
+        return guard if guard.rates else None
+
+    def guard_for(self, signs):
+        """Check both the requested rate and the smooth arm the solver actually uses."""
+        guard = self._authored_guard
+        if guard is None or not signs:
+            return guard
+        previous = getattr(self, '_selected_guard', None)
+        if previous is not None and previous[0] == signs:
+            return previous[1]
+        from ..continuous.integrate import branch_expression, fixed_clock
+
+        def on_branches(choices):
+            changed = False
+
+            def selected(run, name):
+                nonlocal changed
+                node = rate_node(run, name)
+                chosen = branch_expression(node, choices) if node is not None else None
+                changed |= chosen is not node
+                return chosen
+
+            active = rate_guard.RateGuard(self.run, self.clock_rates, self.place, selected)
+            return active if changed else None
+
+        def reads_time(node):
+            plan = self.run.plan
+            return plan.field_inputs(plan.reads_now(plan.expansion(node))).time
+
+        # The installed physical clocks locate these transitions independently.
+        # Keep their incoming branch through the whole trial, including the
+        # clock's contact band. Probing the outgoing branch there can split a
+        # joint contact before its locator sees the second stock.
+        clocks = {
+            pair: sign for pair, sign in signs.items() if fixed_clock(pair, lambda other: True, reads_time)
+        }
+        if clocks:
+            selected = on_branches(clocks)
+            if selected is not None:
+                guard = selected
+        if signs != clocks:
+            selected = on_branches(signs)
+            if selected is not None:
+                selected.authored = guard
+                guard = selected
+        # A contact can select another arm without replacing this way.
+        self._selected_guard = dict(signs), guard
+        return guard
+
+    def mark_rates(self, solution, start, end):
+        if self.clock_rates and end > start:
+            rate_guard.mark(self.run.recorder, solution, start, end)
 
     @staticmethod
     def held_settings(plan, names):
@@ -93,9 +154,14 @@ class Way:
 
     sample_on_read = False
     probe_until = inf  # a held value or outgoing line supports the full just-after probe
+
     resting_rates = None
     resting = None
     recorded_through = None  # end of the last dense span already given to the recorder
+
+    def prepare_clock_rates(self, *, observe):
+        """Bind the scope once per installation, including reconstructed checkpoint ways."""
+        self.clock_rates = clock_rates(self.run, self.flows, self.stores, observe=observe)
 
     def transferred(self, name, t):
         """Cumulative physical amount on an accepted prefix, including precision-certified legs."""

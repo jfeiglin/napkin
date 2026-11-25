@@ -31,6 +31,7 @@ class Field:
         self.run = run
         self.context = context  # the formulas, the diagnostics and the settings (`system.Context`)
         self.leg_rates = None
+        self.guard_for = None
         self.paired_requests = None
         self.physical_face_net = None
         self.branches = {}

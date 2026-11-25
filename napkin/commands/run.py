@@ -389,6 +389,8 @@ def lines(
         for (text, _), item in zip(times, value.values):
             if unavailable(item):
                 shown.append(f'{value.path} at {text}: unavailable: {item.reason}')
+    if record.manifest.unchecked_time_rates:
+        shown.append(found.rate_guard_note)
     return shown + near_tie_lines(found.near_ties, full_list)
 
 
@@ -511,6 +513,7 @@ def document(model, entry, args, configuration, times, found, stopped):
         'mode': configuration.mode,
         'horizon': float(configuration.request.horizon),
         'times': [t for _, t in times],
+        'rate_guard_note': found.rate_guard_note,
         'values': {
             value.path: {
                 'unit': common.unit_shown(model.declared.units, value.unit),

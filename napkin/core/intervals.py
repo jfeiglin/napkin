@@ -109,8 +109,10 @@ def _single(condition):
 
 
 class _Prover:
-    def __init__(self, ranges, registry, aliases, weights=None):
+    def __init__(self, ranges, registry, aliases, weights=None, outward=False, order=None):
         self.registry, self.aliases = registry, aliases
+        self.outward = outward
+        self.order = order
         # The names that stand for more than one value in a list: `weights.get(name, 1)` is how many.
         self.weights = weights if weights is not None else {}
         # The names that each formula reads; None for a formula that cannot be read.
@@ -262,7 +264,7 @@ class _Prover:
 
         layered = set().union(*context.maps[:-1]) - {EMPTY, GUARDED, NONZERO}
         bounds = tuple((key, context[key]) for key in sorted(layered, key=_written) if relevant(key))
-        nonzero = frozenset(key for key in context.get(NONZERO, ()) if relevant(key))
+        nonzero = frozenset((key, zeros) for key, zeros in context.get(NONZERO, {}).items() if relevant(key))
         flags = bool(context.get(EMPTY)), bool(context.get(GUARDED))
         return (bounds, nonzero, flags) if bounds or nonzero or any(flags) else ()
 
@@ -300,6 +302,12 @@ class _Prover:
             for child in condition.values:
                 context = self.refine(context, child, positive)
             return context
+        if self.outward and isinstance(condition, expr.BoolOp):
+            # In the alternative branch of AND/OR, one term must permit the
+            # outcome. If each term excludes it, no point enters this branch.
+            if all(self.refine(context, child, positive).get(EMPTY) for child in condition.values):
+                return context.new_child({EMPTY: True})
+            return context
         single = _single(condition)
         if single is None:
             return context
@@ -308,6 +316,17 @@ class _Prover:
         if right is None:
             right = self.constant_value(left, context)
             if right is None or op not in MIRRORED:
+                if self.order is not None and op in MIRRORED:
+                    result = self.order(
+                        op,
+                        left,
+                        other,
+                        context.get('t'),
+                        self.registry.comparisons,
+                        lambda node: self.known_value(node, context),
+                    )
+                    if result is not None and result != positive:
+                        return context.new_child({EMPTY: True})
                 return context
             left, other, op = other, left, MIRRORED[op]
         updated = context.new_child()
@@ -324,20 +343,35 @@ class _Prover:
         lower, upper = updated[name]
         if not positive:
             op = OPPOSITE.get(op)
+        policy = self.registry.comparisons
+        read = lambda node: self.known_value(node, context)  # noqa: E731
+        if self.outward and policy.factor < 1 and op in ('gt', 'lt', 'ne'):
+            # With one fixed operand, the closed comparison band is an interval.
+            # All of this cell can be inside a large declared band even if its
+            # ends lie on the strict side of the mathematical equality.
+            ends = (upper,) if op == 'gt' else (lower,) if op == 'lt' else (lower, upper)
+            try:
+                if all(
+                    math.isfinite(x) and not policy.ordered(op, left, other, x, right, read) for x in ends
+                ):
+                    updated[EMPTY] = True
+                    return updated
+            except UnresolvedScale:
+                pass
         # For an inclusive predicate a nearby value on either side can also hold.
         # If |x| supplies the band, the outer edge is right / (1 - factor).
         near_low = near_high = right
         if op in ('ge', 'le', 'eq'):
-            policy = self.registry.comparisons
             try:
-                gap = policy.band(
-                    left, other, right, right, read=lambda node: self.known_value(node, context)
-                )
+                gap = policy.band(left, other, right, right, read=read)
             except UnresolvedScale:
                 return context  # an unknown floor cannot narrow an inclusive condition
             edge = right / (1 - policy.factor) if policy.factor < 1 else math.copysign(math.inf, right)
             near_low = min(right - gap, edge)
             near_high = max(right + gap, edge)
+            if self.outward:
+                near_low = math.nextafter(near_low, -math.inf)
+                near_high = math.nextafter(near_high, math.inf)
         if op == 'gt':
             lower = max(lower, math.nextafter(right, math.inf))
         elif op == 'ge':
@@ -349,14 +383,18 @@ class _Prover:
         elif op == 'eq':
             lower = max(lower, near_low)
             upper = min(upper, near_high)
-            if right == 0 and name in updated.get(NONZERO, set()):
+            # A nonzero value can still be equal to a different zero operand
+            # with a wider declared band. Only the same comparison contradicts
+            # a previously established inequality.
+            if right == 0 and other in updated.get(NONZERO, {}).get(name, ()):
                 updated[EMPTY] = True
         elif op == 'ne' and right == lower:
             lower = math.nextafter(lower, math.inf)
         elif op == 'ne' and right == upper:
             upper = math.nextafter(upper, -math.inf)
         if op == 'ne' and right == 0:
-            updated[NONZERO] = set(updated.get(NONZERO, set())) | {name}
+            known = updated.get(NONZERO, {})
+            updated[NONZERO] = {**known, name: known.get(name, frozenset()) | {other}}
         updated[name] = (lower, upper)
         if lower > upper:
             updated[EMPTY] = True  # refinements only narrow intervals, so emptiness persists
@@ -382,6 +420,8 @@ class _Prover:
         if math.isnan(low) or math.isnan(high):
             # An indeterminate bound, such as inf - inf, proves nothing.
             low, high = WHOLE
+        if self.outward and not isinstance(node, (expr.Ref, expr.Const)):
+            low, high = math.nextafter(low, -math.inf), math.nextafter(high, math.inf)
         if context.get(GUARDED) and not isinstance(node, expr.Ref):
             narrowed = context.get(node)
             if narrowed is not None:
@@ -483,12 +523,15 @@ def _mul(prover, node, context, seen):
 def _div(prover, node, context, seen):
     left, right = _both(prover, node, context, seen)
     if right[0] <= 0 <= right[1]:
-        if _key(node.right) in context.get(NONZERO, set()):
+        if _key(node.right) in context.get(NONZERO, {}):
             return WHOLE
         raise ExpressionError(
             f'Cannot prove nonzero denominator in `{expr.notation(node)}`; declare bounds or guard the branch'
         )
-    return _products(left, (1 / right[1], 1 / right[0]))
+    lo, hi = 1 / right[1], 1 / right[0]
+    if prover.outward:
+        lo, hi = math.nextafter(lo, -math.inf), math.nextafter(hi, math.inf)
+    return _products(left, (lo, hi))
 
 
 def _pow(prover, node, context, seen):
@@ -538,7 +581,13 @@ def _sum(prover, node, context, seen):
             count = max((prover.weights.get(name, 1) for name in expr.names(member)), default=1)
             if count != 1:
                 a, b = count * a, count * b
+                if prover.outward:
+                    a, b = math.nextafter(a, -math.inf), math.nextafter(b, math.inf)
         low, high = (a, b) if place == 0 else (low + a, high + b)
+        if prover.outward and place:
+            # After cancellation, one ulp of the final sum need not cover the
+            # rounding at a previous partial sum.
+            low, high = math.nextafter(low, -math.inf), math.nextafter(high, math.inf)
     return (low, high)
 
 
@@ -588,6 +637,8 @@ def _logarithm(name, offset):
         low, high = _arguments(prover, node, context, seen)[0]
         if low + offset <= 0:
             raise ExpressionError(f'Cannot prove {name} argument is in its domain')
+        if offset and prover.outward:
+            return math.log1p(low), math.log1p(high)
         return (math.log(low + offset), math.log(high + offset))
 
     return handler
@@ -598,6 +649,8 @@ def _exponential(name, offset):
         low, high = _arguments(prover, node, context, seen)[0]
         if high > math.log(LARGEST):
             raise ExpressionError(f'Cannot prove {name} stays within finite floating-point range')
+        if offset and prover.outward:
+            return math.expm1(low), math.expm1(high)
         return (math.exp(low) - offset, math.exp(high) - offset)
 
     return handler
@@ -685,7 +738,7 @@ TABLE = ops.handlers(
 )
 
 
-def prover(ranges, registry, aliases=None, weights=None):
+def prover(ranges, registry, aliases=None, weights=None, *, outward=False, order=None):
     """`prove(node)`: the closed interval of a node over `ranges` (name → (low, high), in execution
     units), or its ExpressionError. `aliases` gives the node of the formula of a name; it is read when
     the prover is made and when a formula is proved, and it must not change. The ranges are copied.
@@ -694,7 +747,7 @@ def prover(ranges, registry, aliases=None, weights=None):
     of a table, each of which has the range of the name. `sum` counts such a member n times. `min`,
     `max`, `any` and `all` need no count: n values in one interval have their least and their
     greatest in that interval."""
-    return _Prove(_Prover(ranges, registry, {} if aliases is None else aliases, weights))
+    return _Prove(_Prover(ranges, registry, {} if aliases is None else aliases, weights, outward, order))
 
 
 class _Prove:

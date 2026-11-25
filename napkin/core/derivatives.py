@@ -105,8 +105,9 @@ def _made(node, by, memo):
 _MEMOS: dict = {}
 
 
-def derivative(node, name):
+def derivative(node, name, *, memo=None):
     """The partial derivative of `node` by the reference `name`, as a node. A node that does not read
     `name` gives the constant 0."""
-    memo = _MEMOS.setdefault(name, {})
+    if memo is None:
+        memo = _MEMOS.setdefault(name, {})
     return _derivative(node, name, memo)

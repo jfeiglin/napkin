@@ -289,7 +289,10 @@ def _data(value):
         name = type(value).__name__
         if RECORDS.get(name) is not type(value):
             raise TypeError(f'a checkpoint holds no {name}')
-        return {'$': name, **{item.name: _data(getattr(value, item.name)) for item in fields(value)}}
+        data = {'$': name, **{item.name: _data(getattr(value, item.name)) for item in fields(value)}}
+        if name == 'Manifest' and not value.unchecked_time_rates:
+            del data['unchecked_time_rates']  # an absent field gives the usual empty coverage note
+        return data
     raise TypeError(f'a checkpoint holds no {type(value).__name__}')
 
 

@@ -16,7 +16,7 @@ from ...expressions import ExpressionError, compile_program, evaluate, names_in
 from ...program.config import Numerics
 from ..errors import SimulationError
 from ..solvers import radau_rate
-from . import affine, dense
+from . import affine, dense, rate_guard
 from .bounds import state_limits
 from .transfers import CollocationRates
 from .walk import walked
@@ -498,6 +498,7 @@ def radau(
     leg_rates=None,
     held_comparisons=None,
     comparison_factor=None,
+    guard=None,
     **options,
 ):
     """`solve_ivp(fun, interval, initial, method='Radau', dense_output=True, events=...)` for roots
@@ -553,7 +554,7 @@ def radau(
             # nothing in place, so this is the solver at the start of the step again
             # (`scipy.integrate._ivp.radau.Radau._step_impl`).
             held = dict(vars(solver))
-        message = solver.step()
+        message = rate_guard.step(solver, guard)
         if solver.status == 'finished':
             status = 0
         elif solver.status == 'failed':
@@ -1740,6 +1741,7 @@ def numerical_segment(system, run, field, context, roots, descriptors, end, repa
             leg_rates=field.leg_rates,
             held_comparisons=run.held_comparisons,
             comparison_factor=s.faces.factor,
+            guard=field.guard_for(field.branches) if field.guard_for is not None else None,
             check=s.max_step,
             moment=s.cfg.crossing,
             rtol=s.cfg.rtol,

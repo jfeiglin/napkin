@@ -849,7 +849,7 @@ def _restore_ways(run, found):
         ways._register(_connected(data), level, key)
     deltas = {} if run.saved_arrival is None else dict(run.saved_arrival[0])
     for k, (kind, keys, data) in enumerate(found['instances']):
-        instance = _made(run, kind, keys, dict(data))
+        instance = _made(run, kind, keys, dict(data), observe=True)
         for key in keys:
             ways.sets[key] = (ways.sets[key][0], instance)
         ways.instances.append(instance)
@@ -860,7 +860,7 @@ def _restore_ways(run, found):
         elif isinstance(instance, MovingDeclared):
             ways.moving_solvers[instance.key] = None
         if k in deltas:
-            projected = _made(run, kind, keys, dict((*data, *deltas[k])))
+            projected = _made(run, kind, keys, dict((*data, *deltas[k])), observe=False)
             if isinstance(instance, Sparse | ComponentWay | MovingDeclared):
                 instance.arrival_amounts = projected.amounts
             run.cut_at_resume.append((k, keys, projected))
@@ -891,8 +891,9 @@ def _restore_ways(run, found):
             )
 
 
-def _made(run, kind, keys, data):
+def _made(run, kind, keys, data, *, observe):
     instance = _made_fields(run, kind, keys, data)
+    instance.prepare_clock_rates(observe=observe)
     instance.donor = data.get('donor')
     if data.get('arrival_rates') is not None:
         t, rates = data['arrival_rates']

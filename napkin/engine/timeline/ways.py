@@ -566,5 +566,6 @@ class Ways:
             self.followers.add(instance.key)
         if isinstance(instance, MovingDeclared):
             self.moving_solvers[instance.key] = None
+        instance.prepare_clock_rates(observe=True)
         instance.begin()
         self.publish(instance, self.run.now)

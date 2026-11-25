@@ -153,6 +153,7 @@ class Run:
         self.recorder.run = self
         self.now = 0.0  # also carries the time of a numerical trial for diagnostics
         self.accepted = 0.0  # the physical cutoff chosen by the timeline
+        self.unchecked_time_rates = {}  # mixed time-dependent setting -> first settled installation
         self.env = {'t': 0.0}  # the values of the start, and later each value held between moments
         # The kept entries, the keyed reads by the time and the indexes of keys of the collections
         # (by name, and by the tuples that the reads of one collection share); the keys known.
@@ -1039,6 +1040,7 @@ class Run:
         """The run of a plan that a checkpoint stopped, made again from its saved state (`saved.py`),
         waiting at its stop: `resume` goes on, `edit` edits."""
         made = cls(plan, checkpoint.breakpoints)
+        made.unchecked_time_rates = dict(checkpoint.record.manifest.unchecked_time_rates)
         restore(made, checkpoint.saved)
         made.breaks.restored(checkpoint)
         made.checkpoint = checkpoint

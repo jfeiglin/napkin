@@ -17,6 +17,7 @@ band**. It also tells what a declared scale can change, and which runs give the 
 8. [Near-ties](#near-ties)
 9. [Numerical settings](#numerical-settings)
 10. [Reproducibility](#reproducibility)
+11. [The explicit-time rate check](#the-explicit-time-rate-check)
 
 ## The comparison band
 
@@ -274,3 +275,33 @@ The engine chooses its own steps. A run that needs finer steps sets `max_step`.
 - The draws of a sampled run are keyed by the seed, the place of the draw and its owner. Another
   step size, an extra report or a skipped branch moves no draw
   ([values-and-types.md](values-and-types.md#the-run-mode)).
+
+## The explicit-time rate check
+
+The engine checks requests and capacities that depend on time. They can also use fixed inputs or captured parameters.
+For each numerical integration step, the engine checks how much of the rate the step could miss.
+It calculates an upper bound on this amount for the mathematical formula. It also calculates a
+bound that includes floating-point error. Both bounds apply to each part of the step from its start.
+
+If the mathematical bound exceeds the amount tolerance, or the engine cannot calculate that bound,
+the engine tries a shorter step. At the crossing tolerance or the smallest possible solver step,
+the engine accepts the step and marks the interval if the bound still exceeds the tolerance.
+It also marks the interval if the bound is still unavailable.
+
+If the mathematical bound is within tolerance and only floating-point error prevents a proof,
+the engine accepts the step and marks the interval. The amount that the step could miss
+in the floating-point calculation is still uncertain.
+
+The trace records a `rate_unresolved` entry when the run accepts that part of the step.
+The entry gives the setting, the accepted interval, the amount tolerance, the reason and both
+bounds. Read `mathematical_bound` for the formula and `bound_with_roundoff` for the calculation
+with floating-point arithmetic. A bound of `null` means that the engine could not calculate
+a finite bound.
+This check applies to the rate setting before flows share the available supply or capacity.
+Use `record.entries('rate_unresolved')` in Python to read these entries.
+
+The run also reports how many time-dependent settings read state or a lookup.
+The check excludes these settings, including a state that happens to hold a constant value.
+Each distinct setting counts once from the first installation where it has such a dependency.
+An event occurrence has its own settings. A checkpoint retains the count for occurrences that already finished.
+Read `record.rate_guard_note` in Python or `rate_guard_note` in the output of `napkin run --json`.

@@ -657,6 +657,7 @@ class ComponentWay(MovingTransfers, Way):
             state = self.component.state
             if state.time >= self.run.limit:
                 return math.inf
+            self.component.field.guard_for = self.guard_for if self.clock_rates else None
             self.pending = self.component.next(self.run.limit)
             if self.fixed_settings and isinstance(self.pending.solution, Affine):
                 self.amounts.held_solution(self.pending.solution.leg_rates, self.pending.start)
@@ -684,6 +685,8 @@ class ComponentWay(MovingTransfers, Way):
                 self.amounts.select_clocks(*self._clock_bounds())
             amount = self._transfer_amount(segment, segment.end)
             self.accept_amounts(segment.start, segment.end, amount)
+            if segment.numerical is not None:
+                self.mark_rates(segment.solution, segment.start, segment.end)
         self._record(segment)
         component.proceed(segment)
         self._drift = None
