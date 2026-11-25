@@ -148,3 +148,47 @@ def test_a_formula_keeps_both_input_boundaries_around_a_short_transition():
     assert tuple(loss.at(t) for t in times) == pytest.approx(expected, rel=live.plan.numerics.atol_factor)
     (public,) = read(record, program, ('plant.loss',), times)
     assert tuple(public.values) == expected
+
+
+def test_a_later_cutoff_preserves_a_closed_fit_through_a_formula_chain():
+    from dataclasses import replace
+
+    from napkin.model.compile import compile_text
+
+    source = """scenario "Closed fits at a nearby horizon"
+    horizon 1.00000001 h
+tank:
+    water: L = 0 L
+    flow fill: SOURCE -> this.water
+        request = 1 L/h
+    source = formula(exp(10 * this.water / (1 L)))
+    square = formula(this.source ** 2)
+    fourth = formula(this.square ** 2)
+    marker = 0
+    tick = event():
+        after 1 h:
+            this.marker = 1
+tank.tick.start()
+"""
+    model = compile_text(source, {'h': {'time': 1}, 'L': {'volume': 1}})
+    keys = tuple(Key('tank', (name,)) for name in ('source', 'square', 'fourth'))
+    config = model.configuration
+    request = replace(config.request, everything=False, keys=keys)
+
+    def simulate(req):
+        return Run(Plan.of(model.program, replace(config, request=req))).run()
+
+    closed = simulate(replace(request, horizon=1))
+    extended = simulate(request)
+    assert closed.failure is None and extended.failure is None
+    for key, charged in zip(keys, (16, 32, 64), strict=True):
+        earlier = closed.history(key).pieces
+        later = extended.history(key).pieces
+        assert len(earlier) == charged
+        assert tuple(piece for piece in later if piece.t < 1) == earlier
+        assert any(piece.t == 1 for piece in later)
+
+    for budget in (8, 9, 10):
+        limited = simulate(replace(request, pieces=budget))
+        assert limited.failure is not None and limited.failure.detail('budget') == budget
+        assert limited == recording.requested(extended.within(budget), model.program)

@@ -234,10 +234,12 @@ def fitted(values, start, end, tolerance):
     return [sorted(pieces, key=lambda piece: piece[0]) for pieces in found]
 
 
-def _fit_boundaries(start, end, added, crossing):
-    """Keep both fixed endpoints. Between them, keep the earliest distinct added boundaries."""
+def _fit_boundaries(start, end, roots, crossing):
+    """Keep the endpoints of this moment span. Coalesce only located roots near a boundary."""
+    if not roots:
+        return (start, end)
     kept = [start]
-    for at in sorted(set(added)):
+    for at in sorted(set(roots)):
         if at - kept[-1] > crossing and end - at > crossing:
             kept.append(at)
     kept.append(end)
@@ -303,8 +305,7 @@ def _bend_times(layers, operand, start, end, tolerance, crossing):
                     # still reports any failure of the selected expression.
                     continue
         bounds = _fit_boundaries(start, end, roots, crossing)
-    # The search endpoints may themselves be optional moment ends. The caller decides
-    # which of those ends and these roots to retain between the actual fixed boundaries.
+    # The caller applies the same rule to the roots from all layers together.
     return sorted(roots)
 
 
@@ -827,7 +828,7 @@ class Recorder:
                 count += 1
                 continue
             moments = self.fits.intervals(a, b)
-            for left, right in pairwise(_fit_boundaries(a, b, moments, self.plan.numerics.crossing)):
+            for left, right in pairwise([a, *moments, b]):
                 key = (name, left, right)
                 fit = self.fits.closed.get(key)
                 if fit is None and right < self._budget_valid:
@@ -1777,7 +1778,6 @@ class Recorder:
                 pieces.append((a, cast(first), 0.0))
                 continue
             moments = self.fits.intervals(a, b)
-            added = list(moments)
             if layers is None:
                 pairs = dict.fromkeys(
                     pair
@@ -1786,24 +1786,25 @@ class Recorder:
                     for pair in switch_pairs(branch)
                 )
                 layers = switch_layers(tuple(pairs), {})
-            if layers:
-                def find_roots():
-                    return _bend_times(layers, operand, c, d, tolerance_at(c), crossing)
+            # A later cutoff must retain every moment that has closed a fit.
+            for origin, stop in pairwise([a, *moments, b]):
+                roots = ()
+                if layers:
 
-                for c, d in pairwise([a, *moments, b]):
-                    added.extend(self.fits.cached(('roots', name), c, d, find_roots))
+                    def find_roots():
+                        return _bend_times(layers, operand, origin, stop, tolerance_at(origin), crossing)
 
-            for lo, hi in pairwise(_fit_boundaries(a, b, added, crossing)):
-                def fit():
-                    begin = first if lo == a else tried(lo)
-                    if discrete:
-                        return _switches(lambda time: cast(tried(time)), lo, hi, cast(begin), crossing)
-                    # Each moment span sets the tolerance for all of its fitted branches.
-                    i = bisect_right(moments, lo)
-                    origin = moments[i - 1] if i else a
-                    return _numbers(at, tried, lo, hi, begin, tolerance_at(origin), crossing)
+                    roots = self.fits.cached(('roots', name), origin, stop, find_roots)
 
-                pieces.extend(self.fits.cached(name, lo, hi, fit))
+                for lo, hi in pairwise(_fit_boundaries(origin, stop, roots, crossing)):
+
+                    def fit():
+                        begin = first if lo == a else tried(lo)
+                        if discrete:
+                            return _switches(lambda time: cast(tried(time)), lo, hi, cast(begin), crossing)
+                        return _numbers(at, tried, lo, hi, begin, tolerance_at(origin), crossing)
+
+                    pieces.extend(self.fits.cached(name, lo, hi, fit))
         return pieces
 
     def _defined(self, name, histories, end):
