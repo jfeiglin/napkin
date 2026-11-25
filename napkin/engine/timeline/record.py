@@ -1073,12 +1073,15 @@ class Recorder:
             pieces = self._lookup(name, histories, end)
         elif value.kind == DYNAMIC:
             return self._dynamic_history(name, histories, end, since)
-        elif isinstance(value.node, nodes.Ref) and value.node.name in histories and name not in run.frozen:
-            # A formula that names another value has its history.
-            found = histories[value.node.name].pieces
-            return History(
-                value.key, found if start == 0 else tuple(p for p in found if p.t >= start) or found
-            )
+        elif (
+            isinstance(value.node, nodes.Ref)
+            and name not in run.frozen
+            and (source := histories.get(value.node.name)) is not None
+            and (not source.pieces or source.pieces[0].t >= start)
+        ):
+            # Borrow only a history covered by the alias's lifetime. An older
+            # source needs an opening at the occurrence's start, like any formula.
+            return History(value.key, source.pieces)
         elif owner is None and name not in run.frozen:
             return self._formula_tail(name, end, start, since)
         else:

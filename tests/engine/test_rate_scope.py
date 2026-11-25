@@ -80,6 +80,29 @@ def test_budget_cutoff_excludes_a_rate_first_installed_at_that_time():
     assert limited.manifest.unchecked_time_rates == (('yard.tabulated.request', 0),)
 
 
+def test_an_occurrence_rate_starts_using_the_piece_budget_at_its_birth():
+    model = compile_text(SCOPE, UNITS)
+    config = model.configuration
+    full = Run(Plan.of(model.program, config)).run()
+    assert full.failure is None
+    at_birth = replace(config, request=replace(config.request, horizon=1))
+    opening = Run(Plan.of(model.program, at_birth)).run().history(Key('yard.work#0', ('extra', 'request')))
+    assert [(piece.t, piece.value) for piece in opening.pieces] == [(1, 2)]
+    trimmed = full.within(51)
+    limited = replace(config, request=replace(config.request, pieces=51))
+    live = Run(Plan.of(model.program, limited)).run()
+
+    def charged_starts(record):
+        return {
+            history.key: tuple(p.t for p in history.pieces[: history.charged_pieces()])
+            for history in record.histories
+        }
+
+    assert live.end == trimmed.end == 1
+    assert live.trace == trimmed.trace
+    assert charged_starts(live) == charged_starts(trimmed)
+
+
 def test_checkpoint_keeps_the_omission_from_a_finished_occurrence():
     model = compile_text(SCOPE, UNITS)
 
