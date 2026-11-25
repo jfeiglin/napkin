@@ -117,10 +117,13 @@ The configuration comes from the model and its named runs (`napkin/model/runs.py
 **edits** of the caller. It holds the inputs, the mode, the seed, the limits, the budgets, the
 numerical settings and the request of what to record (`napkin/program/config.py`).
 
-The piece budget counts the pieces of each requested formula history. A design that builds the
-history when a reader asks for it must count the same pieces, even if nobody reads the formula.
-The first piece that exceeds the budget sets the stop time. A reader can read values only before
-that time. See [the record and its budget](../engine/README.md#the-record).
+The piece budget counts the trajectory pieces of each requested formula history. A formula
+that only names a stock or a direct alias of a stock can also have one extra point at an
+inclusive cutoff. The engine adds this point only to show the stock's exact balance.
+A design that builds the history when a reader asks for it must count the same trajectory
+pieces, even if nobody reads the formula. The first counted piece that exceeds the budget sets
+the stop time. A reader can read values only before that time.
+See [the record and its budget](../engine/README.md#the-record).
 
 ### The methods of the engine
 

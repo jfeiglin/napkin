@@ -54,8 +54,11 @@ manifest of what it holds (R-A4a-07, R-A4a-08).
   requested values read under the definitions and occurrences of its trace
   (`engine/timeline/record.requested`). A run past its budget stops where its record ends,
   before any later stop.
-- **The budget** (`Record.within`, R-A4a-07): Count the trajectory pieces and stock postings of
-  the requested values. A record can hold one extra exact-balance point per stock at the cutoff.
+- **The budget** (`Record.within`, R-A4a-07): Count the trajectory pieces and actual stock
+  postings of the requested values, including postings at the cutoff. At an inclusive cutoff,
+  the record can hold one extra point for each stock and each direct alias of that stock.
+  Only a point added to show the exact balance is exempt. An exclusive budget stop has no such
+  point.
   A record that would exceed the budget ends at the time of the first counted piece that
   does not fit, with a failure entry there that names the budget (the detail `budget`): it holds the
   values before that time, and from it on every value is `Unavailable` with that reason. Only the
@@ -185,7 +188,7 @@ class Piece:
 
 @dataclass(frozen=True)
 class BalancePoint(Piece):
-    """An extra held point that shows the physical balance of a stock at the record cutoff."""
+    """A held point added to a stock or its direct alias to show the exact balance at an inclusive cutoff."""
 
 
 @dataclass(frozen=True)
@@ -196,7 +199,7 @@ class History:
     pieces: tuple[Piece, ...]
 
     def charged_pieces(self):
-        """Count the trajectory and posting pieces. A final balance point is free."""
+        """Count trajectory pieces and actual postings. Exclude the final exact-balance point, if present."""
         if self.pieces and isinstance(self.pieces[-1], BalancePoint):
             return len(self.pieces) - 1
         return len(self.pieces)

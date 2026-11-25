@@ -61,7 +61,9 @@ pieces of each value of a run:
 names, what their formulas read under each definition that the trace's commits gave them
 (`needed`), and the ledgers of the books, each history in the order of its key; a piece that starts
 at the record's end holds its value there (`_finished`). The budget counts trajectory pieces and
-actual postings. A stock can have one extra point for its exact balance at the cutoff.
+actual postings, including postings at the cutoff. At an inclusive cutoff, each stock and each
+of its direct aliases can have one extra point. The point shows the exact balance. The engine
+excludes only these added points from the count. An exclusive budget stop has no such point.
 The record ends before the first piece that exceeds the budget (`Record.within`).
 This rule also applies when the run stops for a checkpoint (`checkpoints.Breaks`).
 
@@ -1383,9 +1385,15 @@ class Recorder:
             _freeze_pieces(pieces, finish, run.frozen.get(name, 0.0))
         return self._history(value.key, pieces)
 
+    def supplied_binding(self, name, value):
+        """The family's own postings replace the original formula from their first instant."""
+        return (
+            self.pieces.get(name, ()) if name in self.formulas and value is self.plan.original(name) else ()
+        )
+
     def _binding_rows(self, name, value, histories, epoch, start, end):
         """A scalar formula, with a native alias restricted to the lifetime of its binding."""
-        raw = self.pieces.get(name, ()) if name in self.formulas and value is self.plan.original(name) else ()
+        raw = self.supplied_binding(name, value)
         begin = raw[0][0] if raw else math.inf
         pieces = []
         if start < begin:
@@ -1492,7 +1500,7 @@ class Recorder:
         made = Record(manifest, tuple(held), trace, failure)
         if not ongoing:
             if self.run is not None:
-                made = self.run.stock_state.project(made, self._readers)
+                made = self.run.stock_state.project(made, self)
             made = _finished(made)
         # At a provisional end the recorded outgoing slopes still count. At a true end
         # they become held points, as do the retained pieces when the budget ends a run.

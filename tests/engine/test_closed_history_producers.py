@@ -6,7 +6,7 @@ from napkin.engine.timeline import Plan, Run
 from napkin.engine.timeline.record import requested
 from napkin.model.compile import compile_text
 from napkin.program.checkpoint import Breakpoint, Checkpoint
-from napkin.program.record import Key
+from napkin.program.record import BalancePoint, Key
 
 UNITS = {'L': {'volume': 1}, 'h': {'time': 1}}
 
@@ -98,7 +98,8 @@ yard.tick.start()
     for name in names:
         key = Key('yard', (name,))
         history = whole.history(key)
-        assert [p for p in history.pieces if p.t < 2] == list(before.history(key).pieces)
+        closed = tuple(p for p in history.pieces if p.t < 2)
+        assert before.history(key).pieces == (*closed, BalancePoint(1, 3))
         assert [(p.rate, p.curve) for p in history.pieces if p.t == 0] == [(0, None), (1, None)]
         assert abs(history.at(3) - 9) < 1e-9
     for budget in (4, 5):

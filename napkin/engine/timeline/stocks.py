@@ -711,56 +711,54 @@ class Stocks:
         # The stock can also have a newer exact posting from an accepted stage.
         return max(self.balances[name][2], min(accepted, through))
 
-    def project(self, record, readers=None):
-        """Give each moving stock a held physical balance at the inclusive cutoff.
-        A posting already at the cutoff remains a charged piece."""
+    def project(self, record, recorder=None):
+        """Show the exact balance of each moving stock and its direct aliases at an inclusive cutoff.
+        An added balance point is exempt from the budget. An actual posting at the cutoff still counts."""
         end = record.end
         if record.after(end) is not None:
             return record
         run = self.run
-        corrected, amounts = {}, {}
-        for history in record.histories:
-            name = name_of(history.key)
-            if history.pieces and name in self.balances:
+        recorder = run.recorder if recorder is None else recorder
+        histories = {name_of(h.key): h for h in record.histories}
+        projected, amounts = {}, {}
+        for name in recorder._order:
+            history = histories.get(name)
+            if history is None or not history.pieces:
+                continue
+            if name in self.balances:
                 at = end if record.failure is None else self._failure_balance_time(name, end)
                 actual = float(self.point(name, at, amounts)[0])
                 last = history.pieces[-1]
-                if last.curve is not None or last.rate != 0 or last.at(end) != actual:
-                    corrected[name] = actual
-        if not corrected:
-            return record
-        if readers is None:
-            readers = run.recorder._readers
-        pending = list(corrected)
-        while pending:
-            source = pending.pop()
-            for name in readers.get(source, ()):
+                if last.curve is None and last.rate == 0 and last.at(end) == actual:
+                    continue
+                endpoint = BalancePoint(end, actual)
+            else:
                 value = run.plan.values[name]
-                if (
-                    name not in corrected
-                    and value.kind == FORMULA
-                    and name not in run.frozen
-                    and isinstance(value.node, nodes.Ref)
-                    and value.node.name == source
-                ):
-                    corrected[name] = corrected[source]
-                    pending.append(name)
-        histories = []
-        for history in record.histories:
-            name = name_of(history.key)
-            points = history.pieces
-            if name in corrected and points:
-                if points[-1].t == end:
-                    if points[-1].at(end) != corrected[name]:
-                        # Correct the value of a real posting without changing its budget charge.
-                        last = replace(points[-1], value=corrected[name], rate=0.0, curve=None)
-                        points = (*points[:-1], last)
-                elif name in self.balances:
-                    points = (*points, BalancePoint(end, corrected[name]))
-                # An alias reads the stock's cutoff value. Its fitted trajectory
-                # needs no second display point for the same physical balance.
-            histories.append(history if points is history.pieces else replace(history, pieces=points))
-        return replace(record, histories=tuple(histories))
+                if value.kind != FORMULA or not isinstance(value.node, nodes.Ref) or name in run.frozen:
+                    continue
+                source = value.node.name
+                if source not in projected:
+                    continue
+                raw = recorder.supplied_binding(name, value)
+                if raw and raw[0][0] <= end:
+                    continue
+                # The binding already owns its native prefix, including earlier definitions.
+                # Its last reading comes from the source's final history.
+                endpoint = projected[source].pieces[-1]
+            pieces = history.pieces
+            if pieces[-1].t == end:
+                # Keep the charge on a real landing, including the start of an alias binding.
+                last = pieces[-1]
+                actual = endpoint.at(end)
+                if last.at(end) != actual:
+                    last = replace(last, value=actual, rate=0.0, curve=None)
+                pieces = (*pieces[:-1], last)
+            else:
+                pieces = (*pieces, endpoint)
+            projected[name] = replace(history, pieces=pieces)
+        if not projected:
+            return record
+        return replace(record, histories=tuple(projected.get(name, h) for name, h in histories.items()))
 
 
 def _contact_factors(equations, residuals):

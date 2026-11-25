@@ -7,8 +7,8 @@ import pytest
 
 from napkin.engine.timeline import Plan, Run, read, resume
 from napkin.model.compile import compile_text
-from napkin.program.checkpoint import Breakpoint, dumps, loads
-from napkin.program.record import Key
+from napkin.program.checkpoint import Breakpoint, dumps, encode, loads
+from napkin.program.record import BalancePoint, Key
 from tests.engine.resume_parity import assert_resume_parity
 
 UNITS = {'L': {'volume': 1}, 'h': {'time': 1}}
@@ -63,12 +63,7 @@ def test_checkpoint_edit_books_its_difference_from_the_physical_balance(replacem
     assert external.values == (0, expected)
 
 
-@pytest.mark.parametrize('sparse', [False, True])
-def test_recorded_stock_at_horizon_is_the_same_rounded_balance_a_stage_can_spend(sparse, monkeypatch):
-    from napkin.engine.timeline import plan
-
-    monkeypatch.setattr(plan, 'LIMIT', 0 if sparse else 150)
-    source = """scenario "Horizon"
+TRANSFERRING_STOCK = """scenario "Horizon"
     horizon 1 h
 plant:
     pool: L = 10000000 L
@@ -77,7 +72,14 @@ plant:
         request = formula(0.1 L/h * (t / (1 h)))
     reported_pool = formula(this.pool)
 """
-    model = compile_text(source, UNITS)
+
+
+@pytest.mark.parametrize('sparse', [False, True])
+def test_recorded_stock_at_horizon_is_the_same_rounded_balance_a_stage_can_spend(sparse, monkeypatch):
+    from napkin.engine.timeline import plan
+
+    monkeypatch.setattr(plan, 'LIMIT', 0 if sparse else 150)
+    model = compile_text(TRANSFERRING_STOCK, UNITS)
     machine = Run(Plan.of(model.program, model.configuration))
     record = machine.run()
     assert record.failure is None, record.failure
@@ -86,6 +88,113 @@ plant:
         assert machine.stock_balance(name, 1) == balance
         assert read(record, model.program, [name], [1])[0].values == (float(balance),)
     assert record.history(Key('plant', ('reported_pool',))).at(1) == float(10_000_000 + delivered)
+
+
+@pytest.mark.parametrize('cutoff', ['horizon', 'checkpoint', 'failure'])
+def test_selected_stock_alias_shows_the_exact_balance_at_an_inclusive_cutoff(cutoff, monkeypatch):
+    from napkin.engine.timeline import plan
+
+    monkeypatch.setattr(plan, 'LIMIT', 0)
+    source = TRANSFERRING_STOCK
+    if cutoff != 'horizon':
+        source += """    zero = 0
+    inspect = event():
+        after 0.5 h:
+            this.zero = 1 / this.zero
+plant.inspect.start()
+"""
+    model = compile_text(source, UNITS)
+    key = Key('plant', ('reported_pool',))
+    request = replace(
+        model.configuration.request, horizon=0.5 if cutoff == 'horizon' else 1, everything=False, keys=(key,)
+    )
+    stops = (Breakpoint('plant.inspect.step[0].do[0]'),) if cutoff == 'checkpoint' else ()
+
+    def observe(request):
+        run = Run(Plan.of(model.program, replace(model.configuration, request=request)), stops)
+        result = run.run()
+        return loads(dumps(result)).record if cutoff == 'checkpoint' else result
+
+    record = observe(request)
+    assert record.end == 0.5
+    if cutoff == 'failure':
+        assert 'division by zero' in record.failure.detail('message')
+    else:
+        assert record.failure is None
+    stock = record.history(Key('plant', ('pool',)))
+    alias = record.history(key)
+    # The integral of 0.1 t through half an hour is 1/80 L.
+    assert alias.at(0.5) == stock.at(0.5) == float(10_000_000 + Fraction(1, 80))
+    assert read(record, model.program, [str(key)], [0.5])[0].values == (stock.at(0.5),)
+    assert isinstance(alias.pieces[-1], BalancePoint)
+    assert alias.pieces[-1] == stock.pieces[-1]
+    charged = len(alias.pieces) - 1
+    assert alias.charged_pieces() == charged
+    assert observe(replace(request, pieces=charged)) == record
+
+
+def test_rebound_stock_alias_chain_keeps_its_prefix_across_a_checkpoint(monkeypatch):
+    from napkin.engine.timeline import plan
+
+    monkeypatch.setattr(plan, 'LIMIT', 0)
+    model = compile_text(
+        TRANSFERRING_STOCK
+        + """    watched: formula(L) = formula(this.donor)
+    copy = formula(this.watched)
+    inspect = event():
+        after 0.25 h:
+            this.watched = formula(this.pool)
+        after 0.25 h
+plant.inspect.start()
+""",
+        UNITS,
+    )
+    live = Run(Plan.of(model.program, model.configuration), (Breakpoint('plant.inspect.step[1]'),))
+    checkpoint = loads(dumps(live.run()))
+    assert checkpoint.stop.t == 0.5
+    for record in (checkpoint.record, live.resume(), resume(model.program, checkpoint)):
+        assert record.failure is None
+        donor = record.history(Key('plant', ('donor',)))
+        pool = record.history(Key('plant', ('pool',)))
+        prefix = [piece for piece in donor.pieces if piece.t < 0.25]
+        for name in ('watched', 'copy'):
+            history = record.history(Key('plant', (name,)))
+            assert [piece for piece in history.pieces if piece.t < 0.25] == prefix
+            assert history.at(record.end) == pool.at(record.end)
+            assert not any(isinstance(piece, BalancePoint) for piece in history.pieces[:-1])
+
+
+def test_rebinding_a_literal_to_an_equal_stock_keeps_the_encoded_prefix():
+    model = compile_text(
+        """scenario "An equal opening"
+    horizon 1 h
+plant:
+    pool: L = 2 L
+    watched: formula(L) = formula(2 L)
+    opening = 0 L/h
+    flow fill: SOURCE -> this.pool
+        request = formula(this.opening)
+    inspect = event():
+        after 0.5 h:
+            this.watched = formula(this.pool)
+        after 0.25 h:
+            this.opening = 1 L/h
+plant.inspect.start()
+""",
+        UNITS,
+    )
+    config = model.configuration
+    early = Run(Plan.of(model.program, replace(config, request=replace(config.request, horizon=0.25)))).run()
+    whole = Run(Plan.of(model.program, config)).run()
+    assert early.failure is whole.failure is None
+    watched, pool = Key('plant', ('watched',)), Key('plant', ('pool',))
+    literal = early.history(watched).pieces
+    # The literal and stock have numerically equal held rates with different encodings.
+    assert literal == early.history(pool).pieces
+    assert encode(literal) != encode(early.history(pool).pieces)
+    history = whole.history(watched)
+    assert encode(tuple(piece for piece in history.pieces if piece.t < 0.5)) == encode(literal)
+    assert history.at(1) == whole.history(pool).at(1) == 2.25
 
 
 def test_two_external_edits_keep_their_small_net_transfer_after_a_restore():

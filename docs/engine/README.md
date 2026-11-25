@@ -265,10 +265,13 @@ A run gives one record (`napkin/program/record.py`). It holds:
 **The budget of pieces.** `request.pieces` sets the limit for the requested histories. The engine
 counts each trajectory piece and each stock posting. A posting at the cutoff also counts.
 
-A record can hold one extra point per stock to show its exact balance. The engine excludes this
-point from the budget. At a checkpoint, at the horizon, or at a failure, a moving stock ends
-with a held point. If a calculation fails during a trial step, the point shows the last accepted
-balance. A stock that already holds that balance needs no extra point.
+At an inclusive cutoff, the engine can add a held point to show the exact balance of a stock.
+This applies at the horizon, at a checkpoint, and at a failure that includes the cutoff.
+If a trial step fails, the point shows the last accepted balance. A direct alias is a formula
+that only names the stock or another direct alias. The budget permits one extra point for the
+stock and one for each direct alias. This exemption applies only to a point that the engine adds
+to show the balance at the cutoff. If the last piece is a held piece with that balance, the
+engine keeps it.
 
 The first counted piece that exceeds the budget sets the stop time. The last trace entry gives
 the time and the budget. The record keeps only the pieces before this stop. It has no balance
