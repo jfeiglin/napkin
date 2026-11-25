@@ -223,3 +223,21 @@ In another test, a stock stayed 1e-12 L above its lower bound. The trigger waite
 The same comparison in a stage guard and a public formula returned true, and a flow switch let
 1 L move. A design that uses bound contacts must give triggers, stage guards, solver switches
 and historical readers the same answer at the same time and round.
+
+## Joining adjacent formula fits
+
+We tested joining fitted formula pieces across ordinary solver-step boundaries. The experiment
+kept event times, contacts, jumps and previously observed starts. For each candidate it fitted
+one polynomial over the combined span and checked the error on both original segments.
+Both runs used the tight defaults and a disabled run store. The table gives CPU time for the
+whole simulation, including checks on candidates that the recorder rejected.
+
+| Case | Existing boundaries | With joins | Record pieces before and after |
+| --- | ---: | ---: | ---: |
+| Workforce prototype, 5 years | 8.904 s | 9.322 s | 45,586 → 27,882 |
+| Heat wave, 200 h | 54.358 s | 58.031 s | 85,354 → 71,250 |
+
+The traces matched in both cases. In heat wave, a change of 3.628e-12 in a fitted rate
+was multiplied by about 931 people. At 39.188080006 h the stored value of
+`confined_65_to_74.die_well.capacity` differed by 3.378e-9, above its 1e-10 allowance.
+The public reading there was identical. The recorder retains its existing formula boundaries.
