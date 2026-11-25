@@ -569,14 +569,12 @@ class Recorder:
             ):
                 self.add_pieces(name, pieces)
 
-    def check_budget(self, end, *, before=False, internal=False):
-        """Read the pieces that the history producers have committed through this boundary."""
+    def boundary(self, end, *, before=False, internal=False):
+        """Close a recording interval when its producers have reached a common boundary."""
         ways = self.run.ways
-        # Another independent solver may still be inside its own dense step. Only the
-        # complete incoming histories can decide a formula that reads both trajectories.
         if (
             internal
-            and (len(ways.sampled) + len(ways.moving_solvers) > 1)
+            and len(ways.sampled) + len(ways.moving_solvers) > 1
             and any(
                 ways.sets[key][1].recorded_through != end
                 for registry in (ways.sampled, ways.moving_solvers)
@@ -584,19 +582,17 @@ class Recorder:
             )
         ):
             return
-        if before and self.run.arriving and self.run.saved_arrival is None:
-            from .sparse import Sparse
-
-            for registry in (ways.sampled, ways.moving_solvers):
-                for key in registry:
-                    way = ways.sets[key][1]
-                    if not isinstance(way, Sparse):
-                        way.incoming_history(end)
         self.fits.advance(end)
         pending = list(ways.pending_sparse(end))
+        if not self._index_current():
+            self._prepare_histories()
+        if not pending:
+            self._advance(end)
+        self.check_budget(end, before=before, internal=internal, pending=pending)
+
+    def check_budget(self, end, *, before=False, internal=False, pending=()):
+        """Observe the completed histories, or a private view of outstanding solver rows."""
         if pending:
-            if not self._index_current():
-                self._prepare_histories()
             # Re-sharing can install a family's raw writer for an existing formula.
             if self._budget_formulas != len(self.formulas):
                 self._budget_formulas = len(self.formulas)
@@ -616,7 +612,8 @@ class Recorder:
                 (k, v) for k, v in self._budget_closed.items() if k[2] < self._budget_valid
             )
             probe._capture_budget_rows = True
-            ways.project_sparse(probe, end)
+            self.run.ways.project_sparse(probe, end)
+            probe._advance(end)
             fits = probe._check_committed(end, before)
             self._budget_closed = probe.fits.closed
             self._budget_valid = end
@@ -630,7 +627,7 @@ class Recorder:
             ):
                 self._budget_safe_at = end
             return
-        if internal and self._index_current():
+        if internal:
             if self._held_upper is None:
                 self._held_upper, self._held_growth = self._held_piece_bound()
             if self._held_upper <= self.plan.configuration.request.pieces:
@@ -638,7 +635,6 @@ class Recorder:
         self._check_committed(end, before)
 
     def _check_committed(self, end, before):
-        self._advance(end)
         view = self._at_cutoff(end)
         if view._total <= self.plan.configuration.request.pieces:
             return True

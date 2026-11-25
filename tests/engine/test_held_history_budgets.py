@@ -185,13 +185,13 @@ def test_a_safe_early_bound_can_precede_a_later_budget_failure():
     whole, _, _ = run_held(program, (), 100_000, exact=True)
     count = sum(len(h.pieces) for h in whole.histories)
     visits = []
-    original = Recorder._advance
+    original = Recorder._check_committed
 
-    def advance(self, end):
+    def check(self, end, before):
         visits.append(end)
-        return original(self, end)
+        return original(self, end, before)
 
-    with patch.object(Recorder, '_advance', advance):
+    with patch.object(Recorder, '_check_committed', check):
         actual, steps, _ = run_held(program, (), count - 1, exact=False)
     expected, exact_steps, _ = run_held(program, (), count - 1, exact=True)
     assert actual == expected and steps == exact_steps

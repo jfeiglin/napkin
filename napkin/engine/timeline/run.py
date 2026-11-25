@@ -1094,8 +1094,8 @@ class Run:
         while self.now < horizon:
             moment = self.next_moment()
             if self.arriving and self.saved_arrival is None:
-                self.ways.accept_sparse(moment[0])
-            self.recorder.check_budget(moment[0], before=True)
+                self.ways.accept_incoming(moment[0])
+            self.recorder.boundary(moment[0], before=True)
             self.moment.at(*moment)
         self.ways.finish(horizon, not self.bare)
 
@@ -1181,7 +1181,7 @@ class Run:
                 if faces:
                     levels = self.stock_state.place(faces, at)
                 stores, rates, jumped = instance.step(levels) if levels else instance.step()
-                self.recorder.check_budget(at, internal=True)
+                self.recorder.boundary(at, internal=True)
                 changed = set(stores) | set(rates)
                 readers = self.ways.touched_outside(changed if jumped else rates, instance)
                 if not jumped:

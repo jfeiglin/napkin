@@ -221,12 +221,17 @@ class Ways:
             return min(clocks)
         return None
 
-    def accept_sparse(self, t):
-        """Book incoming physical prefixes before their opening stages."""
+    def accept_incoming(self, t):
+        """Book sparse transfers and record the other incoming trajectories before stages run."""
         for key in self.sampled:
             way = self.sets[key][1]
             if isinstance(way, Sparse):
                 way.commit_through(t)
+        for registry in (self.sampled, self.moving_solvers):
+            for key in registry:
+                way = self.sets[key][1]
+                if not isinstance(way, Sparse):
+                    way.incoming_history(t)
 
     def pending_sparse(self, t):
         """Installed sparse groups with unrecorded incoming history at t."""

@@ -397,7 +397,7 @@ class Moment:
         self.commit(tx)
         self.settle()
         self.splits(None)  # every set has just started
-        run.recorder.check_budget(0.0)
+        run.recorder.boundary(0.0)
         run.occurrences.delays()
         self.phase = 'conditions'
         run.triggers.conditions()
@@ -467,11 +467,11 @@ class Moment:
                 self.stage(live)
             self.held = None
             self.splits(self.settle())
-            run.recorder.check_budget(t)
+            run.recorder.boundary(t)
             run.occurrences.delays()
             self.phase = 'conditions'
             run.triggers.conditions()
-            run.recorder.check_budget(t)
+            run.recorder.boundary(t)
             due = run.occurrences.next_due()
             if not self.again and (due is None or not run.clock.due(due, t, opening=False)):
                 break
