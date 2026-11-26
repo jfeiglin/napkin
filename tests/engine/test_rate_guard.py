@@ -434,3 +434,38 @@ tank:
     assert record.failure is None
     marks = [entry for entry in record.trace if entry.kind == 'rate_unresolved']
     assert marks and all(entry.detail('reason') == 'the guard cannot read this rate' for entry in marks)
+
+
+@pytest.mark.parametrize(
+    ('kinked', 'spelled', 'total'),
+    (
+        ('abs(t - 5 h)', 'max(t - 5 h, 5 h - t)', 25),
+        ('max(t - 5 h, 5 h - t, 0 h)', 'max(t - 5 h, 5 h - t)', 25),
+        ('clip(t - 5 h, 0 h, 2 h)', 'min(max(t - 5 h, 0 h), 2 h)', 8),
+    ),
+)
+def test_a_kink_costs_the_guard_what_its_two_argument_spelling_costs(kinked, spelled, total, monkeypatch):
+    # Each operation with kinks becomes its piece on a cell (`ops.Operation.active`).
+    checks = []
+    check = rate_guard.RateGuard.check
+
+    def counted(self, solver):
+        checks.append(solver.t)
+        return check(self, solver)
+
+    monkeypatch.setattr(rate_guard.RateGuard, 'check', counted)
+    counts = []
+    for rate in (spelled, kinked):
+        model = compiled(f"""scenario "A kink at hour 5"
+    horizon 10 h
+yard:
+    water: L = 0 L scale 1 L
+    flow fill: SOURCE -> this.water
+        request = formula({rate} * 1 L/h/h)
+""")
+        checks.clear()
+        record = Run(Plan.of(model.program, model.configuration)).run()
+        assert record.failure is None
+        assert record.history(Key('yard', ('water',))).at(10) == pytest.approx(total, rel=1e-9)
+        counts.append(len(checks))
+    assert counts[1] <= 2 * counts[0]

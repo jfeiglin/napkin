@@ -129,6 +129,30 @@ def _roundoff(node, bound, time_size):
     return propagated(node)
 
 
+class _Ranges:
+    """The intervals of the arguments of one operation on a cell (`ops.Operation.active`). Each is
+    proved when it is first read. A yes/no has the interval of `1 if it holds else 0`. An argument
+    that the prover cannot bound can be any number."""
+
+    def __init__(self, parts, bound):
+        self.parts, self.bound, self.found = parts, bound, {}
+
+    def __len__(self):
+        return len(self.parts)
+
+    def __getitem__(self, index):
+        if index not in self.found:
+            part = self.parts[index]
+            operation = ops.OPERATIONS.get(ops.operation_of(part))
+            if operation is not None and operation.kinks == ops.STEP:
+                part = expr.if_else(part, expr.const(1), expr.const(0))
+            try:
+                self.found[index] = self.bound(part)
+            except (ExpressionError, ArithmeticError, LookupError, TypeError, ValueError, RecursionError):
+                self.found[index] = intervals.WHOLE
+        return self.found[index]
+
+
 def _shorter_step(start, end):
     """The retry size, or None when Radau cannot take a shorter physical step."""
     minimum = 10 * (math.nextafter(start, end) - start)  # Radau._step_impl
@@ -179,34 +203,21 @@ class RateGuard:
         return derived
 
     def _smooth(self, node, bound):
-        """Return an expression differentiable on this whole cell, or None."""
+        """Return an expression differentiable on this whole cell, or None. An operation with kinks
+        becomes the piece that it is on this cell (`ops.Operation.active`)."""
         if isinstance(node, (expr.Const, expr.Ref)):
             return node
-        if isinstance(node, expr.IfElse):
-            low, high = bound(expr.if_else(node.test, expr.const(1), expr.const(0)))
-            if low <= 0 and high >= 1:
-                return None
-            return self._smooth(node.body if low > 0 else node.orelse, bound)
-        if isinstance(node, expr.Call) and node.function in ('min', 'max') and len(node.args) == 2:
-            left, right = node.args
-            a, b = bound(left), bound(right)
-            if a[1] <= b[0]:
-                return self._smooth(left if node.function == 'min' else right, bound)
-            if b[1] <= a[0]:
-                return self._smooth(right if node.function == 'min' else left, bound)
+        operation = ops.OPERATIONS.get(ops.operation_of(node))
+        if operation is None:
             return None
-        key = ops.operation_of(node)
-        if key == 'pow':
-            if not isinstance(node.right, expr.Const):
+        if operation.kinks != ops.SMOOTH:
+            found = operation.active(_Ranges(node.children, bound)) if operation.active else None
+            if found is None:
                 return None
-            exponent = float(node.right.value)
-            if not (exponent.is_integer() and exponent >= 0) and bound(node.left)[0] <= 0:
-                return None
-        elif key == 'sqrt':
-            if bound(node.args[0])[0] <= 0:
-                return None
-        elif key not in ops.OPERATIONS or ops.OPERATIONS[key].kinks != ops.SMOOTH:
-            return None
+            if found is not ops.ITSELF:
+                index, sign = found
+                piece = self._smooth(node.children[index], bound)
+                return piece if piece is None or sign > 0 else expr.unary('neg', piece)
         children = {}
         for child in node.children:
             smooth = self._smooth(child, bound)

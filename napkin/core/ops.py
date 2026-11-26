@@ -15,6 +15,11 @@ of the language) has one `Operation` here, with what no consumer may decide for 
   the argument stays on one side of zero, and which one follows from the other arguments (the sign
   of a factor, of a dividend, of a divisor and of an exponent; for `pow` by its exponent, whether
   the base is above 1). For `pow` this holds for a base above zero.
+- `active`: for an operation with kinks, what it is on a part where each argument stays in an
+  interval. It reads `ranges[i]`, the interval of argument `i` (of a yes/no argument, the interval of
+  `1 if it holds else 0`). It gives `(i, s)` where the operation is `s` times argument `i`, `ITSELF`
+  where the operation is smooth, and None where the intervals cannot show one of the two. None for an
+  operation with no kinks, and for a yes/no.
 
 What a consumer does with an operation (how it evaluates it, which code it writes for it, how it draws
 it) is with that consumer, in a table from the name of the operation to its handler. `handlers` checks
@@ -66,6 +71,11 @@ class Operation:
     kinks: str
     partials: Callable | None
     monotone: tuple
+    active: Callable | None = None
+
+
+# What `Operation.active` gives where the operation is smooth as it is.
+ITSELF = 'itself'
 
 
 def _c(value):
@@ -111,6 +121,39 @@ def _clip_partials(x, low, high):
     )
 
 
+def _active_extreme(least):
+    """`Operation.active` of `min` (least) or `max`: the argument that is not above (not below) each
+    other argument on the whole part."""
+
+    def active(ranges):
+        for i in range(len(ranges)):
+            others = (ranges[j] for j in range(len(ranges)) if j != i)
+            if all(ranges[i][1] <= other[0] if least else ranges[i][0] >= other[1] for other in others):
+                return i, 1
+        return None
+
+    return active
+
+
+def _active_clip(ranges):
+    x, low, high = ranges
+    if low[1] <= x[0] and x[1] <= high[0]:
+        return 0, 1
+    if low[1] <= high[0]:
+        if x[1] <= low[0]:
+            return 1, 1
+        if x[0] >= high[1]:
+            return 2, 1
+    return None
+
+
+def _active_power(ranges):
+    # A power is smooth for a base above zero; a whole exponent that is not below zero makes a polynomial.
+    exponent = ranges[1]
+    whole = exponent[0] == exponent[1] and float(exponent[0]).is_integer() and exponent[0] >= 0
+    return ITSELF if whole or ranges[0][0] > 0 else None
+
+
 SMOOTH = 'It is smooth where it has a value.'
 STEP = 'Its value is a yes/no: it steps where its arguments make it change, and is flat elsewhere.'
 ALL = 'It has a value for all finite arguments whose result is finite.'
@@ -137,6 +180,7 @@ OPERATIONS = {
             'It is not smooth where the test changes, unless the two branches meet there.',
             lambda test, body, orelse: (None, _when(test, 1, 0), _when(test, 0, 1)),
             ('none', '+', '+'),
+            lambda ranges: (1, 1) if ranges[0][0] > 0 else (2, 1) if ranges[0][1] < 1 else None,
         ),
         Operation('add', 2, 'same', ALL, SMOOTH, lambda x, y: (_c(1), _c(1)), ('+', '+')),
         Operation('sub', 2, 'same', ALL, SMOOTH, lambda x, y: (_c(1), _c(-1)), ('+', '-')),
@@ -162,6 +206,7 @@ OPERATIONS = {
                 _op('mul', _op('pow', x, y), expr.call('ln', [x])),
             ),
             ('sign', 'sign'),
+            _active_power,
         ),
         Operation(
             'min',
@@ -171,6 +216,7 @@ OPERATIONS = {
             'It is not smooth where its two least arguments are equal.',
             _first_extreme('lt', 'le'),
             ('+',),
+            _active_extreme(True),
         ),
         Operation(
             'max',
@@ -180,6 +226,7 @@ OPERATIONS = {
             'It is not smooth where its two largest arguments are equal.',
             _first_extreme('gt', 'ge'),
             ('+',),
+            _active_extreme(False),
         ),
         Operation('sum', None, 'same', ALL, SMOOTH, lambda *args: tuple(_c(1) for _ in args), ('+',)),
         Operation('any', None, 'condition', 'It has a value for yes/no arguments.', STEP, None, ('+',)),
@@ -192,6 +239,7 @@ OPERATIONS = {
             'It is not smooth where the value is at a bound.',
             _clip_partials,
             ('+', '+', '+'),
+            _active_clip,
         ),
         # `x in [lo, hi]`: x is read once, and the ends are checked each time the membership is
         # evaluated, so an interval that only a run reverses fails where the run reads it.
@@ -212,6 +260,7 @@ OPERATIONS = {
             'It is not smooth at zero.',
             lambda x: (_when(expr.compare(['gt'], [x, _c(0)]), 1, -1),),
             ('none',),
+            lambda ranges: (0, 1) if ranges[0][0] >= 0 else (0, -1) if ranges[0][1] <= 0 else None,
         ),
         Operation(
             'sqrt',
@@ -221,6 +270,7 @@ OPERATIONS = {
             'It is smooth above zero; at zero its slope has no limit.',
             lambda x: (_op('div', _c(1), _op('mul', _c(2), expr.call('sqrt', [x]))),),
             ('+',),
+            lambda ranges: ITSELF if ranges[0][0] > 0 else None,
         ),
         Operation('exp', 1, 'plain', ALL, SMOOTH, lambda x: (expr.call('exp', [x]),), ('+',)),
         Operation('expm1', 1, 'plain', ALL, SMOOTH, lambda x: (expr.call('exp', [x]),), ('+',)),
