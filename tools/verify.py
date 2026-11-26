@@ -23,9 +23,11 @@ record. On a difference it shows the first history, trace entry or field that di
 - decisions: the trace entries that are decisions (`DECISIONS`), in order, with the same kind, part and
   owner, and times that agree within `MOVED`; the failure; the near-ties, which it lists;
 - values: each history of the base at the start and the middle of each piece of either side, within
-  `RELATIVE` times the largest of the history's scale and the two values. A time in the window of a jump
-  that moved (the two times of the jump, padded by `crossing`) is not compared: the decision check
-  already says where the jump went.
+  `RELATIVE` times the largest of the history's scale and the two values, or within the engine's own
+  absolute tolerance for the value (`ATOL_FACTOR` times its comparison scale in the record, or one unit),
+  which a value that is only roundoff around zero needs. A time in the window of a jump that moved (the
+  two times of the jump, padded by `crossing`) is not compared: the decision check already says where
+  the jump went.
 """
 
 from __future__ import annotations
@@ -48,6 +50,9 @@ ROOT = Path(__file__).resolve().parents[1]
 DECISIONS = ('start', 'finish', 'commit', 'fire', 'move', 'failure', 'draw')
 MOVED = 1e-6  # h, plus 1e-9 of the time: two decision times that agree
 RELATIVE = 1e-4
+# The engine's absolute tolerance factor (`Numerics.atol_factor`, as a record does not hold it): two
+# values within it times the value's scale agree, whatever the history's own size.
+ATOL_FACTOR = 1e-10
 QUICK_HOURS = 24.0
 QUICK_SHORTER = {'heat_wave_blackout': 2.0}  # its first hours are slow; 0b measures it alone
 UNITS = {'L': {'volume': 1}, 'h': {'time': 1}}
@@ -453,6 +458,7 @@ def numerical(base, other, crossing=1e-8):
     if ties[0] != ties[1]:
         notes.append(f'near-ties: {len(ties[0])}, now {len(ties[1])}')
     histories = [_histories(r) for r in (base, other)]
+    scales = dict(map(tuple, base['manifest'].get('comparison_scales', ())))
     if histories[0].keys() != histories[1].keys():
         only = sorted(histories[0].keys() ^ histories[1].keys())
         stops.append(f'the histories differ in names: {only[:3]}')
@@ -467,13 +473,15 @@ def numerical(base, other, crossing=1e-8):
         grid = times + [0.5 * (s + t) for s, t in pairwise(times)]
         values = [v for v in (_at(p, ps, t) for t in grid) if isinstance(v, float)]
         scale = max(map(abs, values), default=0.0)
+        key = json.loads(name)
+        floor = ATOL_FACTOR * scales.get('.'.join((key['owner'], *key['steps'])), 1.0)
         for t in grid:
             if any(lo <= t <= hi for lo, hi in windows):
                 skipped += 1
                 continue
             a, b = _at(p, ps, t), _at(q, qs, t)
             if isinstance(a, float) and isinstance(b, float):
-                if abs(a - b) > RELATIVE * max(scale, abs(a), abs(b)):
+                if abs(a - b) > max(RELATIVE * max(scale, abs(a), abs(b)), floor):
                     stops.append(f'{name} at {t} h: {a!r}, now {b!r}')
                     break
             elif a != b:
