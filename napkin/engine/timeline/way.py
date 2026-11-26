@@ -47,7 +47,7 @@ class MovingTransfers:
 
         def reads_time(node):
             plan = self.run.plan
-            return plan.field_inputs(plan.reads_now(plan.expansion(node))).time
+            return plan.inputs_now(plan.expansion(node)).time
 
         # The installed physical clocks locate these transitions independently.
         # Keep their incoming branch through the whole trial, including the

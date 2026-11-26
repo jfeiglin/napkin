@@ -2817,6 +2817,11 @@ class Plan:
             return found
         return self.field_inputs(found)
 
+    def inputs_now(self, found):
+        """What an expansion reads now: through its dynamic reads (`reads_now`) and through the fields of
+        the rates that it reads (`field_inputs`). The one rule for what an input reads at this time."""
+        return self.field_inputs(self.reads_now(found)) if found.leaves else found
+
     def field_inputs(self, found):
         """The leaves of a stock's field. A rate defined solely by its request and capacity is
         arithmetic on the trial state, including when that field changes the stock it reads."""
@@ -3014,7 +3019,7 @@ class Plan:
                 and not settled
                 and not looked
                 and len(stores) <= LIMIT
-                and all(count == 1 for (store, _), count in meets.items() if store in stores)
+                and all(meets.get((store, side), 0) <= 1 for store in stores for side in SIDES)
             ):
                 way = COMPONENT
             else:

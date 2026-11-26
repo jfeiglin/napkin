@@ -102,12 +102,9 @@ def _made(node, by, memo):
     raise ExpressionError('An expression outside the language has no derivative')
 
 
-_MEMOS: dict = {}
-
-
 def derivative(node, name, *, memo=None):
     """The partial derivative of `node` by the reference `name`, as a node. A node that does not read
-    `name` gives the constant 0."""
-    if memo is None:
-        memo = _MEMOS.setdefault(name, {})
-    return _derivative(node, name, memo)
+    `name` gives the constant 0. `memo` keeps the derivatives of the nodes by `name` for a caller that
+    asks again (one dictionary for one name); its owner decides how long it lives. With none, nothing
+    is kept between calls."""
+    return _derivative(node, name, {} if memo is None else memo)

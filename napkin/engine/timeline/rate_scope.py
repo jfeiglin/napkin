@@ -32,9 +32,7 @@ def clock_rates(run, flows, stores, *, observe=False):
 
     eligible = {}
     for name, adjacent in accounts.items():
-        found = plan.expanded(name)
-        if found.leaves:
-            found = plan.field_inputs(plan.reads_now(found))
+        found = plan.inputs_now(plan.expanded(name))
         if not (found.time or found.stepped):
             continue
         if found.stepped or any(

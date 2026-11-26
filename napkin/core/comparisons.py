@@ -430,6 +430,18 @@ class Comparisons:
     def band(self, left, right, a, b, read=None):
         return float(band_width(self.factor, self.floor(left, right, read), a, b))
 
+    def band_interval(self, left, right, x, y, read=None):
+        """The narrowest and the widest band of a comparison whose operands lie in the closed intervals
+        x and y, rounded outward: the band grows with the operands' magnitudes."""
+        floor = self.floor(left, right, read)
+
+        def closest(interval):
+            return max(interval[0], -interval[1], 0)
+
+        low = math.nextafter(float(band_width(self.factor, floor, closest(x), closest(y))), 0)
+        high = band_width(self.factor, floor, max(map(abs, x)), max(map(abs, y)))
+        return low, math.nextafter(float(high), math.inf)
+
     def literal_value(self, node):
         """An operand fixed entirely by authored literals. An explicit floor preserves
         the formula that supplied the value. A change of definitions clears the binding cache."""

@@ -12,7 +12,7 @@ import math
 from functools import lru_cache
 
 from ...core import derivatives, expr, intervals, ops
-from ...core.comparisons import against, band_width
+from ...core.comparisons import against
 from ...core.errors import ExpressionError
 from ..errors import SimulationError
 
@@ -22,8 +22,7 @@ def _bind(run, name, definition, fixed, aliases, operands):
 
     @lru_cache(None)
     def sources(part):
-        found = run.plan.expansion(part)
-        return run.plan.field_inputs(run.plan.reads_now(found)) if found.leaves else found
+        return run.plan.inputs_now(run.plan.expansion(part))
 
     def moving(part):
         return sources(part).time
@@ -163,8 +162,9 @@ class RateGuard:
                     node = None
                 self.rates.append((name, node, rows))
         self.prove = intervals.prover(self.fixed, run.plan.units, aliases, outward=True, order=self._order)
-        self.derivatives = {}
-        self.slopes = {}
+        # One memo of derivatives by time for this installation, whose expressions do not change.
+        # It lives as long as the installation, so a run's sampled parameters are not kept after it.
+        self.memo = {}
 
     def __deepcopy__(self, memo):
         # Checkpoint projections consume only previously prepared dense steps.
@@ -172,14 +172,10 @@ class RateGuard:
         return self
 
     def _third(self, node):
-        # A local derivative cache avoids retaining a run's sampled parameters.
-        if node not in self.derivatives:
-            derived = node
-            memo = {}
-            for _ in range(3):
-                derived = derivatives.derivative(derived, 't', memo=memo)
-            self.derivatives[node] = derived
-        return self.derivatives[node]
+        derived = node
+        for _ in range(3):
+            derived = derivatives.derivative(derived, 't', memo=self.memo)
+        return derived
 
     def _smooth(self, node, bound):
         """Return an expression differentiable on this whole cell, or None."""
@@ -239,17 +235,9 @@ class RateGuard:
             a, b = self._smooth(a, prove), self._smooth(b, prove)
             if a is None or b is None:
                 return None
-            floor = policy.floor(left, right, read)
-            x, y = prove(a), prove(b)
-            closest = lambda p: max(p[0], -p[1], 0)  # noqa: E731
-            low = math.nextafter(float(band_width(policy.factor, floor, closest(x), closest(y))), 0)
-            high = math.nextafter(
-                float(band_width(policy.factor, floor, max(map(abs, x)), max(map(abs, y)))), math.inf
-            )
+            low, high = policy.band_interval(left, right, prove(a), prove(b), read)
             difference = expr.binary('sub', a, b)
-            if difference not in self.slopes:
-                self.slopes[difference] = derivatives.derivative(difference, 't', memo={})
-            speed = max(map(abs, prove(self.slopes[difference])))
+            speed = max(map(abs, prove(derivatives.derivative(difference, 't', memo=self.memo))))
             radius = max(middle - start, end - middle)
             # Apply the mean-value theorem to the exact formulas. Enclose the
             # additional rounding of both floating operands at the trial time.
