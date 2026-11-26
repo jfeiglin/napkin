@@ -321,7 +321,10 @@ tank.clock.start()
     assert ledger == [0.104, 0.104, 0.104]
 
 
-def test_a_newly_scheduled_deadline_preserves_only_the_observed_prefix(monkeypatch):
+def test_a_newly_scheduled_deadline_keeps_the_prepared_step_to_its_moment(monkeypatch):
+    """The stage at 1 h schedules a change of the group at 1.01 h, inside the step that the group
+    prepared. The step stays: it is valid to 1.01 h, where settlement retires the group, and its trial
+    is charged once. The independent group goes on."""
     source = SOURCE.replace('        after 1 h:', '        after 0.01 h:').replace(
         'yard.restrict.start()',
         """dispatcher:
@@ -342,10 +345,12 @@ dispatcher.review.start()""",
     run.moment.at(*first)
     assert group.alive and run.ways.deadlines[group] == 1.01
     assert float(run.stock_balance('yard.water', 1)) == pytest.approx(earlier(1)[0])
+    paid = group.evaluations
+    assert group.pending_evaluations == 0  # the first prefix paid for the whole trial
     second = run.next_moment()
     assert second[0] == 1.01
-    assert group.pending[2] is not earlier
-    assert group.pending[2].t <= run.clock.apart(second[0])
-    assert independent.pending[2] is other
+    assert group.pending[2] is earlier and independent.pending[2] is other
     run.moment.at(*second)
     assert not group.alive and independent.alive
+    assert group.evaluations == paid
+    assert float(run.stock_balance('yard.water', 1.01)) == pytest.approx(earlier(1.01)[0])

@@ -1529,14 +1529,13 @@ class Sparse(MovingTransfers, Way):
     def peek(self, limit=None):
         """The end of the next step of the solver, which is made now if it is not yet: a store that
         reaches a bound, or leaves the bound that holds it, ends it there."""
+        if self.pending is not None:
+            # A prepared step stays valid to the moment that changes its equations, a moment of the
+            # calendar where the run books it and settlement keeps the group or retires it
+            # (`Ways.restart_at_moment`). A deadline bounds only how far a new step is prepared.
+            return self.pending[1]
         ways = self.run.ways
         boundary = min(ways.shared_deadline, ways.deadlines.get(self, self.plan.horizon))
-        if self.pending is not None:
-            if self.pending[1] <= self.run.clock.apart(boundary):
-                return self.pending[1]
-            # A stage just scheduled a change inside a previously prepared step.
-            # Its observed prefix is final. Restart the controller at that prefix.
-            self.cut(self.t)
         required = self.run.limit if limit is None else min(limit, self.run.limit)
         until = self.smooth_until(self.t, required)
         # The first trial selects a branch on the ordinary window. On the smooth field,
