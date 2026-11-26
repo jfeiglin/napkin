@@ -202,3 +202,48 @@ yard:
     for time, observed in zip(at, history.values, strict=True):
         expected = float(start + total * time / 40)
         assert observed == pytest.approx(expected, abs=math.ulp(expected), rel=0)
+
+
+def test_a_released_store_never_reuses_an_answer_solved_while_it_was_held(monkeypatch):
+    from napkin.engine.timeline.declared import MovingDeclared
+
+    # The stock is held empty until the inflow passes the outflow, at 0.5 h. Its release is found on
+    # the trajectory with the store still held; the next segment then starts with it free.
+    text = """scenario "A stock released from its floor"
+    horizon 1 h
+yard:
+    stock: L = 0 L in [0,]
+    flow fill: SOURCE -> this.stock
+        request = formula(t * 2 L/h/h)
+    flow tap: this.stock -> SINK
+        request = 1 L/h
+"""
+    model = use_method(text, 'moving_declared', monkeypatch, 'tap')
+    solve, at = MovingDeclared.answer, MovingDeclared._at
+    flags, made, stale, hits = [], {}, [], []
+
+    def answer(self, t, low, high):
+        if flags and flags[-1] is None:
+            flags[-1] = (low.tobytes(), high.tobytes())
+        return solve(self, t, low, high)
+
+    def checked(self, t, y):
+        flags.append(None)
+        try:
+            found = at(self, t, y)
+        finally:
+            used = flags.pop()
+        now = (self.low.tobytes(), self.high.tobytes())
+        if used is not None:
+            made[id(found)] = used
+        else:
+            hits.append(float(t))
+            if made.get(id(found), now) != now:
+                stale.append(float(t))
+        return found
+
+    monkeypatch.setattr(MovingDeclared, 'answer', answer)
+    monkeypatch.setattr(MovingDeclared, '_at', checked)
+    record = Run(Plan.of(model.program, model.configuration)).run()
+    assert record.failure is None and record.end == 1
+    assert hits and not stale

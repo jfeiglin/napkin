@@ -1693,9 +1693,10 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
         return inflow - outflow
 
     def _at(self, t, y):
-        """(flows, results, the rate of each store) at a trial state, solved once for each state."""
+        """(flows, results, the rate of each store) at a trial state, solved once for each state. The
+        answer also reads which stores are held on a bound, so the key holds those flags too."""
         trial = self._held(y)
-        key = (float(t), trial.tobytes())
+        key = (float(t), trial.tobytes(), self.low.tobytes(), self.high.tobytes())
         found = self._cache.get(key)
         if found is None:
             self.trial = trial
