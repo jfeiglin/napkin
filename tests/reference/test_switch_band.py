@@ -123,9 +123,13 @@ def test_a_curved_departure_from_rest_turns_the_switch_on_at_once(text):
 
 def test_two_values_that_separate_slowly_from_equality_bypass_the_equal_shortcut(monkeypatch):
     from napkin.engine import read
+    from napkin.engine.continuous import integrate
     from napkin.engine.continuous.integrate import CurvedMotion
     from napkin.engine.timeline import Plan, Run
 
+    # The refined trial of this contact takes one step; with no steps allowed first, the probe
+    # takes the cheap estimates, as a contact whose refined trial needs many steps does.
+    monkeypatch.setattr(integrate, 'REFINED_STEPS', 0)
     # 2a and 2b start equal; a curves up from rest, so the refined trial finds a change of about 2e-16.
     model = compile_text(
         """scenario "Two values that start equal and separate slowly"
@@ -155,3 +159,19 @@ yard:
     assert taken and not any(taken)
     (other,) = read(record, model.program, ['yard.other'], [1])
     assert other.values == pytest.approx((1,))
+
+
+def test_a_refined_trial_within_its_steps_is_the_whole_refined_trial(monkeypatch):
+    from napkin.engine.continuous import integrate
+
+    # The one-step refined trials of these contacts give the same record whether the cheap
+    # estimates are ever needed or not.
+    model = compile_text(
+        MODEL.format(condition='10 L + 2 L * (t / 1 h) * (t / 1 h) > 10 L', horizon=1), UNITS
+    )
+    from napkin.engine.timeline import Plan, Run
+
+    first = Run(Plan.of(model.program, model.configuration)).run()
+    monkeypatch.setattr(integrate, 'REFINED_STEPS', None)  # no limit: the whole refined trial
+    whole = Run(Plan.of(model.program, model.configuration)).run()
+    assert first == whole

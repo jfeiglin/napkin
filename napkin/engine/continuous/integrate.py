@@ -7,7 +7,7 @@ from itertools import product
 from typing import NamedTuple
 
 import numpy as np
-from scipy.integrate import DOP853, OdeSolution, Radau, solve_ivp
+from scipy.integrate import DOP853, OdeSolution, Radau
 from scipy.optimize import OptimizeResult, brentq
 
 from ...core import expr as nodes
@@ -858,6 +858,9 @@ def branch_sides(surfaces, side, comparisons):
 # A cheap estimate settles a curved comparison only when both of its predictions clear the band by
 # this many times their difference, plus the solver's embedded error (`CurvedMotion.change`).
 CHEAP_SAFETY = 4.0
+# The refined trial is tried first with at most this many steps; nearly all take one. Only a trial that
+# needs more uses the cheap estimates (`CurvedMotion`).
+REFINED_STEPS = 4
 
 
 def _increments(t, y, h, rates, steps):
@@ -885,8 +888,11 @@ def _increments(t, y, h, rates, steps):
 
 class CurvedMotion:
     """Displacements along one short outgoing trial, shared by every curved comparison at a contact.
-    A comparison takes the cheap estimates (one DOP853 step, and two half steps) when they settle it by a
-    clear margin, and the refined trial otherwise, which is made at most once (`change`)."""
+    The refined trial (DOP853 at the comparison factor) is tried first, for at most REFINED_STEPS steps;
+    nearly all take one, and then every comparison reads it. A trial that needs more steps can take
+    thousands: then a comparison takes the cheap estimates (one DOP853 step, and two half steps) when
+    they settle it by a clear margin, and the whole refined trial otherwise, made at most once
+    (`change`)."""
 
     def __init__(self, t, y, h, drift, rates, side_at, place, factor):
         self.t, self.y, self.h, self.rates, self.side_at, self.place = t, y, h, rates, side_at, place
@@ -896,8 +902,12 @@ class CurvedMotion:
         self.refined = self.cheap = None
         if np.array_equal(middle, displacement):
             self.refined = self._reader(displacement)  # a constant field: the displacement is exact
+            return
+        self.middle, self.displacement = middle, displacement
+        found = self._trial(REFINED_STEPS)
+        if found is not None:
+            self.refined = self._reader(found)
         else:
-            self.middle, self.displacement = middle, displacement
             one, _ = _increments(t, y, h, rates, 1)
             two, error = _increments(t, y, h, rates, 2)
             self.cheap = self._reader(one), self._reader(two), self._reader(two + error), error
@@ -914,21 +924,31 @@ class CurvedMotion:
 
         return motion
 
+    def _trial(self, steps=None):
+        """The increments at the end of the refined trial, or None when it needs more than `steps`."""
+        scale = np.maximum(abs(self.middle), abs(self.displacement))
+        solver = DOP853(
+            lambda s, increment: self.h * self.rates(self.t + s * self.h, self.y + increment),
+            0.0,
+            np.zeros_like(self.y),
+            1.0,
+            first_step=1,
+            rtol=self.factor,
+            atol=np.maximum(np.finfo(float).tiny, self.factor * scale),
+        )
+        taken = 0
+        while solver.status == 'running':
+            if steps is not None and taken == steps:
+                return None
+            message = solver.step()
+            taken += 1
+            if solver.status == 'failed':
+                raise SimulationError(f'cannot resolve the departing switch at {self.t:g} h: {message}')
+        return solver.y
+
     def _refined(self):
         if self.refined is None:
-            scale = np.maximum(abs(self.middle), abs(self.displacement))
-            trial = solve_ivp(
-                lambda s, increment: self.h * self.rates(self.t + s * self.h, self.y + increment),
-                (0, 1),
-                np.zeros_like(self.y),
-                method='DOP853',
-                first_step=1,
-                rtol=self.factor,
-                atol=np.maximum(np.finfo(float).tiny, self.factor * scale),
-            )
-            if not trial.success:
-                raise SimulationError(f'cannot resolve the departing switch at {self.t:g} h: {trial.message}')
-            self.refined = self._reader(trial.y[:, -1])
+            self.refined = self._reader(self._trial())
         return self.refined
 
     def band(self, left, right, da, db, both):
