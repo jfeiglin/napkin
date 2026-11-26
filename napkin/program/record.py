@@ -72,6 +72,7 @@ from __future__ import annotations
 from bisect import bisect_left, bisect_right
 from dataclasses import dataclass, replace
 from fractions import Fraction
+from functools import cached_property
 from typing import Any
 
 from ..core.units import rational
@@ -152,10 +153,15 @@ class Curve:
             latest, after = coefficient + 2.0 * u * latest - after, latest
         return self.coefficients[0] + u * latest - after if self.coefficients else 0.0
 
+    @cached_property
+    def _start(self):
+        """The series at the start of the piece (u = -1), which each increase subtracts."""
+        return self._series(-1.0)
+
     def increase(self, elapsed):
         """The increase of the series from the time of the piece to `elapsed` hours after it."""
         u = 2.0 * float(elapsed) / float(self.length) - 1.0
-        return self._series(u) - self._series(-1.0)
+        return self._series(u) - self._start
 
 
 @dataclass(frozen=True)
