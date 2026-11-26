@@ -83,3 +83,39 @@ box:
     run, failure = run_of(model.program, model.configuration)
     assert failure is None, failure
     assert value_at(run, model.program, TOTAL, 1) == 8
+
+
+@pytest.mark.parametrize(
+    'text',
+    [
+        # A large stock at its threshold with no first-order motion: y = 1e6 L + t²/2.
+        """    stock: L = 1000000 L
+    flow fill: SOURCE -> this.stock
+        request = formula(t * 1 L/h/h)
+    flow tap: SOURCE -> this.other
+        request = formula(1 L/h if this.stock > 1000000 L else 0 L/h)
+""",
+        # Two contacts at once on stocks of very different sizes, both curving from rest.
+        """    big: L = 1000000000 L
+    small: L = 0.001 L
+    flow grow: SOURCE -> this.big
+        request = formula(t * 1000 L/h/h)
+    flow creep: SOURCE -> this.small
+        request = formula(t * 0.000001 L/h/h)
+    flow tap: SOURCE -> this.other
+        request = formula(1 L/h if this.big > 1000000000 L and this.small > 0.001 L else 0 L/h)
+""",
+    ],
+    ids=['tangency', 'two-scales'],
+)
+def test_a_curved_departure_from_rest_turns_the_switch_on_at_once(text):
+    from napkin.engine import read
+    from napkin.engine.timeline import Plan, Run
+
+    model = compile_text(
+        'scenario "A curved departure"\n    horizon 1 h\nyard:\n    other: L = 0 L\n' + text, UNITS
+    )
+    record = Run(Plan.of(model.program, model.configuration)).run()
+    assert record.failure is None
+    (other,) = read(record, model.program, ['yard.other'], [1])
+    assert other.values == pytest.approx((1,))

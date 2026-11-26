@@ -7,7 +7,7 @@ from itertools import product
 from typing import NamedTuple
 
 import numpy as np
-from scipy.integrate import OdeSolution, Radau, solve_ivp
+from scipy.integrate import DOP853, OdeSolution, Radau, solve_ivp
 from scipy.optimize import OptimizeResult, brentq
 
 from ...core import expr as nodes
@@ -858,35 +858,112 @@ def branch_sides(surfaces, side, comparisons):
     return signs, equal
 
 
-def curved_motion(t, y, h, drift, rates, side_at, place, factor):
-    """Read displacements along one short outgoing trial shared by all curved comparisons."""
-    displacement = h * drift
-    middle = h * rates(t + h / 2, y + displacement / 2)
-    if not np.array_equal(middle, displacement):
-        # Integrate increments, not the full inventory: a large starting level
-        # must not set the accuracy of a small relative movement between operands.
-        scale = np.maximum(abs(middle), abs(displacement))
-        trial = solve_ivp(
-            lambda s, increment: h * rates(t + s * h, y + increment),
-            (0, 1),
-            np.zeros_like(y),
-            method='DOP853',
-            first_step=1,
-            rtol=factor,
-            atol=np.maximum(np.finfo(float).tiny, factor * scale),
-        )
-        if not trial.success:
-            raise SimulationError(f'cannot resolve the departing switch at {t:g} h: {trial.message}')
-        displacement = trial.y[:, -1]
-    following = side_at(t + h, y + displacement)
+# A cheap estimate settles a curved comparison only when both of its predictions clear the band by
+# this many times their difference, plus the solver's embedded error (`CurvedMotion.change`).
+CHEAP_SAFETY = 4.0
 
-    def motion(node, initial):
-        if isinstance(node, nodes.Ref) and node.name in place:
-            # A small increment may round away in a large starting inventory.
-            return displacement[place[node.name]]
-        return following(node) - initial
 
-    return motion
+def _increments(t, y, h, rates, steps):
+    """The increments along a trial of length h in `steps` equal DOP853 steps, never refined, and the
+    embedded error estimate of those steps, added. Integrate increments, not the full inventory: a large
+    starting level must not set the accuracy of a small relative movement between operands."""
+    solver = DOP853(
+        lambda s, increment: h * rates(t + s * h, y + increment),
+        0.0,
+        np.zeros_like(y),
+        1.0,
+        first_step=1.0 / steps,
+        max_step=1.0 / steps,
+        rtol=1.0,
+        atol=np.inf,
+    )
+    error = np.zeros_like(y)
+    while solver.status == 'running':
+        message = solver.step()
+        if solver.status == 'failed':
+            raise SimulationError(f'cannot resolve the departing switch at {t:g} h: {message}')
+        error += np.abs(solver._estimate_error(solver.K, solver.t - solver.t_old))
+    return solver.y, error
+
+
+class CurvedMotion:
+    """Displacements along one short outgoing trial, shared by every curved comparison at a contact.
+    A comparison takes the cheap estimates (one DOP853 step, and two half steps) when they settle it by a
+    clear margin, and the refined trial otherwise, which is made at most once (`change`)."""
+
+    def __init__(self, t, y, h, drift, rates, side_at, place, factor):
+        self.t, self.y, self.h, self.rates, self.side_at, self.place = t, y, h, rates, side_at, place
+        self.factor = factor
+        displacement = h * drift
+        middle = h * rates(t + h / 2, y + displacement / 2)
+        self.refined = self.cheap = None
+        if np.array_equal(middle, displacement):
+            self.refined = self._reader(displacement)  # a constant field: the displacement is exact
+        else:
+            self.middle, self.displacement = middle, displacement
+            one, _ = _increments(t, y, h, rates, 1)
+            two, error = _increments(t, y, h, rates, 2)
+            self.cheap = self._reader(one), self._reader(two), self._reader(two + error), error
+
+    def _reader(self, displacement):
+        following = self.side_at(self.t + self.h, self.y + displacement)
+        place = self.place
+
+        def motion(node, initial):
+            if isinstance(node, nodes.Ref) and node.name in place:
+                # A small increment may round away in a large starting inventory.
+                return displacement[place[node.name]]
+            return following(node) - initial
+
+        return motion
+
+    def _refined(self):
+        if self.refined is None:
+            scale = np.maximum(abs(self.middle), abs(self.displacement))
+            trial = solve_ivp(
+                lambda s, increment: self.h * self.rates(self.t + s * self.h, self.y + increment),
+                (0, 1),
+                np.zeros_like(self.y),
+                method='DOP853',
+                first_step=1,
+                rtol=self.factor,
+                atol=np.maximum(np.finfo(float).tiny, self.factor * scale),
+            )
+            if not trial.success:
+                raise SimulationError(f'cannot resolve the departing switch at {self.t:g} h: {trial.message}')
+            self.refined = self._reader(trial.y[:, -1])
+        return self.refined
+
+    def band(self, left, right, da, db, both):
+        """The band of a comparison of two moving operands: a stock has a directly integrated increment,
+        a formula subtracts two rounded coordinates to obtain the same increment. Allow the rounding of
+        those coordinates and of the two integrated changes."""
+        if not both:
+            return 0.0
+        error = math.ulp(left) + math.ulp(right) + math.ulp(left + da) + math.ulp(right + db)
+        return error + self.factor * (abs(da) + abs(db))
+
+    def change(self, a, left, b, right, both):
+        """The change of a - b along the trial, zero inside the band of two moving operands. The cheap
+        estimates decide only when both predictions lie on the same side outside the band by more than
+        CHEAP_SAFETY times their difference plus the embedded error. Two estimates can miss the same turn
+        and agree, which is why the margin holds the embedded error too."""
+        if self.cheap is not None:
+            one, two, shifted, _ = self.cheap
+            da1, db1, da2, db2 = one(a, left), one(b, right), two(a, left), two(b, right)
+            p1, p2 = da1 - db1, da2 - db2
+            embedded = abs(shifted(a, left) - da2) + abs(shifted(b, right) - db2)
+            margin = CHEAP_SAFETY * abs(p1 - p2) + embedded
+            if (
+                (p1 > 0) == (p2 > 0)
+                and abs(p1) - self.band(left, right, da1, db1, both) > margin
+                and abs(p2) - self.band(left, right, da2, db2, both) > margin
+            ):
+                return p2
+        motion = self._refined()
+        da, db = motion(a, left), motion(b, right)
+        change = da - db
+        return 0 if both and abs(change) <= self.band(left, right, da, db, both) else change
 
 
 def affine_departure(pair, values, drift, place, contacted, selected, forms_for, physical, factor):
@@ -1004,17 +1081,8 @@ def departing_branches(
                 change = (following(a) - left) - (following(b) - right)
                 if change == 0 or not (directed(a, b) or directed(b, a)):
                     if motion is None:
-                        motion = curved_motion(t, y, h, drift, rates, side_at, place, comparisons.factor)
-                    da, db = motion(a, left), motion(b, right)
-                    change = da - db
-                    if moving(a) and moving(b):
-                        # A stock has a directly integrated increment. A formula subtracts
-                        # two rounded coordinates to obtain the same increment. Allow the
-                        # rounding of those coordinates and of the two integrated changes.
-                        error = math.ulp(left) + math.ulp(right) + math.ulp(left + da) + math.ulp(right + db)
-                        error += comparisons.factor * (abs(da) + abs(db))
-                        if abs(change) <= error:
-                            change = 0
+                        motion = CurvedMotion(t, y, h, drift, rates, side_at, place, comparisons.factor)
+                    change = motion.change(a, left, b, right, moving(a) and moving(b))
             except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
                 continue
             signs[a, b] = int(change > 0) - int(change < 0)
