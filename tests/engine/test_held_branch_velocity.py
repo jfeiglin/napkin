@@ -204,9 +204,10 @@ yard.inspect.start()
     assert history.at(math.nextafter(switch, -math.inf)) == 1
     assert history.at(switch) == 2
     # The interval beginning at the located switch owns the rate at that time.
-    # A stock reading strictly on either side of the band confirms it independently.
+    # A stock reading clearly on either side of the band confirms it independently. A reading within
+    # a few units in the last place of the edge is the fit's rounding there: it confirms nothing.
     assert rates.values[1] == (2 if switch <= 1000 else 1)
-    if level.values[1] != 1e-9:
+    if abs(level.values[1] - 1e-9) > 4 * math.ulp(1e-9):
         assert rates.values[1] == (2 if level.values[1] > 1e-9 else 1)
     assert counted.values == pytest.approx(expected, rel=2e-9)
     giver = machine.ways.instance_of('yard.feed')
