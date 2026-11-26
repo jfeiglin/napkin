@@ -63,7 +63,7 @@ class _CommittedWays:
         raise AssertionError(f'forced history rebuild needs an unobserved live physics query: {name}')
 
 
-def _fresh(live, observed, closed):
+def _fresh(live, observed):
     plan = _copy_tables(live.plan)
     plan.units = _copy_tables(plan.units)
     comparisons = plan.units.comparisons = _copy_tables(plan.units.comparisons)
@@ -78,7 +78,6 @@ def _fresh(live, observed, closed):
     ref.formulas = set(live.formulas)
     ref._wanted = None if live._wanted is None else set(live._wanted)
     ref.fits.ends = list(live.fits.ends)
-    ref.fits.closed = closed
 
     run = ref.run = _copy_tables(live.run)
     run.plan, run.recorder = plan, ref
@@ -142,8 +141,7 @@ def check_history_rebuilds(monkeypatch):
 
     def checked(live, end):
         previous_end = live._as_of
-        closed = {key: list(pieces) for key, pieces in live.fits.closed.items()}
-        old_spans = tuple(closed)
+        old_spans = ()  # the recorder keeps no fits of closed intervals: a rebuild must agree everywhere
         observed = {}
         value_of = live.run.value_of
 
@@ -158,7 +156,7 @@ def check_history_rebuilds(monkeypatch):
 
         with patch.object(live.run, 'value_of', observe):
             advance(live, end)
-        ref = _fresh(live, observed, closed)
+        ref = _fresh(live, observed)
         advance(ref, end)
         report.updates += 1
         where = f'at {end} h, round {live.round}'

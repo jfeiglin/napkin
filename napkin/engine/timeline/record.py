@@ -415,14 +415,12 @@ def _compact(pieces):
 
 
 class Fits:
-    """Keep the fitted curves for closed intervals. Each moment closes the preceding interval.
-    A stage at that moment can change the value at the start of the next interval.
-    After a checkpoint, the run makes the same decisions in the same order. The values agree
-    closely. Inside a long solver step, the relative difference between readings can exceed rtol."""
+    """The ends of the fits of the formulas: each moment closes the interval before it, and a stage at
+    that moment can change the value at the start of the next interval. A later fit keeps every moment
+    that has closed a fit."""
 
     def __init__(self):
         self.ends = [0.0]
-        self.closed = {}
 
     def advance(self, end):
         if end > self.ends[-1]:
@@ -431,13 +429,6 @@ class Fits:
     def intervals(self, start, end):
         """Known boundaries strictly inside an interval that needs a curve."""
         return self.ends[bisect_right(self.ends, start) : bisect_left(self.ends, end)]
-
-    def cached(self, name, start, end, fit):
-        """Reuse a completed fit or root search over this exact interval."""
-        key = (name, start, end)
-        if key not in self.closed:
-            self.closed[key] = fit()
-        return self.closed[key]
 
 
 class _NeedsHistory(Exception):
@@ -535,7 +526,6 @@ class Recorder:
         view._private = set()
         view._owned = set()
         view.fits = copy(self.fits)
-        view.fits.closed = dict(self.fits.closed)
         view.fits.ends = list(self.fits.ends)
         view._histories = dict(self._histories)
         view._dirty = set(self._dirty)
@@ -1293,21 +1283,15 @@ class Recorder:
             for origin, stop in pairwise([a, *moments, b]):
                 roots = ()
                 if layers:
-
-                    def find_roots():
-                        return _bend_times(layers, operand, origin, stop, tolerance_at(origin), crossing)
-
-                    roots = self.fits.cached(('roots', name), origin, stop, find_roots)
-
+                    roots = _bend_times(layers, operand, origin, stop, tolerance_at(origin), crossing)
                 for lo, hi in pairwise(_fit_boundaries(origin, stop, roots, crossing)):
-
-                    def fit():
-                        begin = first if lo == a else tried(lo)
-                        if discrete:
-                            return _switches(lambda time: cast(tried(time)), lo, hi, cast(begin), crossing)
-                        return _numbers(at, tried, lo, hi, begin, tolerance_at(origin), crossing)
-
-                    pieces.extend(self.fits.cached(name, lo, hi, fit))
+                    begin = first if lo == a else tried(lo)
+                    if discrete:
+                        pieces.extend(
+                            _switches(lambda time: cast(tried(time)), lo, hi, cast(begin), crossing)
+                        )
+                    else:
+                        pieces.extend(_numbers(at, tried, lo, hi, begin, tolerance_at(origin), crossing))
         return pieces
 
     def _defined(self, name, histories, end, *, start=0.0):
