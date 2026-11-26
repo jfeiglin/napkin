@@ -77,11 +77,11 @@ def test_refreshing_a_curve_twice_at_a_moment_keeps_its_exact_pieces(monkeypatch
     record, checks = repeated_curve_checks(monkeypatch)
     assert record.failure is None
     assert tuple(checks) == (1, 2)
-    for end, (before, after) in checks.items():
+    for end, (before, again) in checks.items():
         assert before[-1].curve is not None and before[-1].t < end
-        assert after == before
+        assert again == before
         exact = exp(end)
-        assert abs(after[-1].at(end) - exact) <= Numerics().atol_factor * max(1.0, abs(exact))
+        assert abs(again[-1].at(end) - exact) <= Numerics().atol_factor * max(1.0, abs(exact))
     times = (0, 0.5, 1, 1.5, 2)
     (public,) = read(record, curve_program(), ('plant.curve',), times)
     assert tuple(public.values) == tuple(exp(t) for t in times)
