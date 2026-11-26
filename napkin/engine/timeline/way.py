@@ -23,51 +23,41 @@ class MovingTransfers:
         return guard if guard.rates else None
 
     def guard_for(self, signs):
-        """Check both the requested rate and the smooth arm the solver actually uses."""
+        """Check the smooth arm that the solver uses, and the requested rate where a switch can turn
+        inside a step (`RateGuard.check`)."""
         guard = self._authored_guard
         if guard is None or not signs:
             return guard
         previous = getattr(self, '_selected_guard', None)
         if previous is not None and previous[0] == signs:
             return previous[1]
-        from ..continuous.integrate import branch_expression, fixed_clock
+        from ..continuous.integrate import branch_expression
+
+        guards = {}
 
         def on_branches(choices):
-            changed = False
+            """The guard of the rates with these switches on their sides, or the requested one."""
+            key = frozenset(choices.items())
+            if key not in guards:
+                changed = False
 
-            def selected(run, name):
-                nonlocal changed
-                node = rate_node(run, name)
-                chosen = branch_expression(node, choices) if node is not None else None
-                changed |= chosen is not node
-                return chosen
+                def selected(run, name):
+                    nonlocal changed
+                    node = rate_node(run, name)
+                    chosen = branch_expression(node, choices) if node is not None else None
+                    changed |= chosen is not node
+                    return chosen
 
-            active = rate_guard.RateGuard(self.run, self.clock_rates, self.place, selected)
-            return active if changed else None
+                active = rate_guard.RateGuard(self.run, self.clock_rates, self.place, selected)
+                guards[key] = active if changed else guard
+            return guards[key]
 
-        def reads_time(node):
-            plan = self.run.plan
-            return plan.inputs_now(plan.expansion(node)).time
-
-        # The installed physical clocks locate these transitions independently.
-        # Keep their incoming branch through the whole trial, including the
-        # clock's contact band. Probing the outgoing branch there can split a
-        # joint contact before its locator sees the second stock.
-        clocks = {
-            pair: sign for pair, sign in signs.items() if fixed_clock(pair, lambda other: True, reads_time)
-        }
-        if clocks:
-            selected = on_branches(clocks)
-            if selected is not None:
-                guard = selected
-        if signs != clocks:
-            selected = on_branches(signs)
-            if selected is not None:
-                selected.authored = guard
-                guard = selected
+        selected = on_branches(signs)
+        if selected is not guard:
+            selected.authored, selected.switches, selected.holding = guard, dict(signs), on_branches
         # A contact can select another arm without replacing this way.
-        self._selected_guard = dict(signs), guard
-        return guard
+        self._selected_guard = dict(signs), selected
+        return selected
 
     def mark_rates(self, solution, start, end):
         if self.clock_rates and end > start:

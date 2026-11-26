@@ -490,3 +490,41 @@ def test_the_cells_of_a_step_share_its_one_allowance():
     # Each half alone fits in the allowance. Together they do not, at any depth.
     assert rate_guard._subdivided(lambda a, b: 1.2 * (b - a), 0.0, 1.0, 1.0) is None
     assert rate_guard._subdivided(lambda a, b: 0.6 * (a < 0.5), 0.0, 1.0, 1.0) == 0.6
+
+
+@pytest.mark.parametrize('method', ('sparse', 'component', 'moving_declared'))
+@pytest.mark.parametrize(
+    ('clock', 'curve'), (('t < 0.5 h', '(t / 1 h) ** 2 < 0.25'), ('t > 0.5 h', '(t / 1 h) ** 2 > 0.25'))
+)
+def test_a_switch_on_time_gives_the_same_marks_however_it_is_written(clock, curve, method, monkeypatch):
+    # The guard holds a switch whose two sides move apart monotonically up to its root, a bare clock
+    # or not (`RateGuard.holds`).
+    checks = []
+    check = rate_guard.RateGuard.check
+
+    def counted(self, solver, *taken):
+        checks.append(solver.t)
+        return check(self, solver, *taken)
+
+    monkeypatch.setattr(rate_guard.RateGuard, 'check', counted)
+    counts = []
+    for test in (clock, curve):
+        model = use_method(
+            f"""scenario "A switch at half an hour"
+    horizon 1 h
+yard:
+    water: L = 0 L scale 1 L
+    flow fill: SOURCE -> this.water
+        request = formula(10 L/h if {test} else 0 L/h)
+""",
+            method,
+            monkeypatch,
+            'fill',
+        )
+        checks.clear()
+        record = Run(Plan.of(model.program, model.configuration)).run()
+        assert record.failure is None
+        assert record.history(Key('yard', ('water',))).at(1) == pytest.approx(5, rel=1e-12)
+        assert not tuple(record.entries('rate_unresolved'))
+        counts.append(len(checks))
+    assert counts[1] <= 2 * counts[0]

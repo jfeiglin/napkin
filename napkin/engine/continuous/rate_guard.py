@@ -28,8 +28,11 @@ _UNPROVED = (ExpressionError, ArithmeticError, LookupError, TypeError, ValueErro
 DEPTH = 4
 
 
-def _bind(run, name, definition, fixed, aliases, operands):
-    """Inline time formulas. Evaluate fixed inputs once on this installation."""
+def _bind(run, name, definition, fixed, aliases, operands, sides):
+    """Inline time formulas. Evaluate fixed inputs once on this installation.
+
+    `sides` gets each node that the rate reads as a side of a switch: a side of a comparison, an
+    argument of a call. `operands` gets the bound node of such a side, when it can be bound."""
 
     @lru_cache(None)
     def sources(part):
@@ -79,8 +82,16 @@ def _bind(run, name, definition, fixed, aliases, operands):
                 found = value(ref)
                 fixed[read] = (found, found)
         if isinstance(part, expr.Compare):
+            sides.update(part.operands)
             for arg in part.operands:
                 operands[arg] = bind(arg)
+        elif isinstance(part, expr.Call):
+            sides.update(part.args)
+            for arg in part.args:
+                try:
+                    operands[arg] = bind(arg)
+                except (*_UNPROVED, SimulationError):
+                    pass  # the prover reads the test through its names
         return part
 
     @lru_cache(None)
@@ -106,7 +117,14 @@ def _bind(run, name, definition, fixed, aliases, operands):
                 return bind(field)
             return tuple(bound(item) for item in field) if isinstance(field, tuple) else field
 
-        return expr.made(type(part), *(bound(getattr(part, field)) for field in part.FIELDS))
+        found = expr.made(type(part), *(bound(getattr(part, field)) for field in part.FIELDS))
+        if isinstance(part, expr.Compare):
+            sides.update(part.operands)
+            operands.update(zip(part.operands, found.operands))
+        elif isinstance(part, expr.Call):
+            sides.update(part.args)
+            operands.update(zip(part.args, found.args))
+        return found
 
     return bind(expr.ref(name))
 
@@ -214,17 +232,20 @@ def _shorter_step(start, end):
 
 
 class RateGuard:
-    authored = None
+    """Check the rates of a trial step. The guard of the arm that the solver uses can also check the
+    authored rates (`authored`, on the branches of `switches`, by `holding`): see `check`."""
+
+    authored = switches = holding = None
 
     def __init__(self, run, rates, place, definition):
         self.crossing = run.plan.numerics.crossing
-        self.fixed, aliases, self.operands = {}, {}, {}
+        self.fixed, aliases, self.operands, self.sides = {}, {}, {}, set()
         self.rates = []
         for name, stocks in rates.items():
             rows = tuple(place[stock] for stock in stocks if stock in place)
             if rows:
                 try:
-                    node = _bind(run, name, definition, self.fixed, aliases, self.operands)
+                    node = _bind(run, name, definition, self.fixed, aliases, self.operands, self.sides)
                 except (
                     ExpressionError,
                     ArithmeticError,
@@ -285,6 +306,26 @@ class RateGuard:
             return tuple(replaced(item) for item in value) if isinstance(value, tuple) else value
 
         return expr.made(type(node), *(replaced(getattr(node, field)) for field in node.FIELDS))
+
+    def holds(self, pair, start, end):
+        """Whether the rates read the switch `pair` on its incoming side up to its first root in
+        [start, end], or do not read it. The difference of its two sides is then monotone on
+        [start, end]: it has one root there at most, which the way locates from the two ends of the
+        step, and the committed prefix ends at that root."""
+        if not all(node in self.sides or isinstance(node, expr.Const) for node in pair):
+            return True
+        a, b = (self.operands.get(node, node if isinstance(node, expr.Const) else None) for node in pair)
+        if a is None or b is None:
+            return False
+        prove = self.prove.over({**self.fixed, 't': (start, end)})
+        try:
+            smooth = self._smooth(expr.binary('sub', a, b), prove)
+            if smooth is None:
+                return False
+            low, high = prove(derivatives.derivative(smooth, 't', memo=self.memo))
+        except _UNPROVED:
+            return False
+        return low >= 0 or high <= 0
 
     def _order(self, op, left, right, time, policy, read):
         """Test two moving operands on the same clock. Keep their correlated change."""
@@ -406,7 +447,12 @@ class RateGuard:
     def check(self, solver, taken=None):
         """Notes on the rates of a trial step, or None to retry it shorter. `taken` gives, by name, the
         polynomial that the solver took for a rate (`_taken`). By default the solver took this guard's
-        rates."""
+        rates.
+
+        The guard of an arm also checks the authored rates, against the polynomial of the arm. It
+        holds each switch that keeps its side up to its first root in the step (`holds`), as the arm
+        does: on the committed prefix the authored rate reads that side. It reads any other switch as
+        authored. When every switch holds, the authored rates are this arm, and need no check."""
         start, end = solver.t_old, solver.t
         duration = end - start
         own = {
@@ -415,8 +461,12 @@ class RateGuard:
             if node is not None
         }
         taken = own if taken is None else taken
-        # The authored expression is checked against the polynomial of the arm that the solver used.
-        notes = self.authored.check(solver, own) if self.authored is not None else {}
+        authored = self.authored
+        if authored is not None and all(node is not None for _, node, _ in authored.rates):
+            # An authored rate that the guard cannot read is checked as it is.
+            held = {pair: sign for pair, sign in self.switches.items() if authored.holds(pair, start, end)}
+            authored = self.holding(held)
+        notes = authored.check(solver, own) if authored is not None and authored is not self else {}
         if notes is None:
             return None
         for name, node, rows in self.rates:
