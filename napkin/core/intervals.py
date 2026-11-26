@@ -302,7 +302,7 @@ class _Prover:
             for child in condition.values:
                 context = self.refine(context, child, positive)
             return context
-        if self.outward and isinstance(condition, expr.BoolOp):
+        if isinstance(condition, expr.BoolOp):
             # In the alternative branch of AND/OR, one term must permit the
             # outcome. If each term excludes it, no point enters this branch.
             if all(self.refine(context, child, positive).get(EMPTY) for child in condition.values):
@@ -345,7 +345,7 @@ class _Prover:
             op = OPPOSITE.get(op)
         policy = self.registry.comparisons
         read = lambda node: self.known_value(node, context)  # noqa: E731
-        if self.outward and policy.factor < 1 and op in ('gt', 'lt', 'ne'):
+        if policy.factor < 1 and op in ('gt', 'lt', 'ne'):
             # With one fixed operand, the closed comparison band is an interval.
             # All of this cell can be inside a large declared band even if its
             # ends lie on the strict side of the mathematical equality.
@@ -746,7 +746,11 @@ def prover(ranges, registry, aliases=None, weights=None, *, outward=False, order
     `weights` (name → n) is for a list in which one member stands for n values: the rows of one class
     of a table, each of which has the range of the name. `sum` counts such a member n times. `min`,
     `max`, `any` and `all` need no count: n values in one interval have their least and their
-    greatest in that interval."""
+    greatest in that interval.
+
+    `outward` rounds each bound that a step computes one float outward, so that an interval holds
+    the value as the run computes it (the pulse guard). It changes only the rounding: every prover
+    reads the same branches."""
     return _Prove(_Prover(ranges, registry, {} if aliases is None else aliases, weights, outward, order))
 
 

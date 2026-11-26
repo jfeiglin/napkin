@@ -209,13 +209,18 @@ def test_a_guard_proves_the_branch_that_it_guards(source, ranges, aliases):
 
 
 def test_an_indeterminate_interval_proves_nothing():
-    # 1/x - 1/x is inf - inf at the edge of the range: no bound, so the square root is not proven.
+    # 1/x - 1/x is inf - inf where 1/x overflows: no bound, so the square root is not proven.
     with pytest.raises(ExpressionError, match='sqrt'):
         validate_domains(
-            nodes.read('sqrt((1 / x - 1 / x) - 1) if x > 0 else 0'),
-            {'x': (0.0, 5e-324)},
-            UnitSystem(LIBRARY_UNITS),
+            nodes.read('sqrt((1 / x - 1 / x) - 1)'), {'x': (1e-310, 1e-309)}, UnitSystem(LIBRARY_UNITS)
         )
+    # Every x up to 5e-324 is inside the comparison band of 0, so x > 0 never holds and no prover
+    # reads that branch.
+    validate_domains(
+        nodes.read('sqrt((1 / x - 1 / x) - 1) if x > 0 else 0'),
+        {'x': (0.0, 5e-324)},
+        UnitSystem(LIBRARY_UNITS),
+    )
 
 
 @pytest.mark.parametrize(
