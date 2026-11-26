@@ -315,6 +315,11 @@ class RateGuard:
             budget = min(
                 solver.atol[i] + solver.rtol * max(abs(solver.y[i]), abs(solver.y_old[i])) for i in rows
             )
+            if node is None:
+                # The guard could not read this rate (`__init__`). A shorter step cannot change that,
+                # so the step stands, with a note: a check must not make a correct model fail.
+                notes[name] = ('the guard cannot read this rate', float(budget), math.inf, math.inf)
+                continue
             mathematical, with_roundoff = self._bounds(node, start, end, budget)
             if with_roundoff <= budget:
                 continue

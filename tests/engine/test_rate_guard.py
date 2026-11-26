@@ -116,11 +116,12 @@ def test_a_finite_but_undecidable_opening_subdivides_to_crossing():
 
 
 def test_mark_an_unbounded_step_only_over_the_prefix_actually_committed():
-    g = guard(None)  # The whole rate has no available bound on this installation.
+    g = guard(None)  # The guard cannot read the rate on this installation.
     solver = Radau(lambda t, y: [0.0], 0.0, [1.0], 1.0, first_step=1.0, atol=np.array([1e-10]))
     rate_guard.step(solver, g)
     dense = solver.dense_output()
-    assert 0 < dense.t <= g.crossing
+    # A shorter step cannot make the rate readable: the step keeps its length, with its note.
+    assert dense.t == 1.0
     entries = Entries()
     rate_guard.mark(entries, dense, 0, 0)
     assert not entries.rows
@@ -128,7 +129,7 @@ def test_mark_an_unbounded_step_only_over_the_prefix_actually_committed():
     first = entries.rows[0][3]
     assert first['start'] == 0 and first['end'] == dense.t / 2
     assert first['mathematical_bound'] is None and first['bound_with_roundoff'] is None
-    rate_guard.mark(entries, dense, dense.t / 2, 0.5)
+    rate_guard.mark(entries, dense, dense.t / 2, 2 * dense.t)  # a mark past the step ends at its end
     assert entries.rows[-1][3]['start'] == dense.t / 2 and entries.rows[-1][3]['end'] == dense.t
     assert len(entries.rows) == 2
 
@@ -417,3 +418,19 @@ yard:
     record = run.run()
     assert record.failure is None
     assert record.history(key).at(1) == pytest.approx(1e-4 * math.sqrt(math.pi), abs=1e-10)
+
+
+def test_a_rate_the_guard_cannot_read_gives_a_note_and_does_not_stop_the_run():
+    # The untaken branch divides by zero. Before, the guard shortened the step until the run stopped.
+    model = compiled("""scenario "An untaken branch that divides by zero"
+    horizon 0.01 h
+tank:
+    input k = 0 in [0,]
+    level: L = 0 L
+    flow fill: SOURCE -> this.level
+        request = formula(10 L/h * exp(-t / (1 h)) if (t / (1 h)) ** 2 < 1000 else 10 L/h / this.k)
+""")
+    record = Run(Plan.of(model.program, model.configuration)).run()
+    assert record.failure is None
+    marks = [entry for entry in record.trace if entry.kind == 'rate_unresolved']
+    assert marks and all(entry.detail('reason') == 'the guard cannot read this rate' for entry in marks)
