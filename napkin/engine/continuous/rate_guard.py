@@ -4,6 +4,7 @@ Radau interpolates a quadratic rate through its three collocation points. An
 interval bound on its absolute error times the step length also bounds the
 amount missed on every prefix. This checks authored requests and capacities.
 The solver and physical transfer ledger still decide what can be delivered.
+The roundoff of the floating calculation is an estimate (`_roundoff`), not a bound.
 """
 
 from __future__ import annotations
@@ -102,7 +103,8 @@ def _bind(run, name, definition, fixed, aliases, operands):
 
 
 def _roundoff(node, bound, time_size):
-    """Propagate one operation's rounding through its range of partial derivatives."""
+    """Estimate the rounding of a floating calculation of `node`: propagate each operation's
+    rounding through the range of its partial derivatives. This is an estimate, not a bound."""
 
     @lru_cache(None)
     def magnitude(part):
@@ -251,8 +253,8 @@ class RateGuard:
             difference = expr.binary('sub', a, b)
             speed = max(map(abs, prove(derivatives.derivative(difference, 't', memo=self.memo))))
             radius = max(middle - start, end - middle)
-            # Apply the mean-value theorem to the exact formulas. Enclose the
-            # additional rounding of both floating operands at the trial time.
+            # Apply the mean-value theorem to the exact formulas. Add an estimate
+            # of the rounding of both floating operands at the trial time.
             rounding = _roundoff(a, prove, max(abs(start), abs(end))) + _roundoff(
                 b, prove, max(abs(start), abs(end))
             )
@@ -270,7 +272,7 @@ class RateGuard:
             return None
 
     def _bounds(self, node, start, end, allowance):
-        """Bound the integrated error on every prefix, first in real arithmetic, then with roundoff."""
+        """Bound the integrated error on every prefix in real arithmetic. Then add an estimate of roundoff."""
         if node is None:
             return math.inf, math.inf
         duration = end - start

@@ -283,23 +283,24 @@ The engine chooses its own steps. A run that needs finer steps sets `max_step`.
 
 The engine checks requests and capacities that depend on time. They can also use fixed inputs or captured parameters.
 For each numerical integration step, the engine checks how much of the rate the step could miss.
-It calculates an upper bound on this amount for the mathematical formula. It also calculates a
-bound that includes floating-point error. Both bounds apply to each part of the step from its start.
+It calculates an upper bound on this amount for the mathematical formula. Then it adds an
+estimate of the floating-point error. The bound and the estimate apply to each part of the step
+from its start. The estimate is not a proof.
 
 If the mathematical bound exceeds the amount tolerance, or the engine cannot calculate that bound,
 the engine tries a shorter step. At the crossing tolerance or the smallest possible solver step,
 the engine accepts the step and marks the interval if the bound still exceeds the tolerance.
 It also marks the interval if the bound is still unavailable.
 
-If the mathematical bound is within tolerance and only floating-point error prevents a proof,
+If the mathematical bound is within tolerance and only the estimate exceeds the tolerance,
 the engine accepts the step and marks the interval. The amount that the step could miss
 in the floating-point calculation is still uncertain.
 
 The trace records a `rate_unresolved` entry when the run accepts that part of the step.
-The entry gives the setting, the accepted interval, the amount tolerance, the reason and both
-bounds. Read `mathematical_bound` for the formula and `bound_with_roundoff` for the calculation
-with floating-point arithmetic. A bound of `null` means that the engine could not calculate
-a finite bound.
+The entry gives the setting, the accepted interval, the amount tolerance, the reason, the bound
+and the estimate. Read `mathematical_bound` for the bound of the formula. Read `bound_with_roundoff`
+for that bound plus the estimate of floating-point error. It is an estimate, not a bound.
+A value of `null` means that the engine could not calculate a finite value.
 This check applies to the rate setting before flows share the available supply or capacity.
 Use `record.entries('rate_unresolved')` in Python to read these entries.
 
