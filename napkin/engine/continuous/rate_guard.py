@@ -32,7 +32,11 @@ def _bind(run, name, definition, fixed, aliases, operands, sides):
     """Inline time formulas. Evaluate fixed inputs once on this installation.
 
     `sides` gets each node that the rate reads as a side of a switch: a side of a comparison, an
-    argument of a call. `operands` gets the bound node of such a side, when it can be bound."""
+    argument of a call. `operands` gets the bound node of such a side, when it can be bound.
+
+    A fixed part can have no value on a branch that the run does not take. Such a part keeps its
+    operation and binds its own parts, so that a proof fails only where it reads that branch. A name
+    with no value has no range: the prover reads it as any number."""
 
     @lru_cache(None)
     def sources(part):
@@ -79,7 +83,10 @@ def _bind(run, name, definition, fixed, aliases, operands, sides):
             if moving(ref):
                 aliases[read] = bind(ref)
             else:
-                found = value(ref)
+                try:
+                    found = value(ref)
+                except (*_UNPROVED, SimulationError):
+                    continue
                 fixed[read] = (found, found)
         if isinstance(part, expr.Compare):
             sides.update(part.operands)
@@ -97,8 +104,13 @@ def _bind(run, name, definition, fixed, aliases, operands, sides):
     @lru_cache(None)
     def bind(part):
         if not moving(part):
-            found = value(part)
-            return expr.const(found if isinstance(found, (bool, str)) else float(found))
+            try:
+                found = value(part)
+            except (*_UNPROVED, SimulationError):
+                if not part.children:
+                    return part
+            else:
+                return expr.const(found if isinstance(found, (bool, str)) else float(found))
         if isinstance(part, expr.Ref):
             if part.name == 't':
                 return part

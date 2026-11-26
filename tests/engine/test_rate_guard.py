@@ -421,8 +421,9 @@ yard:
     assert record.history(key).at(1) == pytest.approx(1e-4 * math.sqrt(math.pi), abs=1e-10)
 
 
-def test_a_rate_the_guard_cannot_read_gives_a_note_and_does_not_stop_the_run():
-    # The untaken branch divides by zero. Before, the guard shortened the step until the run stopped.
+def test_an_untaken_branch_that_divides_by_zero_neither_stops_the_run_nor_gives_a_note():
+    # The untaken branch divides by zero. Before, the guard shortened the step until the run stopped;
+    # the guard binds each branch only where it reads it, and proves this one is never taken.
     model = compiled("""scenario "An untaken branch that divides by zero"
     horizon 0.01 h
 tank:
@@ -433,8 +434,7 @@ tank:
 """)
     record = Run(Plan.of(model.program, model.configuration)).run()
     assert record.failure is None
-    marks = [entry for entry in record.trace if entry.kind == 'rate_unresolved']
-    assert marks and all(entry.detail('reason') == 'the guard cannot read this rate' for entry in marks)
+    assert not [entry for entry in record.trace if entry.kind == 'rate_unresolved']
 
 
 @pytest.mark.parametrize(
