@@ -52,6 +52,23 @@ def _missing(name):
     raise ExpressionError(f'Missing value for {name!r}')
 
 
+class DomainError(ValueError):
+    """A number outside the domain of its function (`failure`). Its own kind, because Python's
+    message for it differs between versions."""
+
+
+def _in_domain(function):
+    """`function`, raising `DomainError` where Python raises a ValueError for its argument."""
+
+    def call(value):
+        try:
+            return function(value)
+        except ValueError:
+            raise DomainError(function.__name__) from None
+
+    return call
+
+
 def _raise(message):
     raise ExpressionError(message)
 
@@ -119,9 +136,9 @@ RUNTIME = {
     'abs': abs,
     'exp': math.exp,
     'expm1': math.expm1,
-    'ln': math.log,
-    'log1p': math.log1p,
-    'sqrt': math.sqrt,
+    'ln': _in_domain(math.log),
+    'log1p': _in_domain(math.log1p),
+    'sqrt': _in_domain(math.sqrt),
     'erf': math.erf,
     '_float': float,
     '_int': int,
@@ -695,7 +712,7 @@ def failure(exc):
         return f'{exc.args[0] if exc.args else "a name"} has no value'
     if isinstance(exc, TypeError):
         return 'values of kinds that its operation does not take'
-    if isinstance(exc, ValueError) and 'math domain' in str(exc):
+    if isinstance(exc, DomainError):
         return 'a number outside the domain of its function'
     return str(exc)
 
