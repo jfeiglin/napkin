@@ -243,6 +243,46 @@ box.tick.start()
     assert limited == whole.within(1) == whole
 
 
+def test_a_pause_between_two_rounds_keeps_the_record_within_its_budget_and_does_not_end_the_run():
+    from napkin.model.compile import compile_text
+
+    # At 1 h a first round sets x = 1 and a second round clears it: the finished run has one piece.
+    model = compile_text(
+        """scenario "Two rounds at the same moment"
+    horizon 2 h
+box:
+    x = 0
+    reading = formula(2 * this.x)
+    tick = event():
+        after 1 h:
+            this.x = 1
+            this.clear_flag.start()
+    clear_flag = event():
+        after 0 h:
+            this.x = 0
+box.tick.start()
+""",
+        {'h': {'time': 1}},
+    )
+    key = Key('box', ('reading',))
+    configuration = replace(
+        model.configuration,
+        request=replace(model.configuration.request, everything=False, keys=(key,), pieces=1),
+    )
+    straight = Run(Plan.of(model.program, configuration)).run()
+    assert straight.failure is None and straight.history(key).pieces == (Piece(0, 0),)
+    live = Run(Plan.of(model.program, configuration), (Breakpoint('box.clear_flag.step[0]'),))
+    checkpoint = live.run()
+    # Between the rounds the record holds the one piece before 1 h; the state holds x = 1.
+    assert isinstance(checkpoint, Checkpoint) and checkpoint.stop.t == 1
+    assert checkpoint.record.failure is None and checkpoint.record.history(key).pieces == (Piece(0, 0),)
+    saved = loads(dumps(checkpoint))
+    assert dict(saved.state.values)['box.x'] == 1
+    assert any(occurrence.id.startswith('box.clear_flag#') for occurrence in saved.state.occurrences)
+    assert Run.restored(Plan.of(model.program, configuration), saved).resume() == straight
+    assert live.resume() == straight
+
+
 def test_a_rolled_back_posting_does_not_use_the_budget():
     from napkin.engine.timeline.moment import Tx, _Savepoint
 

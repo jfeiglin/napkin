@@ -99,8 +99,14 @@ def test_the_first_total_piece_at_the_join_exceeds_a_one_piece_budget():
     assert straight.failure is not None and straight.failure.t == 0.3
     assert straight.failure.detail('budget') == 1
     assert [p.t for p in straight.history(key_of(model.program, 'yard.total')).pieces] == [0]
-    stopped = run(model.program, configuration, (Breakpoint('yard.watch.step[0]'),))
-    assert stopped == straight
+    # A pause at that moment does not end the run: it keeps the record within its budget, and the
+    # run then stops by its budget there, as the run with no pause does.
+    live = Run(Plan.of(model.program, configuration), (Breakpoint('yard.watch.step[0]'),))
+    checkpoint = live.run()
+    assert isinstance(checkpoint, Checkpoint) and checkpoint.stop.t == 0.3
+    assert checkpoint.record.failure is None
+    assert [p.t for p in checkpoint.record.history(key_of(model.program, 'yard.total')).pieces] == [0]
+    assert live.resume() == straight
 
 
 def test_skipped_stock_remains_identifiable_after_its_sparse_producer_retires(tmp_path):

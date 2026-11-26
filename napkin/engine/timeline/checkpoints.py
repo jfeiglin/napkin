@@ -47,7 +47,7 @@ from ...program.checkpoint import (
     Trigger,
     encode,
 )
-from ...program.record import Entry, Key
+from ...program.record import Entry, Key, Record
 from .moment import quantity, span
 from .plan import BUILTINS, STARTS, STATE, _statements, name_of
 from .record import HistoryFull, declared
@@ -190,11 +190,17 @@ class Breaks:
                     self.done.add(k)
                     self.apply(edit, stop, tx)
             return
-        # The record so far is the checkpoint's; a record past its budget ends the run here instead.
+        # The record so far is the checkpoint's, within its budget. A pause never ends the run: when
+        # the rounds of this instant so far would put the record past its budget (a later round can
+        # still take those pieces back), the checkpoint keeps the record before this instant, and its
+        # state holds what the instant has written so far (`state`).
         recorder, arrival = at_stop(run)
-        record = recorder.record(run.now, pause=pause_entry(stop))
+        pause = pause_entry(stop)
+        record = recorder.record(run.now, pause=pause)
         if record.failure is not None:
-            raise HistoryFull(record)
+            if record.end < run.now:
+                raise HistoryFull(record)  # the record before this instant is past its budget too
+            record = Record(record.manifest, record.histories, (*record.trace[:-1], pause), None)
         self.recorded = record
         self.prefix = recorder, arrival
         # The stage runs again from its start when the run resumes: its hits are counted again.
