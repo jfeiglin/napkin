@@ -39,16 +39,18 @@ plant:
     model = compile_text(source + 'plant.pay.start()\n', UNITS)
     stops = (Breakpoint('plant.idle.step[0]'),) if pause == 'serialized' else ()
     machine = Run(Plan.of(model.program, model.configuration), stops)
-    # A rate assignment at the horizon can replace the method that integrated the ramp.
+    # A rate assignment at the horizon can replace the method that integrated the ramp. Patch the class:
+    # a checkpoint's preview copies the run, and a patch of the instance would finish the live run's
+    # arrival in place of the copy's.
     ramp_methods = []
-    finish = machine.finish_arrival
+    finish = Run.finish_arrival
 
-    def finish_ramp():
-        if machine.arriving:
-            ramp_methods.append(type(machine.ways.instance_of('plant.delivery')))
-        return finish()
+    def finish_ramp(run):
+        if run is machine and run.arriving:
+            ramp_methods.append(type(run.ways.instance_of('plant.delivery')))
+        return finish(run)
 
-    machine.finish_arrival = finish_ramp
+    monkeypatch.setattr(Run, 'finish_arrival', finish_ramp)
     record = machine.run()
     if stops:
         # Inspect the incoming half-hour cut in both query orders while the live
