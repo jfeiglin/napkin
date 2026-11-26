@@ -62,6 +62,7 @@ class Case:
     keys: tuple[str, ...] = ()  # a selected record of these paths
     pieces: int | None = None  # a budget of pieces
     breakpoints: tuple[str, ...] = ()
+    numerics: tuple[tuple[str, float], ...] = ()  # other numerical settings (`--rtol`, `--atol-factor`)
 
 
 # ---- the cases -------------------------------------------------------------------------------------
@@ -238,7 +239,8 @@ def _configuration(model, case, keys):
         request = replace(request, everything=False, keys=keys)
     if case.pieces is not None:
         request = replace(request, pieces=case.pieces)
-    return replace(configuration, request=request)
+    numerics = replace(configuration.numerics, **dict(case.numerics))
+    return replace(configuration, request=request, numerics=numerics)
 
 
 def _keys(model, case):
@@ -303,10 +305,10 @@ def _file(out, name):
     return Path(out) / (name.replace('/', '_').replace(':', '_').replace('@', '_at_') + '.json.gz')
 
 
-def capture(out, chosen, jobs):
+def capture(out, chosen, jobs, numerics=()):
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
-    found = cases(chosen)
+    found = [replace(case, numerics=numerics) for case in cases(chosen)]
     with concurrent.futures.ProcessPoolExecutor(max_workers=jobs) as pool:
         for data in pool.map(capture_one, found):
             _file(out, data['case']).write_bytes(gzip.compress(json.dumps(data).encode()))
@@ -575,6 +577,8 @@ def main(argv=None):
         command.add_argument('folder')
         command.add_argument('--set', default='quick', choices=('quick', 'all', 'timing'))
         command.add_argument('--jobs', type=int, default=max(1, (os.cpu_count() or 2) - 1))
+        command.add_argument('--rtol', type=float, help='another relative tolerance for every case')
+        command.add_argument('--atol-factor', type=float, help='another absolute tolerance factor')
         if name == 'check':
             command.add_argument('--exact', action='store_true')
     command = commands.add_parser('compare')
@@ -582,8 +586,16 @@ def main(argv=None):
     command.add_argument('other')
     command.add_argument('--exact', action='store_true')
     options = parser.parse_args(argv)
+    numerics = tuple(
+        (name, value)
+        for name, value in (
+            ('rtol', getattr(options, 'rtol', None)),
+            ('atol_factor', getattr(options, 'atol_factor', None)),
+        )
+        if value is not None
+    )
     if options.command == 'capture':
-        capture(options.folder, options.set, options.jobs)
+        capture(options.folder, options.set, options.jobs, numerics)
         return 0
     if options.command == 'baseline':
         baseline(options.commit, options.folder, options.set, options.jobs)
@@ -591,7 +603,7 @@ def main(argv=None):
     if options.command == 'compare':
         return 1 if compare(options.base, options.other, options.exact) else 0
     with tempfile.TemporaryDirectory() as folder:
-        capture(folder, options.set, options.jobs)
+        capture(folder, options.set, options.jobs, numerics)
         return 1 if compare(options.folder, folder, options.exact) else 0
 
 
