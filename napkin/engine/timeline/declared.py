@@ -123,6 +123,7 @@ from ..continuous.transfers import (
 from ..continuous.walk import walked
 from ..errors import SimulationError
 from ..solve import FLOW, OTHER, Budget, Problem, SolveFailure, Solver
+from ..solve.scaled import served_rows
 from .collections import selected
 from .contacts import continued_lines, put_bounds, put_lines
 from .family import Columns, due_through
@@ -140,6 +141,7 @@ from .network import (
     Claim,
     carrying,
     claim_order,
+    is_claim,
     network_of,
     paired_rates,
     physical_capacities,
@@ -300,12 +302,12 @@ class Former:
             mine = net.conns.of(f).tolist() if not net.plain else [f]
             kind = int(net.kinds[f])
             if kind == LEGS:
-                asks = bool((requests[mine] > 0).any())
+                asks = bool(is_claim(requests[mine]).any())
                 column = problem.unknown(
                     ('flow', flow), 0.0, 1.0 if asks else 0.0, FLOW, 1.0 if asks else 0.0
                 )
                 for c in mine:
-                    if math.isfinite(capacity[c]) and requests[c] > 0:
+                    if math.isfinite(capacity[c]) and is_claim(requests[c]):
                         self.rows.append(
                             (
                                 ('leg', self.connections[c].name),
@@ -325,14 +327,14 @@ class Former:
                     raise SimulationError(f'{flow}: a request that is {signed:g} at {t:g} h')
                 cap = capacity[mine[0]]
                 column = problem.unknown(('flow', flow), -cap, cap, FLOW, signed)
-                if signed != 0:
+                if is_claim(abs(signed)):
                     claims.append(({column: 1.0 if signed > 0 else -1.0}, abs(signed)))
                     order.append(claim(f, mine))
             else:
                 column = problem.unknown(
                     ('flow', flow), 0.0, capacity[mine[0]], FLOW, float(requests[mine[0]])
                 )
-                if requests[mine[0]] > 0:
+                if is_claim(requests[mine[0]]):
                     claims.append(({column: 1.0}, float(requests[mine[0]])))
                     order.append(claim(f, mine))
             self.cols[f'{flow}.actual_rate'] = column
@@ -345,7 +347,7 @@ class Former:
             total = self._total(here)
             if cap is not None and math.isfinite(cap):
                 self._relation(total.plus(cap, -1.0), '<=', ('end', store, SIDES[side]))
-            if wanted > 0:
+            if is_claim(wanted):
                 if any(int(net.roles[c]) in (FORWARD, BACKWARD) for c in here):
                     raise Unsupported(
                         f'{store}.{SIDES[side]}.request with a route at that endpoint, in the solver '
@@ -2266,7 +2268,7 @@ def polished(arrays, x, levels):
         blocks.append(A[rows])
         sides.append(np.where(left, arrays.row_lower, arrays.row_upper)[rows])
     if len(levels):
-        fraction = sp.diags_array(1.0 / arrays.request) @ arrays.F
+        fraction = served_rows(arrays.F, arrays.request)
         served = fraction @ found
         full = np.flatnonzero((levels >= 1.0) & (served <= 1.0 + NEAR))
         blocks.append(fraction[full])

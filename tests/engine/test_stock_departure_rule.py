@@ -247,3 +247,36 @@ yard:
     record = Run(Plan.of(model.program, model.configuration)).run()
     assert record.failure is None and record.end == 1
     assert hits and not stale
+
+
+def test_a_subnormal_request_is_no_claim_of_a_declared_solver(recwarn):
+    # A request below the smallest normal float overflowed its served fraction (1 / request), and
+    # HiGHS then failed under the shortage. Local sharing never counted such a request as a claim.
+    tiny = format(1e-320, '.400f').rstrip('0')
+    model = compile_text(
+        f"""scenario "A subnormal request under shortage"
+    horizon 1 h
+yard:
+    tank: L = 10 L in [0,]
+    flow trickle: this.tank -> SINK
+        request = {tiny} L/h
+    flow big: this.tank -> SINK
+        request = 2 L/h
+owner:
+    share = solver:
+        inputs:
+            a = yard.trickle
+            b = yard.big
+        solve_for:
+            a.actual_rate
+            b.actual_rate
+        constraints:
+            a.actual_rate + b.actual_rate <= 1 L/h
+""",
+        {'L': {'volume': 1}, 'h': {'time': 1}},
+    )
+    record = Run(Plan.of(model.program, model.configuration)).run()
+    assert record.failure is None
+    trickle, big = read(record, model.program, ['yard.trickle.actual_rate', 'yard.big.actual_rate'], [0, 1])
+    assert trickle.values == (0, 0) and big.values == pytest.approx((1, 1))
+    assert not [w for w in recwarn if 'overflow' in str(w.message)]

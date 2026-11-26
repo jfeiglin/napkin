@@ -13,6 +13,7 @@ import copy
 import numpy as np
 import scipy.sparse as sp
 
+from .failures import NUMERICAL, SolveFailure
 from .problem import OTHER
 
 
@@ -44,9 +45,7 @@ class Scaled:
             self.norms.append(norm)
         # the served fraction of claim i is min(1, F_i . xi)
         self.request, self.tier = arrays.request, arrays.tier
-        K = len(self.request)
-        F = sp.diags_array(1.0 / self.request) @ arrays.F @ sp.diags_array(s) if K else arrays.F
-        self.F = sp.csr_array(F)
+        self.F = served_rows(arrays.F, self.request, s) if len(self.request) else sp.csr_array(arrays.F)
         self.F.sort_indices()
         self.columns, self.rows = np.arange(arrays.n), np.arange(arrays.m)
 
@@ -79,3 +78,31 @@ def row_max(A):
         filled = np.diff(A.indptr) > 0
         out[filled] = np.maximum.reduceat(np.abs(A.data), A.indptr[:-1][filled])
     return out
+
+
+def served_rows(F, request, scale=None):
+    """The served fraction of each claim per unit of the unknowns (in working units, times `scale`):
+    claim i's row of F over request_i. A request below `TINY` is no claim (`network.is_claim`), but a
+    small normal request can still overflow on the way: (1 / request) times a coefficient, or times a
+    large scale. Such rows are formed again in one step, F_i * scale / request_i. A row that is still
+    not finite has a served fraction that no float holds: a named failure, never a dropped claim."""
+    with np.errstate(over='ignore'):
+        rows = sp.diags_array(1.0 / request) @ F
+        if scale is not None:
+            rows = rows @ sp.diags_array(scale)
+    rows = sp.csr_array(rows)
+    if np.isfinite(rows.data).all():
+        return rows
+    rows = sp.csr_array(F @ sp.diags_array(scale) if scale is not None else F, copy=True)
+    with np.errstate(over='ignore'):
+        rows.data = rows.data / np.repeat(request, np.diff(rows.indptr))
+    bad = np.flatnonzero(~np.isfinite(rows.data))
+    if len(bad):
+        claim = int(np.searchsorted(rows.indptr, bad[0], side='right') - 1)
+        raise SolveFailure(
+            NUMERICAL,
+            'served fractions',
+            f'the request {float(request[claim]):g} of claim {claim} is too small for the scale of its '
+            'unknowns: no float holds its served fraction',
+        )
+    return rows
