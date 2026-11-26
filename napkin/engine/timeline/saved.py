@@ -650,6 +650,9 @@ def _instance_fields(instance):
                 ),
                 ('selection', _pairs(instance.selection)),
                 ('held_rates', tuple(sorted(instance.held_rates))),
+                # A failed trial past the calendar turns them off for good: the same decisions after a
+                # restore need it (`Sparse._local_trial`).
+                ('local_steps', instance.local_steps),
             ),
         )
     if isinstance(instance, DeclaredWay):
@@ -1023,6 +1026,7 @@ def _made_fields(run, kind, keys, data):
             data['evaluations'],
         )
         instance.switches = {store: list(flows) for store, flows in data['switches']}
+        instance.local_steps = data['local_steps']
         if data['selected']:
             signs = {(a, b): sign for a, b, sign in data['signs']}
             instance.signs = {

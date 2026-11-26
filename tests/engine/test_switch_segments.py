@@ -676,6 +676,55 @@ def test_an_internal_solver_endpoint_cannot_hide_a_bound_in_the_rest_of_the_time
     assert contacts == ([(1, 'tank.water', pytest.approx(upper))] if grouped else [])
 
 
+def test_a_look_ahead_charges_nothing_and_changes_nothing_committed(monkeypatch):
+    """The model of the test above, with its stocks grouped: the look ahead past the step at 1 h finds
+    the bound in the band, and leaves the group's positions, its ledger, the recorder and the evaluations
+    charged as they were."""
+    radau = sparse.Radau
+
+    def one_step(*args, **kwargs):
+        kwargs['first_step'] = min(1 + 1 / 64, args[3] - args[1])
+        return radau(*args, **kwargs)
+
+    monkeypatch.setattr(sparse, 'Radau', one_step)
+    builder = Builder(UNITS)
+    builder.entity(
+        'tank',
+        value(
+            'water', 'L', 0, lower=0, upper=1 + 3 / 64, scale=100000000, inflow=endpoint(capacity=rate(10))
+        ),
+        value('seen', 'L', -1),
+        flow('fill', SOURCE, this.water, request=formula(rate(1) + t * q(0, 'L/h/h'))),
+        event('look', after(q(1, 'h'), assign(this.seen, this.water))),
+    )
+    builder.setup(start(named('tank').look))
+    lookahead, found = sparse.Sparse.lookahead, []
+
+    def state(way):
+        pieces = {name: list(rows) for name, rows in way.run.recorder.pieces.items()}
+        amounts = (way.amounts.through, repr(way.amounts.total), repr(way.amounts.remainder))
+        return (
+            way.booked_through,
+            way.recorded_through,
+            amounts,
+            pieces,
+            way.evaluations,
+            way.pending_evaluations,
+        )
+
+    def observed(way, t, through):
+        before = state(way)
+        contacts = lookahead(way, t, through)
+        assert state(way) == before
+        found.extend(contacts or ())
+        return contacts
+
+    monkeypatch.setattr(sparse.Sparse, 'lookahead', observed)
+    record = run(builder.finish(), Configuration(Request(2), numerics=Numerics(crossing=1 / 16)))
+    assert record.failure is None
+    assert [(owner, kind) for _, owner, kind in found] == [(0, 'upper bound')]
+
+
 def test_a_switch_at_an_accepted_step_end_is_consumed_by_the_following_step():
     from napkin.engine.continuous.integrate import crossing_time
 

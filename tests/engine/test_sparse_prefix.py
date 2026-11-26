@@ -249,3 +249,23 @@ tank:
     way.run.limit = way.plan.horizon
     with pytest.raises(SimulationError, match='evaluation budget exceeded'):
         way.peek()
+
+
+def test_a_restored_run_keeps_local_steps_off_after_a_failed_trial(model, monkeypatch):
+    """A failed trial past the calendar turns a group's local steps off for good. A checkpoint keeps
+    that, so a restored run chooses its steps as the live run does."""
+    failed, prepare = [], Sparse._prepare_step
+
+    def fail_once(way, until):
+        if until > way.run.limit and not failed:
+            failed.append(until)
+            raise SimulationError('a rate undefined past the calendar')
+        return prepare(way, until)
+
+    monkeypatch.setattr(Sparse, '_prepare_step', fail_once)
+    live = Run(Plan.of(model.program, model.configuration), (Breakpoint('tank.pause.step[0]'),))
+    stop = live.run()
+    assert failed and not live.ways.instance_of('tank.water').local_steps
+    restored = Run.restored(Plan.of(model.program, model.configuration), loads(dumps(stop)))
+    assert not restored.ways.instance_of('tank.water').local_steps
+    assert_resume_parity(model.program, model.configuration, live.resume(), restored.resume())

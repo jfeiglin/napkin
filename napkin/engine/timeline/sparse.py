@@ -843,6 +843,9 @@ class Sparse(MovingTransfers, Way):
         self.contact_clocks = run.consumed_in(self.surfaces, t)
         self.contacted = tuple(self.contact_clocks)
         self.contacts = []  # located contacts on the pending smooth step
+        # Contacts that a look ahead found in the rest of the moment's time band, after the pending
+        # step (`lookahead`): read with the step's own until the step goes.
+        self.band_contacts = []
         self.next_clock = math.inf  # the next switch of the time against a fixed value
 
     def _selector(self, keyed):
@@ -1559,30 +1562,69 @@ class Sparse(MovingTransfers, Way):
                 return self._local_trial(until, local)
         return self._prepare_step(until)
 
+    def _snapshot(self):
+        """What a trial step changes, for `_restore`: the solver's state (Radau replaces its iteration
+        arrays on acceptance) with its LU factors, the rate samples that the transfer sampler collects in
+        a Newton solve, the step with its contacts and history, the run's clock and the evaluations.
+        Committed transfers, history and positions are not part of a trial."""
+        solver, capture = self.solver, self.capture
+        return (
+            solver,
+            None if solver is None else vars(solver).copy(),
+            capture,
+            None if capture is None else (capture.samples.copy(), capture.previous),
+            (
+                self.measured,
+                getattr(self, 'last_carried', None),
+                self.brief,
+                self.brief_from,
+                self.contacts,
+                self.band_contacts,
+                self.pending,
+                self._history_end,
+                self._history_rows,
+                self._opening_balances,
+                self.run.now,
+                self.evaluations,
+                self.pending_evaluations,
+            ),
+        )
+
+    def _restore(self, snapshot, *, solver=True):
+        """Discard a trial (`_snapshot`): what it changed is as it was, and none of its evaluations is
+        charged. Without `solver`, the way drops its solver: its next step starts a fresh one."""
+        kept, state, capture, samples, fields = snapshot
+        (
+            self.measured,
+            self.last_carried,
+            self.brief,
+            self.brief_from,
+            self.contacts,
+            self.band_contacts,
+            self.pending,
+            self._history_end,
+            self._history_rows,
+            self._opening_balances,
+            self.run.now,
+            self.evaluations,
+            self.pending_evaluations,
+        ) = fields
+        if solver and kept is not None:
+            vars(kept).clear()
+            vars(kept).update(state)
+            if capture is not None:
+                capture.samples, capture.previous = samples
+        self.solver, self.capture = (kept if solver else None), capture
+
     def _local_trial(self, required, local):
         """Try one step beyond the calendar. A discarded trial spends no work allowance."""
         now = self.run.now
         spent = self.evaluations
-        solver = self.solver
-        # Radau replaces its iteration arrays on acceptance. The transfer sampler
-        # also collects rate samples inside the scalar RHS during a Newton solve.
-        state = vars(solver).copy()
-        rates = self.measured, self.last_carried
-        brief = self.brief, self.brief_from
-        contacts = self.contacts
-        capture = self.capture
-        if capture is not None:
-            samples, previous = capture.samples.copy(), capture.previous
+        snapshot = self._snapshot()
         try:
             end = self._prepare_step(local)
         except (SimulationError, ExpressionError, ArithmeticError, ValueError):
-            vars(solver).update(state)
-            if capture is not None:
-                capture.samples, capture.previous = samples, previous
-            self.measured, self.last_carried = rates
-            self.brief, self.brief_from = brief
-            self.contacts = contacts
-            self.evaluations = spent
+            self._restore(snapshot)
             self.local_steps = False
             end = self._prepare_step(required)
             self.run.now = now
@@ -1606,7 +1648,7 @@ class Sparse(MovingTransfers, Way):
             if until <= self.t:
                 return math.inf  # the producer commits its due step before the next window
             self.run.now = self.t
-            self.contacts = list(self._turns(lambda at: self.y, self.t, until))
+            self.contacts, self.band_contacts = list(self._turns(lambda at: self.y, self.t, until)), []
             end = min((at for at, _, _ in self.contacts), default=until)
             self.pending = self.t, end, lambda at: self.y, self.y, bool(self.contacts)
             self._history_span()
@@ -1664,7 +1706,7 @@ class Sparse(MovingTransfers, Way):
             ):
                 events.append((at, row, 'release'))
         events.extend(self._turns(solution, start, end))
-        self.contacts = events
+        self.contacts, self.band_contacts = events, []
         ended = bool(events) or (solver.status == 'finished' and end in self.cap_turns)
         if events:
             end = min(at for at, _, _ in events)
@@ -1728,7 +1770,8 @@ class Sparse(MovingTransfers, Way):
             if name in self.place:
                 y[self.place[name]] = levels[name]
         self.t, self.y = end, y
-        self.contacted = tuple(pair for at, pair, kind in self.contacts if at == end and kind == 'switch')
+        self.contacted = tuple(pair for at, pair, kind in self._located() if at == end and kind == 'switch')
+        self.band_contacts = []
         self.contact_clocks = {pair: at for pair, at in self.contact_clocks.items() if at >= end}
         self.run.now = end
         if ended:
@@ -1746,23 +1789,29 @@ class Sparse(MovingTransfers, Way):
         limit = min(through, self.run.limit)
         if pending[1] >= limit:
             return
-        now, brief, brief_from = self.run.now, self.brief, self.brief_from
-        history = self._history_end, self._history_rows, self._opening_balances
+        snapshot = self._snapshot()
         try:
             while self.pending[1] < limit and not self.pending[4]:
                 self.pending = None
                 self.peek(limit)
+            found = self.contacts
         finally:
-            self.pending, self.solver = pending, None
-            self._history_end, self._history_rows, self._opening_balances = history
-            self.run.now, self.brief, self.brief_from = now, brief, brief_from
+            # A trial charges nothing and leaves nothing. The solver goes: kept, it would stand at the
+            # end of the trial while the pending step can snap before its end.
+            self._restore(snapshot, solver=False)
+        self.band_contacts = found
+        return found
+
+    def _located(self):
+        """The contacts of the pending step, and those that a look ahead found after it."""
+        return (*self.contacts, *self.band_contacts)
 
     def timing_events(self, through):
         if self.pending is not None:
             yield from self._events(through)
 
     def _events(self, through):
-        for at, owner, kind in self.contacts:
+        for at, owner, kind in self._located():
             if at <= through:
                 if kind in ('lower bound', 'upper bound'):
                     yield at, self.stores[owner], kind
@@ -1779,7 +1828,7 @@ class Sparse(MovingTransfers, Way):
 
     def detected_switches(self):
         if self.pending is not None:
-            yield from ((at, pair) for at, pair, kind in self.contacts if kind == 'switch')
+            yield from ((at, pair) for at, pair, kind in self._located() if kind == 'switch')
 
     def _on_contacts(self, through, y):
         met = put_bounds(self, y, self._events(through))
@@ -1793,11 +1842,10 @@ class Sparse(MovingTransfers, Way):
         if at != end:
             y = np.array(solution(at), dtype=float)
         met = self._on_contacts(through, y)
+        located = self._located()
         self.pending = start, at, solution, y, ended
         stores, rates, _ = self.step()
-        self.contacted = tuple(
-            pair for when, pair, kind in self.contacts if when <= through and kind == 'switch'
-        )
+        self.contacted = tuple(pair for when, pair, kind in located if when <= through and kind == 'switch')
         return stores + rates, met
 
     def finish(self, t):
@@ -1841,7 +1889,7 @@ class Sparse(MovingTransfers, Way):
                 self.contacted = ()
             self.pending = None
             self.pending_evaluations = 0
-        self.solver, self._drift = None, None
+        self.solver, self._drift, self.band_contacts = None, None, []
 
     def _step_state(self, t, *, incoming=False):
         """Read the pending step. An incoming contact can read beyond its end."""
