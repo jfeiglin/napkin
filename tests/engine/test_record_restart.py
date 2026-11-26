@@ -28,6 +28,23 @@ def test_fit_preserves_held_linear_and_curved_columns():
         assert opening + shape.increase(3.0 - at) == pytest.approx(expected, rel=1e-12)
 
 
+@pytest.mark.parametrize(
+    'neighbour', [lambda ts: ts**2, lambda ts: np.abs(ts - 3.1)], ids=['smooth', 'kinked']
+)
+def test_a_line_fits_to_the_same_bytes_alone_and_beside_another_value(neighbour):
+    """A value's pieces do not depend on what is fitted beside it: neither where they start (a kinked
+    neighbour is cut many times) nor their last bits (a matrix product of two columns rounds a line's
+    coefficients otherwise)."""
+
+    def line(times):
+        return 0.1 - 0.2 * times
+
+    tolerance = np.full(2, 1e-12)
+    (alone,) = fitted(lambda times: line(times)[:, None], 2.0, 4.0, tolerance[:1])
+    beside, _ = fitted(lambda times: np.column_stack((line(times), neighbour(times))), 2.0, 4.0, tolerance)
+    assert len(alone) == 1 and repr(beside) == repr(alone)
+
+
 def curve_program():
     builder = Builder({'h': {'time': 1}})
     builder.entity(

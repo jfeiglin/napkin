@@ -165,10 +165,10 @@ DEGREE = 8
 # start of the piece. The end of a piece is the start of the next, whose value can jump there.
 _NODES = np.cos(np.pi * (np.arange(DEGREE + 1) + 0.5) / (DEGREE + 1))[::-1]
 _CHECKS = np.cos(np.pi * np.arange(1, DEGREE + 2) / (DEGREE + 1))[::-1]
-# The same interpolation and checks apply to every column of sampled values.
+# The same interpolation applies to every column of sampled values. The check matrix gives the
+# rise of a series from the start of its piece to each check.
 _FIT_MATRIX = np.linalg.inv(chebyshev.chebvander(_NODES, DEGREE))
-_CHECK_MATRIX = chebyshev.chebvander(_CHECKS, DEGREE)
-_LEFT_ROW = chebyshev.chebvander(-1.0, DEGREE)[0]
+_CHECK_MATRIX = chebyshev.chebvander(_CHECKS, DEGREE) - chebyshev.chebvander(-1.0, DEGREE)
 # A piece shorter than this, in hours, is not cut again: it holds what the fit gives.
 SHORTEST = 1e-9
 # A fit holds a value to its tolerance, or to this part of its largest size in the piece, which
@@ -188,6 +188,12 @@ def _times(start, end, points):
     return np.minimum(start + (points + 1.0) * 0.5 * (end - start), math.nextafter(end, start))
 
 
+def _product(matrix, columns):
+    """`matrix @ columns`, each column on its own and in one fixed order of sums. A matrix product
+    can round a column differently when other columns are beside it."""
+    return np.add.accumulate(matrix[:, :, None] * columns, axis=1)[:, -1]
+
+
 def fitted(values, start, end, tolerance):
     """The pieces of k values from `start` to `end`: one list for each value, each piece a (time,
     value, rate). `values(times)` gives an array of one row for each time; `tolerance` holds one
@@ -195,44 +201,54 @@ def fitted(values, start, end, tolerance):
     piece. A value that the series holds as a constant has the rate 0, and any other a `Curve` in
     its place, which the record's piece keeps in its own field (`_history`): a line too, as a series
     of degree one, since its slope is the fit's over the span that it was fitted to, and so follows
-    where the run ended in its last digits."""
+    where the run ended in its last digits.
+
+    Each value is cut on its own: a piece is cut in two only for the values whose fit misses there,
+    and the fit and the check of a value do not depend on the others (`_product`). So its pieces are
+    those of a fit of that value alone. The values share each call of `values`."""
     found = [[] for _ in tolerance]
-    pending, cuts = [(start, end)], 0
+    tolerance = np.asarray(tolerance, dtype=float)
+    pending, cuts = [(start, end, np.arange(len(found)))], 0
     while pending:
-        a, b = pending.pop()
-        nodes = values(_times(a, b, _NODES))
-        coefficients = _FIT_MATRIX @ nodes
-        allowed = np.maximum(tolerance, RELATIVE * np.max(np.abs(nodes), axis=0))
-        if b - a > SHORTEST and cuts < MOST:
-            checks = values(_times(a, b, _CHECKS))
+        a, b, columns = pending.pop()
+        nodes = values(_times(a, b, _NODES))[:, columns]
+        coefficients = _product(_FIT_MATRIX, nodes)
+        allowed = np.maximum(tolerance[columns], RELATIVE * np.max(np.abs(nodes), axis=0))
+        checked = b - a > SHORTEST and cuts < MOST
+        if checked:
+            checks = values(_times(a, b, _CHECKS))[:, columns]
             first = checks[0]
             allowed = np.maximum(allowed, RELATIVE * np.max(np.abs(checks), axis=0))
-            made = (_CHECK_MATRIX @ coefficients) - (_LEFT_ROW @ coefficients) + first
-            if np.any(np.abs(made - checks) > allowed):
+            made = _product(_CHECK_MATRIX, coefficients) + first
+            missed = np.any(np.abs(made - checks) > allowed, axis=0)
+            if missed.any():
                 middle = 0.5 * (a + b)
-                pending += [(middle, b), (a, middle)]
+                pending += [(middle, b, columns[missed]), (a, middle, columns[missed])]
                 cuts += 1
-                continue
+                held = ~missed
+                columns, first, allowed = columns[held], first[held], allowed[held]
+                nodes, checks, coefficients = nodes[:, held], checks[:, held], coefficients[:, held]
         else:
-            first = values(np.array([a]))[0]
+            first = values(np.array([a]))[0, columns]
         constant = np.all(nodes == first, axis=0)
-        if b - a > SHORTEST and cuts < MOST:
+        if checked:
             constant &= np.all(checks == first, axis=0)
-        for k, at in enumerate(found):
-            if constant[k]:
+        for j, k in enumerate(columns.tolist()):
+            at = found[k]
+            if constant[j]:
                 # Interpolation roundoff can give an identically held threshold a nonzero slope.
-                at.append((a, float(first[k]), 0.0))
+                at.append((a, float(first[j]), 0.0))
                 continue
-            series = coefficients[:, k] if coefficients.ndim > 1 else coefficients
+            series = coefficients[:, j]
             curved = series[2:]
-            if np.all(np.abs(curved) <= allowed[k] / 16):
+            if np.all(np.abs(curved) <= allowed[j] / 16):
                 # A line: its slope is the first coefficient over the half of the span; a constant is
                 # what any fit of it gives, and a line of another slope is the fit's (see above).
                 slope = float(series[1]) * 2.0 / (b - a) if b > a else 0.0
                 line = Curve(b - a, (float(series[0]), float(series[1])))
-                at.append((a, float(first[k]), 0.0 if slope == 0 else line))
+                at.append((a, float(first[j]), 0.0 if slope == 0 else line))
             else:
-                at.append((a, float(first[k]), Curve(b - a, tuple(float(c) for c in series))))
+                at.append((a, float(first[j]), Curve(b - a, tuple(float(c) for c in series))))
     return [sorted(pieces, key=lambda piece: piece[0]) for pieces in found]
 
 
