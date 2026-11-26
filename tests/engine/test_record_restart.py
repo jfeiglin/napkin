@@ -68,6 +68,33 @@ def test_a_value_past_the_cut_limit_is_a_failure_by_its_name(monkeypatch):
         )
 
 
+def test_a_fast_value_at_a_late_time_is_held_to_the_spacing_of_its_times():
+    """A float holds a time near 1 h only to about 1e-16 h, in which a value that moves 1e8 an hour
+    changes by about 1e-8: a fit holds it to that, not to a tolerance below it."""
+
+    def line(times):
+        return (751 + 1e8 * (0.9999925 - times))[:, None]
+
+    (pieces,) = fitted(line, 0.99999, 1.0, np.full(1, 1e-16), ['yard.stock'])
+    ((at, opening, shape),) = pieces
+    for time in (0.99999, 0.999992, 0.9999925, 0.999999):
+        made = opening + shape.increase(time - at)
+        assert abs(made - line(np.array([time]))[0, 0]) <= recording.SAMPLED * 1e8 * np.spacing(1.0)
+
+
+def test_a_steep_part_elsewhere_does_not_widen_a_quiet_part():
+    def quiet(times):
+        return 1e-4 * np.sin(3 * times)
+
+    def kinked(times):
+        return np.where(times < 1, quiet(times), quiet(1.0) + 1e12 * (times - 1))
+
+    tolerance = np.full(1, 1e-12)
+    (alone,) = fitted(lambda times: quiet(times)[:, None], 0.0, 1.0, tolerance)
+    (both,) = fitted(lambda times: kinked(times)[:, None], 0.0, 2.0, tolerance)
+    assert len(alone) > 1 and repr([piece for piece in both if piece[0] < 1]) == repr(alone)
+
+
 def curve_program():
     builder = Builder({'h': {'time': 1}})
     builder.entity(

@@ -174,8 +174,13 @@ SHORTEST = 1e-9
 # A fit holds a value to its tolerance, or to this part of its largest size in the piece, which
 # the roundoff of a value far from zero allows.
 RELATIVE = 1e-12
-# The most cuts of one value in one fit: after them, each of its pieces holds what its fit gives.
+# The most cuts of one value in one fit: a value that needs more is a failure (`fitted`).
 MOST = 4096
+# A float holds a time only to its spacing there, so a value that moves at a rate r is sampled only
+# to within about r times that spacing. A check of a fit allows this many such spacings.
+SAMPLED = 4
+# The sample interval on each side of a check: the check at the start of a piece has none before it.
+_AROUND = np.maximum(np.arange(DEGREE + 1) - 1, 0)
 # The fields of a flow, a route and an endpoint, and of a leg of a route, which is the positive part of
 # the route's rate and request in its direction (spec, "What each scope can see").
 FIELDS = ('actual_rate', 'request', 'capacity')
@@ -186,6 +191,17 @@ def _times(start, end, points):
     """The fit samples the segment before its endpoint. On a short span even an interior
     Chebyshev node can round to the endpoint, where the next branch may already apply."""
     return np.minimum(start + (points + 1.0) * 0.5 * (end - start), math.nextafter(end, start))
+
+
+def _sampled(times, nodes, start, end):
+    """For each check of each value: `SAMPLED` spacings of a float time on the piece, times the slope
+    between the two samples around the check. The slope is local, so a steep part of a piece does not
+    widen the allowance of a check in a quiet part."""
+    steps = np.diff(times)[:, None]
+    rises = np.abs(np.diff(nodes, axis=0))
+    with np.errstate(divide='ignore', invalid='ignore'):
+        slopes = np.where(steps > 0, rises / steps, 0.0)
+    return SAMPLED * np.spacing(max(abs(start), abs(end))) * slopes[_AROUND]
 
 
 def _product(matrix, columns):
@@ -207,15 +223,19 @@ def fitted(values, start, end, tolerance, names=None):
     and the fit and the check of a value do not depend on the others (`_product`). So its pieces are
     those of a fit of that value alone. The values share each call of `values`.
 
-    A piece shorter than `SHORTEST` is not checked: it holds what its fit gives. A value whose fit
-    still misses after `MOST` cuts of it is a failure, by its name in `names`: no value of a real run
-    comes near that many (a formula's failure makes it unavailable there, `_numbers`)."""
+    A check allows a value at least the error that the times of its samples give (`_sampled`): a
+    value that moves fast at a late time changes within the spacing of a float time, and no fit can
+    hold it closer than that. A piece shorter than `SHORTEST` is not checked: it holds what its fit
+    gives. A value whose fit still misses after `MOST` cuts of it is a failure, by its name in
+    `names`: no value of a real run comes near that many (a formula's failure makes it unavailable
+    there, `_numbers`)."""
     found = [[] for _ in tolerance]
     tolerance = np.asarray(tolerance, dtype=float)
     pending, cuts = [(start, end, np.arange(len(found)))], np.zeros(len(found), dtype=int)
     while pending:
         a, b, columns = pending.pop()
-        nodes = values(_times(a, b, _NODES))[:, columns]
+        times = _times(a, b, _NODES)
+        nodes = values(times)[:, columns]
         coefficients = _product(_FIT_MATRIX, nodes)
         allowed = np.maximum(tolerance[columns], RELATIVE * np.max(np.abs(nodes), axis=0))
         checked = np.full(len(columns), b - a > SHORTEST)
@@ -225,7 +245,8 @@ def fitted(values, start, end, tolerance, names=None):
             widened = np.maximum(allowed, RELATIVE * np.max(np.abs(checks), axis=0))
             allowed = np.where(checked, widened, allowed)
             made = _product(_CHECK_MATRIX, coefficients) + first
-            missed = checked & np.any(np.abs(made - checks) > allowed, axis=0)
+            sampled = np.maximum(allowed, _sampled(times, nodes, a, b))
+            missed = checked & np.any(np.abs(made - checks) > sampled, axis=0)
             if missed.any():
                 over = columns[missed & (cuts[columns] >= MOST)]
                 if len(over):
