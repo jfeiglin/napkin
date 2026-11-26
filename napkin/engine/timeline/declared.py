@@ -1946,7 +1946,7 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
                 opening = self.run.stock_balance(store, start)
                 yield store, [(start, float(opening), float(rate))]
         else:
-            yield from zip(self.stores, fitted(states, start, end, self.atol))
+            yield from zip(self.stores, fitted(states, start, end, self.atol, self.stores))
         names = [*self.recorded, *self.connected.results]
 
         def answers(times):
@@ -1964,7 +1964,7 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
             ]
         )
         if names:
-            yield from zip(names, fitted(answers, start, end, tolerance))
+            yield from zip(names, fitted(answers, start, end, tolerance, names))
 
     def incoming_history(self, end):
         """Record the incoming answer while the trial solves still see their original inputs."""

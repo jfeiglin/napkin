@@ -194,7 +194,7 @@ def _product(matrix, columns):
     return np.add.accumulate(matrix[:, :, None] * columns, axis=1)[:, -1]
 
 
-def fitted(values, start, end, tolerance):
+def fitted(values, start, end, tolerance, names=None):
     """The pieces of k values from `start` to `end`: one list for each value, each piece a (time,
     value, rate). `values(times)` gives an array of one row for each time; `tolerance` holds one
     number for each value, which a fit may widen to `RELATIVE` of the value's largest size in the
@@ -207,8 +207,9 @@ def fitted(values, start, end, tolerance):
     and the fit and the check of a value do not depend on the others (`_product`). So its pieces are
     those of a fit of that value alone. The values share each call of `values`.
 
-    A piece shorter than `SHORTEST` is not checked, nor is a piece of a value after `MOST` cuts of
-    that value: each holds what its fit gives. Nothing reports a value that reaches `MOST`."""
+    A piece shorter than `SHORTEST` is not checked: it holds what its fit gives. A value whose fit
+    still misses after `MOST` cuts of it is a failure, by its name in `names`: no value of a real run
+    comes near that many (a formula's failure makes it unavailable there, `_numbers`)."""
     found = [[] for _ in tolerance]
     tolerance = np.asarray(tolerance, dtype=float)
     pending, cuts = [(start, end, np.arange(len(found)))], np.zeros(len(found), dtype=int)
@@ -217,7 +218,7 @@ def fitted(values, start, end, tolerance):
         nodes = values(_times(a, b, _NODES))[:, columns]
         coefficients = _product(_FIT_MATRIX, nodes)
         allowed = np.maximum(tolerance[columns], RELATIVE * np.max(np.abs(nodes), axis=0))
-        checked = (cuts[columns] < MOST) & (b - a > SHORTEST)
+        checked = np.full(len(columns), b - a > SHORTEST)
         if checked.any():
             checks = values(_times(a, b, _CHECKS))[:, columns]
             first = checks[0]
@@ -226,6 +227,12 @@ def fitted(values, start, end, tolerance):
             made = _product(_CHECK_MATRIX, coefficients) + first
             missed = checked & np.any(np.abs(made - checks) > allowed, axis=0)
             if missed.any():
+                over = columns[missed & (cuts[columns] >= MOST)]
+                if len(over):
+                    name = names[int(over[0])] if names is not None else 'a value'
+                    raise SimulationError(
+                        f'the fit of {name} from {a:g} to {b:g} h needed more than {MOST} cuts'
+                    )
                 middle = 0.5 * (a + b)
                 pending += [(middle, b, columns[missed]), (a, middle, columns[missed])]
                 cuts[columns[missed]] += 1
@@ -555,7 +562,8 @@ class Recorder:
                 return np.array([context.project(solution(at))[order] for at in times])
 
             for a, b in spans:
-                for k, pieces in zip(order, fitted(states, float(a), float(b), tolerance)):
+                fits = fitted(states, float(a), float(b), tolerance, [stores[k] for k in order])
+                for k, pieces in zip(order, fits):
                     if a == start:
                         pieces[0] = (start, float(segment.first[k]), pieces[0][2])
                     self.add_pieces(stores[k], pieces)
@@ -570,7 +578,9 @@ class Recorder:
         for a, b in spans:
             for name, pieces in zip(
                 flows,
-                fitted(lambda times: component.delivered(segment, times), float(a), float(b), tolerance),
+                fitted(
+                    lambda times: component.delivered(segment, times), float(a), float(b), tolerance, flows
+                ),
             ):
                 self.add_pieces(name, pieces)
 

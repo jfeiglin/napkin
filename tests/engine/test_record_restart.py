@@ -5,6 +5,7 @@ from math import exp, nextafter
 import numpy as np
 import pytest
 
+from napkin.engine.errors import SimulationError
 from napkin.engine.timeline import Plan, Run, read
 from napkin.engine.timeline import record as recording
 from napkin.engine.timeline.record import Recorder, fitted
@@ -45,9 +46,9 @@ def test_a_line_fits_to_the_same_bytes_alone_and_beside_another_value(neighbour)
     assert len(alone) == 1 and repr(beside) == repr(alone)
 
 
-def test_a_value_at_the_cut_limit_leaves_the_cuts_of_another_value(monkeypatch):
-    """The cut limit counts the cuts of each value: a value that never fits uses up its own, and a
-    value beside it is checked and cut as it would be alone."""
+def test_a_value_past_the_cut_limit_is_a_failure_by_its_name(monkeypatch):
+    """The cut limit counts the cuts of each value. A value whose fit still misses after them is a
+    failure by its name; a smooth value beside it is cut as it would be alone."""
     monkeypatch.setattr(recording, 'MOST', 8)
 
     def smooth(times):
@@ -55,10 +56,16 @@ def test_a_value_at_the_cut_limit_leaves_the_cuts_of_another_value(monkeypatch):
 
     tolerance = np.full(2, 1e-12)
     (alone,) = fitted(lambda times: smooth(times)[:, None], 0.0, 2.0, tolerance[:1])
-    rough, beside = fitted(
-        lambda times: np.column_stack((np.sin(1e6 * times), smooth(times))), 0.0, 2.0, tolerance
-    )
-    assert len(rough) == 1 + 8 and len(alone) > 1 and repr(beside) == repr(alone)
+    (again,) = fitted(lambda times: smooth(times)[:, None], 0.0, 2.0, tolerance[:1], ['tank.smooth'])
+    assert len(alone) > 1 and repr(again) == repr(alone)
+    with pytest.raises(SimulationError, match=r'the fit of tank\.rough from .* needed more than 8 cuts'):
+        fitted(
+            lambda times: np.column_stack((np.sin(1e6 * times), smooth(times))),
+            0.0,
+            2.0,
+            tolerance,
+            ['tank.rough', 'tank.smooth'],
+        )
 
 
 def curve_program():

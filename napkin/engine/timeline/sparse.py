@@ -1325,7 +1325,8 @@ class Sparse(MovingTransfers, Way):
             def states(times):
                 return np.array([solution(at)[self.kept_stores] for at in times])
 
-            for k, rows in zip(self.kept_stores, fitted(states, start, end, tolerance), strict=True):
+            names = [self.stores[k] for k in self.kept_stores]
+            for k, rows in zip(self.kept_stores, fitted(states, start, end, tolerance, names), strict=True):
                 yield self.stores[k], rows
 
         if self.kept_flows and not (
@@ -1347,7 +1348,9 @@ class Sparse(MovingTransfers, Way):
             measured = self.measured
             try:
                 with self._reading_rates():
-                    columns = fitted(delivered, start, end, tolerance)
+                    columns = fitted(
+                        delivered, start, end, tolerance, [self.recorded[k] for k in self.kept_flows]
+                    )
             finally:
                 self.measured = measured
             for k, rows in zip(self.kept_flows, columns, strict=True):

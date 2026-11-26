@@ -232,7 +232,12 @@ def test_private_prefix_uses_the_same_joint_fit_as_the_completed_step(model):
         return np.array([solution(t) for t in times])
 
     expected = dict(zip(way.stores, fitted(states, start, end, way.atol), strict=True))
-    assert len(expected['tank.water']) == len(expected['tank.spare']) > 1
+    # Each store is cut on its own: the held store keeps one piece, its moving neighbour its cuts,
+    # and each has the pieces of a fit of that store alone.
+    assert len(expected['tank.water']) == 1 < len(expected['tank.spare'])
+    for k, name in enumerate(way.stores):
+        alone = fitted(lambda times, k=k: states(times)[:, k : k + 1], start, end, way.atol[k : k + 1])
+        assert alone == [expected[name]]
     at = start + 0.7 * (end - start)
     view = run.recorder.projection()
     way.record_through(at, view)
