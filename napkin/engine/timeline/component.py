@@ -641,6 +641,12 @@ class ComponentWay(MovingTransfers, Way):
     def begin(self):
         """Nothing yet: the first segment is made when the run asks for it."""
 
+    def refresh(self, t):
+        """At a key time: the keyed reads by the time take their values there (`dynamics.field`)."""
+        self.cut(t)
+        self._stepped(t)
+        self._drift = None
+
     def retire(self, key):
         """The set leaves the run's ways."""
         self.alive = False
