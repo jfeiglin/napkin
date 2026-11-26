@@ -1,7 +1,11 @@
 """Reachability (`napkin/program/reach.py`, D16): which events can start and which values each named
 state can take under a configuration, each with its reason. The expected conclusions are worked by
-hand from the rules of the module's docstring."""
+hand from the rules of the module's docstring. The runs of generated models check the other side: an
+event that a run starts is one that can start."""
 
+import pytest
+
+from napkin.engine import run
 from napkin.program.build import (
     BOOL,
     Builder,
@@ -28,6 +32,7 @@ from napkin.program.build import (
 from napkin.program.config import Configuration, InputValue, Request
 from napkin.program.reach import reach
 from napkin.program.refs import EnumValue
+from tests.engine.port_cases import Case, Spelling, text_program
 from tests.program.examples import EXAMPLES, UNITS
 
 
@@ -161,3 +166,14 @@ def test_the_locals_of_an_event_take_their_start_and_assigned_values():
         'WEIGHING': (True, 'its start value'),
         'ADDED': (True, 'grinder.refill.step[0].do[1] sets it'),
     }
+
+
+@pytest.mark.parametrize('seed', range(5))
+def test_every_event_that_a_run_starts_can_start(seed):
+    """ "Cannot start" is a proof, so no run of the same configuration starts such an event. A model of
+    the generated corpus (`tests/engine/port_cases.py`) starts events in its setup and by a trigger."""
+    model = text_program(Case.of(seed), Spelling())
+    started = run(model.program, model.configuration).entries('start')
+    events = reach(model.program, model.configuration).events
+    assert started
+    assert [entry.part for entry in started if not events[entry.part][0]] == []

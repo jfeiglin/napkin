@@ -117,7 +117,18 @@ the regular tier.
 | Tier | Command | What it runs |
 | --- | --- | --- |
 | Regular | `.venv/bin/python -m pytest -m 'not deep'` | Every test that has no `deep` mark. The corpus runs 300 seeds. |
+| Everyday | `python -m pytest -q -n 12 --ignore=scenarios/tests/test_catalogue.py` | The regular tier without the catalogue test. |
 | Deep | `.venv/bin/python -m pytest -m deep` | Only the tests with the `deep` mark: detailed or slow checks. The corpus runs 88,000 pairs. |
+
+The catalogue test (`scenarios/tests/test_catalogue.py`) runs each scenario. It uses most of the
+time of the regular tier, so the everyday command leaves it out. `python -B -m tools.check --all`
+and the scenario checks (`python -B -m tools.check --scenario ID`) still run it. Two regular tests
+make two of its generic checks on small models:
+
+- `tests/program/test_reach.py`: each event that a run of a generated model starts is an event that
+  can start (`napkin/program/reach.py`).
+- `tests/engine/test_report.py`: a report with its optional parts and its diagnostics converts to
+  JSON with no NaN.
 
 To check a change:
 

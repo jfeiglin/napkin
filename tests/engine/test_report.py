@@ -8,9 +8,10 @@ ramp over a window.
 
 from __future__ import annotations
 
+import json
 import math
 import textwrap
-from dataclasses import replace
+from dataclasses import asdict, replace
 
 import pytest
 
@@ -340,6 +341,54 @@ def test_the_report_lists_each_near_tie_of_the_run():
     assert (tie.t, tie.kind, tie.part, tie.owner) == (1, 'fire', 'tank.alarm.when[0]', 'tank')
     assert tie.difference == (0.1 + 0.2) - 0.3 and tie.tolerance == pytest.approx(1e-9)
     assert 'this trigger fired within tolerance of its threshold' in tie.message
+
+
+FROZEN = """
+    scenario "Frozen batch"
+        horizon 3 h
+    tank:
+        title "Main tank"
+        water: L = 10 L  @measured
+            "Water in the tank"
+        level: L = 0 L in [0 L,]
+        top = event():
+            after 1 h:
+                this.level += 0.1 L
+                this.level += 0.2 L
+        alarm = event():
+            when this.level >= 0.3 L:
+                this.alarm.start()
+            after 0 h
+        retire = event():
+            batch: L = 0 L in [0 L,] scale 1000000000 L
+            after 1 h
+        watch = event():
+            job = this.retire.occurrences.at(t)
+            flow pour: this.water -> job.batch
+                request = 0 L/h
+            after 1 h:
+                pour.request = 0.1 L/h
+            after 3 h
+    record measured: source "A gauge reading."
+    tank.top.start()
+    tank.retire.start()
+    tank.watch.start()
+    """
+
+
+def test_a_report_with_its_optional_parts_and_diagnostics_is_strict_json():
+    """The report has a label, a title, a lag with its note, a trail that cites a record and a
+    near-tie. The pour into the frozen batch passes its allowance of 1e-10 times 1e9 L at 2 h: the run
+    fails, the failure names the leg, and the value at 2.5 h is unavailable. All of it is JSON with
+    no NaN. Only a refused placement fills `attempts` and `placements`."""
+    found = reported(
+        compiled(FROZEN), ['tank.water', 'tank.level'], [1.5, 2.5], lags={'tank.level': Lag(0.5, 0.5)}
+    )
+    water, level = found.values
+    assert water.label and water.title and water.trail and level.lag and level.note
+    assert isinstance(water.values[-1], Unavailable)
+    assert found.near_ties[0].title and found.records and found.stopped and found.violations
+    json.dumps(asdict(found), allow_nan=False)
 
 
 def test_a_count_of_occurrences_rests_on_its_event_and_trigger_and_can_be_lagged():

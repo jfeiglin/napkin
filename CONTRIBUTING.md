@@ -224,8 +224,14 @@ fix. A refresh of the committed summaries is a separate task.
 | Tier | Command | What it runs |
 | --- | --- | --- |
 | Regular | `python -B -m pytest` | Each test without the mark `deep`. The generated corpus runs 300 seeds. |
+| Everyday | `python -m pytest -q -n 12 --ignore=scenarios/tests/test_catalogue.py` | The regular tier without the catalogue test |
 | Deep | `python -B -m pytest -m deep` | Only the tests with the mark `deep`: detailed or slow checks. The generated corpus runs 88,000 pairs of a seed and a transformation. |
 | Both | `python -B -m pytest -m "deep or not deep"` | Each test |
+
+Use the everyday command for usual work. `-n 12` starts 12 workers: set it to the number of cores of
+your computer. The catalogue test (`scenarios/tests/test_catalogue.py`) runs each scenario. It has
+few test cases, but it uses most of the time of the regular tier. `python -B -m tools.check --all`
+and the scenario checks (`python -B -m tools.check --scenario ID`) still run it.
 
 The deep tier is slow. Do it by hand, never in the automatic check. Keep each regular test within
 about 10 seconds. Make a slower test smaller, or mark it `deep`.
@@ -382,6 +388,10 @@ Each scenario owns its specific tests and its frozen inputs. The shared mathemat
 parameters across scenarios stay central. Central tests can loop over the folders of the scenarios
 that they find. Assertions, expected orders, fixtures and oracle input maps that name a scenario
 belong to its folder.
+
+The catalogue owns the expectations of its scenarios, such as the order of an output across the
+named runs (`expected-orders.json`). When a scenario shows a bug in the engine, add a minimal
+regression test to `tests/engine/`. The test must show the bug without the scenario.
 
 In a package, the assertions that apply to every variant go in the `tests/` of the package. The
 assertions of one variant go in its own folder. The locator of the catalogue (`tools/catalogue.py`)
