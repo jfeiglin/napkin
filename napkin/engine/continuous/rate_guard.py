@@ -10,13 +10,22 @@ The roundoff of the floating calculation is an estimate (`_roundoff`), not a bou
 from __future__ import annotations
 
 import math
-from functools import lru_cache
+from functools import cache, lru_cache
+
+import numpy as np
+from scipy.integrate._ivp.radau import C
 
 from ...core import derivatives, expr, intervals, ops
 from ...core.comparisons import against
 from ...core.errors import ExpressionError
 from ..errors import SimulationError
 from ..solvers import retry_shorter
+from .transfers import _WEIGHTS
+
+# What a proof can raise when a bound is unavailable.
+_UNPROVED = (ExpressionError, ArithmeticError, LookupError, TypeError, ValueError, RecursionError)
+# The most halvings of a step's proof cell before the guard retries the physical step.
+DEPTH = 4
 
 
 def _bind(run, name, definition, fixed, aliases, operands):
@@ -150,9 +159,50 @@ class _Ranges:
                 part = expr.if_else(part, expr.const(1), expr.const(0))
             try:
                 self.found[index] = self.bound(part)
-            except (ExpressionError, ArithmeticError, LookupError, TypeError, ValueError, RecursionError):
+            except _UNPROVED:
                 self.found[index] = intervals.WHOLE
         return self.found[index]
+
+
+def _subdivided(error, start, end, allowance):
+    """A bound on the error on every prefix of [start, end] as a sum over cells, or None.
+
+    `error(a, b)` bounds the integrated error on the cell [a, b]. A prefix meets its cells, so its
+    error is at most the sum of their errors: all cells share the one allowance. Halve the cell with
+    the largest error, to DEPTH halvings of the step, until the sum fits."""
+    middle = start + (end - start) / 2
+    cells = [(error(start, middle), start, middle, 1), (error(middle, end), middle, end, 1)]
+    while (total := math.fsum(cell[0] for cell in cells)) > allowance:
+        # Stop when the cells cannot fit even if each halving left halves their errors. This only
+        # saves work: the step is then retried. A cell with no finite bound yet can still fit.
+        hoped = (
+            size / 2 ** (DEPTH - depth) for size, _, _, depth in cells if size < math.inf or depth == DEPTH
+        )
+        if math.fsum(hoped) > allowance:
+            return None
+        worst = max(cell for cell in cells if cell[3] < DEPTH)
+        cells.remove(worst)
+        _, a, b, depth = worst
+        middle = a + (b - a) / 2
+        cells += [(error(a, middle), a, middle, depth + 1), (error(middle, b), middle, b, depth + 1)]
+    return total
+
+
+def _stage_range(stages, a, b):
+    """The range on [a, b] (fractions of the step) of the quadratic through rates in the three stage
+    intervals. It is the range of the quadratic through their middles, widened by their half-widths
+    times the sum of the absolute Lagrange basis values (below 5), and by its own rounding."""
+    middles = [low + (high - low) / 2 for low, high in stages]
+    c0, c1, c2 = (_WEIGHTS @ middles).tolist()
+    points = [a, b]
+    if c2 and a < -c1 / (2 * c2) < b:
+        points.append(-c1 / (2 * c2))
+    values = [c0 + x * (c1 + x * c2) for x in points]
+    spread = 2.5 * max(high - low for low, high in stages)
+    spread += 16 * math.ulp(1.0) * float(np.sum(np.abs(_WEIGHTS) @ np.abs(middles)))
+    if not all(map(math.isfinite, (*values, spread))):
+        return intervals.WHOLE
+    return min(values) - spread, max(values) + spread
 
 
 def _shorter_step(start, end):
@@ -268,18 +318,64 @@ class RateGuard:
                 return None
             results = {against(op, g, w) for g in (lo, hi, min(max(0, lo), hi)) for w in (low, high)}
             return results.pop() if len(results) == 1 else None
-        except (ExpressionError, ArithmeticError, LookupError, TypeError, ValueError, RecursionError):
+        except _UNPROVED:
             return None
 
-    def _bounds(self, node, start, end, allowance):
-        """Bound the integrated error on every prefix in real arithmetic. Then add an estimate of roundoff."""
+    def _taken(self, node, start, end):
+        """The polynomial that the solver took for `node` on [start, end]: intervals of the rate at its
+        three stage times, and a function that estimates the rounding of their floating calculation."""
+        h = end - start
+        times = (start + h * float(C[0]), start + h * float(C[1]), end)
+        stages = [self.prove.over({**self.fixed, 't': (at, at)})(node) for at in times]
+
+        def rounding():
+            try:
+                prove = self.prove.over({**self.fixed, 't': (start, end)})
+                return _roundoff(node, prove, max(abs(start), abs(end)))
+            except _UNPROVED:
+                return math.inf
+
+        return stages, rounding
+
+    def _bounds(self, node, start, end, allowance, taken=None):
+        """Bound the integrated error on every prefix in real arithmetic. Then add an estimate of roundoff.
+
+        When the whole step does not fit, bound it on cells of the step (`_subdivided`). A cell has no
+        stage times of its own, so the error on a cell is the gap between the ranges of the rate and of
+        the polynomial that the solver took over the whole step (`taken()`), times the length of the
+        cell. With no `taken`, the whole step must fit."""
         if node is None:
             return math.inf, math.inf
+        mathematical, with_roundoff = self._whole(node, start, end, allowance)
+        if mathematical <= allowance or taken is None:
+            return mathematical, with_roundoff
+        duration = end - start
+        try:
+            stages, rounding = taken()
+        except _UNPROVED:
+            return mathematical, with_roundoff
+
+        def error(a, b):
+            try:
+                low, high = self.prove.over({**self.fixed, 't': (a, b)})(node)
+            except _UNPROVED:
+                return math.inf
+            p_low, p_high = _stage_range(stages, (a - start) / duration, (b - start) / duration)
+            gap = max(high - p_low, p_high - low)
+            return math.nextafter(gap * (b - a), math.inf) if math.isfinite(gap) else math.inf
+
+        found = _subdivided(error, start, end, allowance)
+        if found is None:
+            return mathematical, with_roundoff
+        return found, min(with_roundoff, found + 6 * duration * rounding())
+
+    def _whole(self, node, start, end, allowance):
+        """The bounds of `_bounds` from the whole step: its range, else its third derivative."""
         duration = end - start
         prove = self.prove.over({**self.fixed, 't': (start, end)})
         try:
             low, high = prove(node)
-        except (ExpressionError, ArithmeticError, LookupError, TypeError, ValueError, RecursionError):
+        except _UNPROVED:
             return math.inf, math.inf
         if not math.isfinite(low) or not math.isfinite(high):
             return math.inf, math.inf
@@ -303,14 +399,24 @@ class RateGuard:
                     # differ, especially after cancellation of large operands.
                     rounding = _roundoff(smooth, prove, max(abs(start), abs(end)))
                     with_roundoff = min(range_error, interpolation + 6 * duration * rounding)
-            except (ExpressionError, ArithmeticError, LookupError, TypeError, ValueError, RecursionError):
+            except _UNPROVED:
                 pass  # the range bound still applies when a derivative is unavailable
         return mathematical, with_roundoff
 
-    def check(self, solver):
+    def check(self, solver, taken=None):
+        """Notes on the rates of a trial step, or None to retry it shorter. `taken` gives, by name, the
+        polynomial that the solver took for a rate (`_taken`). By default the solver took this guard's
+        rates."""
         start, end = solver.t_old, solver.t
         duration = end - start
-        notes = self.authored.check(solver) if self.authored is not None else {}
+        own = {
+            name: cache(lambda node=node: self._taken(node, start, end))
+            for name, node, _ in self.rates
+            if node is not None
+        }
+        taken = own if taken is None else taken
+        # The authored expression is checked against the polynomial of the arm that the solver used.
+        notes = self.authored.check(solver, own) if self.authored is not None else {}
         if notes is None:
             return None
         for name, node, rows in self.rates:
@@ -322,7 +428,7 @@ class RateGuard:
                 # so the step stands, with a note: a check must not make a correct model fail.
                 notes[name] = ('the guard cannot read this rate', float(budget), math.inf, math.inf)
                 continue
-            mathematical, with_roundoff = self._bounds(node, start, end, budget)
+            mathematical, with_roundoff = self._bounds(node, start, end, budget, taken.get(name))
             if with_roundoff <= budget:
                 continue
             # A physically selected arm and the authored expression can both

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 from scipy.integrate import Radau
+from scipy.integrate._ivp.radau import C
 
 from napkin.core import expr
 from napkin.engine.continuous import rate_guard
@@ -449,9 +450,9 @@ def test_a_kink_costs_the_guard_what_its_two_argument_spelling_costs(kinked, spe
     checks = []
     check = rate_guard.RateGuard.check
 
-    def counted(self, solver):
+    def counted(self, solver, *taken):
         checks.append(solver.t)
-        return check(self, solver)
+        return check(self, solver, *taken)
 
     monkeypatch.setattr(rate_guard.RateGuard, 'check', counted)
     counts = []
@@ -469,3 +470,23 @@ yard:
         assert record.history(Key('yard', ('water',))).at(10) == pytest.approx(total, rel=1e-9)
         counts.append(len(checks))
     assert counts[1] <= 2 * counts[0]
+
+
+def test_a_cell_bound_sees_the_halfway_error_that_a_whole_step_hides():
+    # The quadratic through t**3 at the three Radau nodes integrates [0, 1] exactly, but [0, 0.5]
+    # 0.003125 short. A cell has no nodes of its own: no bound may shrink the step's remainder to it.
+    g = guard(expr.read('t ** 3'))
+    _, node, _ = g.rates[0]
+    nodes = SimpleNamespace(t_old=0.0, h=1.0, leg_rates=tuple(float(c) ** 3 for c in C))
+    assert radau_amount(nodes, 1.0, None) == pytest.approx(0.25, rel=1e-12)
+    assert radau_amount(nodes, 0.5, None) == pytest.approx(0.5**4 / 4 - 0.003125, rel=1e-12)
+    mathematical, _ = g._bounds(node, 0.0, 1.0, 0.003, lambda: g._taken(node, 0.0, 1.0))
+    assert mathematical >= 0.003125
+    solver = SimpleNamespace(t_old=0.0, t=1.0, rtol=0.0, atol=[0.003], y=[0.0], y_old=[0.0])
+    assert g.check(solver) is None
+
+
+def test_the_cells_of_a_step_share_its_one_allowance():
+    # Each half alone fits in the allowance. Together they do not, at any depth.
+    assert rate_guard._subdivided(lambda a, b: 1.2 * (b - a), 0.0, 1.0, 1.0) is None
+    assert rate_guard._subdivided(lambda a, b: 0.6 * (a < 0.5), 0.0, 1.0, 1.0) == 0.6
