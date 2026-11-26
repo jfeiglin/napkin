@@ -45,6 +45,22 @@ def test_a_line_fits_to_the_same_bytes_alone_and_beside_another_value(neighbour)
     assert len(alone) == 1 and repr(beside) == repr(alone)
 
 
+def test_a_value_at_the_cut_limit_leaves_the_cuts_of_another_value(monkeypatch):
+    """The cut limit counts the cuts of each value: a value that never fits uses up its own, and a
+    value beside it is checked and cut as it would be alone."""
+    monkeypatch.setattr(recording, 'MOST', 8)
+
+    def smooth(times):
+        return np.exp(times)
+
+    tolerance = np.full(2, 1e-12)
+    (alone,) = fitted(lambda times: smooth(times)[:, None], 0.0, 2.0, tolerance[:1])
+    rough, beside = fitted(
+        lambda times: np.column_stack((np.sin(1e6 * times), smooth(times))), 0.0, 2.0, tolerance
+    )
+    assert len(rough) == 1 + 8 and len(alone) > 1 and repr(beside) == repr(alone)
+
+
 def curve_program():
     builder = Builder({'h': {'time': 1}})
     builder.entity(

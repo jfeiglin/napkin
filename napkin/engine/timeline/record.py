@@ -174,7 +174,7 @@ SHORTEST = 1e-9
 # A fit holds a value to its tolerance, or to this part of its largest size in the piece, which
 # the roundoff of a value far from zero allows.
 RELATIVE = 1e-12
-# The most cuts of one fit: after them, each piece holds what its fit gives.
+# The most cuts of one value in one fit: after them, each of its pieces holds what its fit gives.
 MOST = 4096
 # The fields of a flow, a route and an endpoint, and of a leg of a route, which is the positive part of
 # the route's rate and request in its direction (spec, "What each scope can see").
@@ -205,34 +205,37 @@ def fitted(values, start, end, tolerance):
 
     Each value is cut on its own: a piece is cut in two only for the values whose fit misses there,
     and the fit and the check of a value do not depend on the others (`_product`). So its pieces are
-    those of a fit of that value alone. The values share each call of `values`."""
+    those of a fit of that value alone. The values share each call of `values`.
+
+    A piece shorter than `SHORTEST` is not checked, nor is a piece of a value after `MOST` cuts of
+    that value: each holds what its fit gives. Nothing reports a value that reaches `MOST`."""
     found = [[] for _ in tolerance]
     tolerance = np.asarray(tolerance, dtype=float)
-    pending, cuts = [(start, end, np.arange(len(found)))], 0
+    pending, cuts = [(start, end, np.arange(len(found)))], np.zeros(len(found), dtype=int)
     while pending:
         a, b, columns = pending.pop()
         nodes = values(_times(a, b, _NODES))[:, columns]
         coefficients = _product(_FIT_MATRIX, nodes)
         allowed = np.maximum(tolerance[columns], RELATIVE * np.max(np.abs(nodes), axis=0))
-        checked = b - a > SHORTEST and cuts < MOST
-        if checked:
+        checked = (cuts[columns] < MOST) & (b - a > SHORTEST)
+        if checked.any():
             checks = values(_times(a, b, _CHECKS))[:, columns]
             first = checks[0]
-            allowed = np.maximum(allowed, RELATIVE * np.max(np.abs(checks), axis=0))
+            widened = np.maximum(allowed, RELATIVE * np.max(np.abs(checks), axis=0))
+            allowed = np.where(checked, widened, allowed)
             made = _product(_CHECK_MATRIX, coefficients) + first
-            missed = np.any(np.abs(made - checks) > allowed, axis=0)
+            missed = checked & np.any(np.abs(made - checks) > allowed, axis=0)
             if missed.any():
                 middle = 0.5 * (a + b)
                 pending += [(middle, b, columns[missed]), (a, middle, columns[missed])]
-                cuts += 1
+                cuts[columns[missed]] += 1
                 held = ~missed
-                columns, first, allowed = columns[held], first[held], allowed[held]
+                columns, first, allowed, checked = columns[held], first[held], allowed[held], checked[held]
                 nodes, checks, coefficients = nodes[:, held], checks[:, held], coefficients[:, held]
+            constant = np.all(nodes == first, axis=0) & (np.all(checks == first, axis=0) | ~checked)
         else:
             first = values(np.array([a]))[0, columns]
-        constant = np.all(nodes == first, axis=0)
-        if checked:
-            constant &= np.all(checks == first, axis=0)
+            constant = np.all(nodes == first, axis=0)
         for j, k in enumerate(columns.tolist()):
             at = found[k]
             if constant[j]:
