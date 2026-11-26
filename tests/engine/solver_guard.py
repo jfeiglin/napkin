@@ -37,7 +37,6 @@ class _MomentState(Run):
         self._kept, self._stepped, self._indexes, self._known = {}, {}, {}, {}
         self.recorder = copy(live.recorder)
         self.recorder.trace = []
-        self.recorder._coverage_starts = {}
         self.recorder.run = self
         self.chance = copy(live.chance)
         self.chance.run = self

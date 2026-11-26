@@ -410,7 +410,7 @@ class Occurrences:
 
         def starting(event_key):
             child = plan.events[event_key]
-            if plan.configuration.request.keys or any(isinstance(part, p.Flow) for part in child[3].locals):
+            if any(isinstance(part, p.Flow) for part in child[3].locals):
                 return False
             changes.add(('occurrences', *event_key))
             pending.append((child[:3], child[3], 0, False))

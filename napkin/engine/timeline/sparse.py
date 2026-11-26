@@ -764,9 +764,9 @@ class Sparse(MovingTransfers, Way):
         self.held_levels = self.y
         self.lower_flags = np.zeros(len(stores), dtype=bool)
         self.upper_flags = np.zeros(len(stores), dtype=bool)
-        wanted = run.recorder.wanted
-        self.kept_stores = [k for k, name in enumerate(stores) if wanted(name)]
-        self.kept_flows = [k for k, name in enumerate(self.recorded) if wanted(name)]
+        # Every trajectory is recorded whatever the request (`Recorder.refresh_needed`).
+        self.kept_stores = list(range(len(stores)))
+        self.kept_flows = list(range(len(self.recorded)))
         # The stores of the set that a setting reads through a condition, with those flows.
         self.switches = {}
         for f in self.flows:

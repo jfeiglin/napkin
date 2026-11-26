@@ -447,10 +447,10 @@ class Recorder:
         self.formulas = set()  # the formulas whose pieces the run gives (the family's settings)
         self.run = None  # the run, which knows the entries that each collection keeps
         self.round = 0  # the round of the moment where the run is
-        self._wanted = None  # None denotes a full record.
-        # A missing key has never been skipped. None marks a producer's declined
-        # trajectory; its first later admission sets the start of recorded coverage.
-        self._coverage_starts = {}
+        # The values whose histories a selected record holds; None denotes a full record. Every
+        # raw trajectory is kept whatever the request, so a value that a later start or definition
+        # needs has its history from its own start (`refresh_needed`).
+        self._wanted = None
         self.refresh_needed()
         # A store that edits changed -> (its start, [(time, amount from outside)]) (`external`).
         self.transfers = {}
@@ -493,7 +493,6 @@ class Recorder:
         view._moving = set(self._moving)
         view._raw_positions = dict(self._raw_positions)
         view._counted = dict(self._counted)
-        view._coverage_starts = dict(self._coverage_starts)
         view._raw_due = set(self._raw_due)
         view.pieces = {name: list(pieces) for name, pieces in self.pieces.items()}
         view.trace = list(self.trace)
@@ -642,11 +641,9 @@ class Recorder:
             self._from = min(self._from, pieces[0][0])
 
     def wanted(self, name):
-        """Whether this request retains the trajectory offered by a producer."""
-        if self._wanted is None or name in self._wanted:
-            return True
-        self._coverage_starts.setdefault(name, None)
-        return False
+        """Whether this record holds the history of `name`: every value of a full record, and the
+        values that a selected record needs (`refresh_needed`)."""
+        return self._wanted is None or name in self._wanted
 
     def binding_changed(self, name, at):
         """Invalidate this binding and its readers from the commit onward."""
@@ -654,18 +651,17 @@ class Recorder:
         self._from = min(self._from, at)
 
     def refresh_needed(self):
-        """Refresh a selected record after a commit changes membership or definitions."""
+        """The values that a selected record holds, again after a commit changes membership or
+        definitions. A newly needed value takes its history from its start: its raw inputs are all
+        kept from the start."""
         request = self.plan.configuration.request
         if request.everything:
-            return set()
+            return
         previous = self._wanted
         self._wanted = needed(self.plan, [name_of(key) for key in request.keys], self.plan.defined)
-        added = self._wanted.difference(previous) if previous is not None else set()
-        joined = added.intersection(self._coverage_starts)
-        if joined:
-            # Replace the mapping so a failed commit can restore its earlier coverage.
-            self._coverage_starts = self._coverage_starts | dict.fromkeys(joined, self.run.now)
-        return added
+        if previous is not None and not self._wanted <= previous:
+            self._indexed_value_count = None  # index the newly held histories (`_prepare_histories`)
+            self._dirty.update(self._wanted - previous)
 
     # ---- the committed histories -----------------------------------------------------------------
 
@@ -678,11 +674,8 @@ class Recorder:
         """Order the histories that this request retains and index their direct readers."""
         plan = self.plan
         request = plan.configuration.request
-        wanted = self._wanted
         started = {entry.owner for entry in self.trace if entry.kind == 'start'} | {None}
-        names = [
-            n for n in plan.values if (wanted is None or n in wanted) and plan.occurrence_of(n) in started
-        ]
+        names = [n for n in plan.values if self.wanted(n) and plan.occurrence_of(n) in started]
         calculated = {
             n
             for n in names
@@ -757,12 +750,7 @@ class Recorder:
                 history = self._derived_history(name, value, end, start)
             else:
                 history = self._raw_history(name, value, end)
-                if not history.pieces and self._coverage_starts.get(name) is not None:
-                    # At the join only the private cutoff view can see this opening.
-                    self._moving.add(name)
-                elif history.pieces and (
-                    history.pieces[-1].curve is not None or history.pieces[-1].rate != 0
-                ):
+                if history.pieces and (history.pieces[-1].curve is not None or history.pieces[-1].rate != 0):
                     self._moving.add(name)
                 else:
                     self._moving.discard(name)
@@ -791,57 +779,11 @@ class Recorder:
                     pending.append(reader)
         return sorted(changed, key=self._order.__getitem__)
 
-    def _at_cutoff(self, end):
-        """A check sees the settled opening even if the first outgoing segment is still pending."""
-        if not self._coverage_starts:
-            return self
-        openings = {
-            name
-            for name, start in self._coverage_starts.items()
-            if start == end and name in self._histories and not self._histories[name].pieces
-        }
-        if not openings:
-            return self
-        view = copy(self)
-        view._histories = dict(self._histories)
-        view._counted = dict(self._counted)
-        view._private = set()
-        view.fits = copy(self.fits)
-        view.fits.closed = dict(self.fits.closed)
-        for name in self._affected(set(openings)):
-            value = self.plan.values[name]
-            if name in openings:
-                settled = self.run.present(name)
-                history = History(value.key, (Piece(end, settled),))
-            else:
-                history = view._derived_history(name, value, end, end)
-            view._put(name, history)
-        return view
-
     def _put(self, name, history):
         if name in self._counted:
             self._total += len(history.pieces) - self._counted[name]
             self._counted[name] = len(history.pieces)
         self._histories[name] = history
-
-    def _raw_opening(self, name, raw, end):
-        """The first eligible raw index and any held value that precedes its trajectory."""
-        start = self._coverage_starts.get(name)
-        if start is None:
-            return 0, [(0.0, self.constants[name], 0)] if name in self.constants else []
-        i = bisect_left(raw, start, key=lambda piece: piece[0])
-        if end > start and i and raw[i - 1][2] == 0:
-            # A later first trajectory follows the held balance of the retired producer.
-            # An active producer with no trajectory yet still owns its opening at the
-            # coverage boundary.
-            if i < len(raw):
-                held = raw[i][0] > start
-            else:
-                installed = self.run.ways.set_of
-                held = name not in installed and name.rpartition('.')[0] not in installed
-            if held:
-                return i, [(start, raw[i - 1][1], 0)]
-        return i, []
 
     def _raw_history(self, name, value, end):
         """Append just the raw pieces since the previous boundary. A checkpoint projection
@@ -854,8 +796,8 @@ class Recorder:
                 return self._histories[name]
             retained = len(kept)
         else:
-            i, opening = self._raw_opening(name, raw, end)
-            kept = [Piece(*piece) for piece in opening]
+            # A constant's raw rows follow its authored value at 0 h.
+            i, kept = 0, [Piece(0.0, self.constants[name], 0)] if name in self.constants else []
             retained = len(kept)
         j = len(raw)
         if j and raw[-1][0] > end:
@@ -997,7 +939,7 @@ class Recorder:
     def record(self, end, failure=None, pause=None, *, ongoing=False):
         """The run's committed histories and trace up to the stop or horizon."""
         self._advance(end)
-        return self._at_cutoff(end)._record(end, failure, pause, ongoing)
+        return self._record(end, failure, pause, ongoing)
 
     def _record(self, end, failure, pause, ongoing):
         plan, request = self.plan, self.plan.configuration.request

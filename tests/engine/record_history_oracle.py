@@ -77,8 +77,6 @@ def _fresh(live, observed, closed):
     ref.round = live.round
     ref.formulas = set(live.formulas)
     ref._wanted = None if live._wanted is None else set(live._wanted)
-    if hasattr(live, '_coverage_starts'):
-        ref._coverage_starts = dict(live._coverage_starts)
     ref.fits.ends = list(live.fits.ends)
     ref.fits.closed = closed
 
