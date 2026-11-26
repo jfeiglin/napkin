@@ -5,7 +5,6 @@ spec's: the tank of 8 L that a delivery of 3 L/h empties at 2 h 40 min, and the 
 sets to 8 g and a later stage of the same round raises to 12 g.
 """
 
-import json
 from dataclasses import replace
 from fractions import Fraction
 
@@ -114,36 +113,6 @@ def test_a_record_gives_a_value_only_from_what_it_holds_else_the_reason():
     assert record.value(other, 1) == Unavailable('the record keeps no history of tank.other')
 
 
-def test_a_budget_of_pieces_ends_a_record_before_the_first_piece_that_does_not_fit():
-    """Two values with pieces at 0, 1 and 2 h and at 0 and 2 h: within 3 pieces the record holds the
-    three before 2 h and ends at 2 h; within 1 piece not even the two at 0 h fit, and it holds none;
-    within 5 it is itself. A value that the manifest does not hold does not count."""
-    level = Key('tank', ('level',))
-    record = Record(
-        Manifest(4, everything=False, keys=(WATER, level)),
-        (
-            History(WATER, (Piece(0, 8, -1), Piece(1, 7), Piece(2, 5))),
-            History(level, (Piece(0, 1), Piece(2, 2))),
-            History(Key('tank', ('kept',)), (Piece(0, 0), Piece(1, 1), Piece(3, 2))),
-        ),
-        (
-            Entry(0, 0, 'start', 'tank.tick', 'tank.tick#0'),
-            Entry(2, 1, 'commit', 'tank.tick.step[0]', 'tank.tick#0'),
-        ),
-    )
-    assert record.within(5) is record
-    three = record.within(3)
-    assert three.end == 2 and three.failure.detail('budget') == 3
-    assert [entry.kind for entry in three.trace] == ['start', 'failure']
-    assert three.value(WATER, 1.5) == 7 and three.value(level, 1) == 1
-    assert three.value(WATER, 2).reason.startswith(
-        'the record stops at 2 h: from this time the values that it'
-    )
-    assert sum(len(history.pieces) for history in three.histories if three.manifest.names(history.key)) == 3
-    one = record.within(1)
-    assert one.end == 0 and not one.histories and isinstance(one.value(WATER, 0), Unavailable)
-
-
 def test_offline_quota_uses_the_completed_prefix_at_a_recorded_check():
     # A fit splits the two half-hour intervals into sixteen pieces. A budget
     # of nine fits more than the first half's eight, but does not reach the next check.
@@ -158,15 +127,6 @@ def test_offline_quota_uses_the_completed_prefix_at_a_recorded_check():
     assert cut.within(6) == record.within(6)
     assert record.within(16) is record
     assert cut.within(9) is cut
-
-    # An older file has no clock. Its original first-piece cutoff is still available.
-    old = json.loads(encode(record))
-    del old['manifest']['check_times']
-    historical = decode(json.dumps(old))
-    assert historical.manifest.check_times is None
-    assert historical.within(9).end == 9 / 16
-    assert historical.within(9, check_times=(1.0, 0.5, 0.5)) == cut
-    assert historical.within(9).within(9, check_times=manifest.check_times) == cut
 
 
 def test_an_open_steps_late_pieces_can_disqualify_earlier_checks():

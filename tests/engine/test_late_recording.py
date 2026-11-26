@@ -8,7 +8,7 @@ import pytest
 from napkin.engine.timeline import Plan, Run, read, run
 from napkin.engine.timeline.record import Reader, key_of
 from napkin.model.compile import compile_text
-from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
+from napkin.program.checkpoint import Breakpoint, Checkpoint
 from napkin.program.record import Unavailable
 from tests.engine.record_history_oracle import check_history_rebuilds
 from tests.engine.resume_parity import assert_resume_parity
@@ -111,25 +111,6 @@ def test_the_first_total_piece_at_the_join_exceeds_a_one_piece_budget():
     assert [p.t for p in straight.history(key_of(model.program, 'yard.total')).pieces] == [0]
     stopped = run(model.program, configuration, (Breakpoint('yard.watch.step[0]'),))
     assert stopped == straight
-
-
-def test_a_saved_recorder_without_coverage_starts_resumes_before_a_join(tmp_path):
-    model, selected = meter_observation()
-    program = model.program
-    live = Run(Plan.of(program, selected), (Breakpoint('setup[0]'),))
-    checkpoint = live.run()
-    assert isinstance(checkpoint, Checkpoint) and checkpoint.stop.t == 0
-    saved = dict(checkpoint.saved)
-    recorder = dict(saved['recorder'])
-    assert dict(recorder.pop('coverage_starts')) == {}
-    saved['recorder'] = tuple(recorder.items())
-    legacy = loads(dumps(replace(checkpoint, saved=tuple(saved.items()))))
-
-    restored = Run.restored(Plan.of(program, selected), legacy)
-    assert restored.recorder._coverage_starts == {}
-    expected = run(program, selected)
-    assert_resume_parity(program, selected, expected, restored.resume())
-    assert_resume_parity(program, selected, expected, in_a_fresh_process(program, legacy, tmp_path))
 
 
 def test_skipped_stock_remains_identifiable_after_its_sparse_producer_retires(tmp_path):

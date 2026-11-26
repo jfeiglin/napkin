@@ -1458,11 +1458,6 @@ class Sparse(MovingTransfers, Way):
         self.y = self.pending[3] if t == end else np.array(solution(t), dtype=float)
         self._drift = None
 
-    def incoming_history(self, t):
-        """An explicit request for the incoming history and physical state."""
-        self.commit_through(t)
-        self.record_through(t)
-
     def _count(self, start, end):
         """A step of the solver from start to end: after `integrate.STALLED_STEPS` steps in a row
         that are each shorter than the shortest time between two moments that the run tells apart
@@ -1514,13 +1509,8 @@ class Sparse(MovingTransfers, Way):
             held = name in self.held_rates or self.surfaces or self.stepped
             self.recorder.add(name, self.t, float(numbers[k]), 0.0 if held else None)
 
-    def _seal_stores(self):
-        for k in self.kept_stores:
-            self.recorder.seal_store(self.stores[k])
-
     def retire(self, key):
         """The set leaves the run's ways."""
-        self._seal_stores()
         self.alive = False
 
     def refresh(self, t):
@@ -1839,7 +1829,6 @@ class Sparse(MovingTransfers, Way):
         if self.pending is not None:
             self.commit_through(min(t, self.pending[1]))
             self.record_through(min(t, self.pending[1]))
-            self._seal_stores()
             self._history_rows = None
             if t > self.pending[0]:
                 self.contacted = ()
@@ -1914,9 +1903,3 @@ class Sparse(MovingTransfers, Way):
         if self.pending is None:
             return dense.held(self.y[rows], w)
         return dense.of_step(self.pending[2], rows, w, start, end)
-
-    def advance(self, until):
-        """The set from its time to `until`, step by step."""
-        while self.peek() <= until:
-            self.step()
-        self.cut(until)

@@ -37,55 +37,6 @@ def visible(record, name):
     return record.history(Key('plant', (name,))).pieces
 
 
-def put_stock(recorder, since, end, slope, complete):
-    def fit(left):
-        span = end - left
-        shape = Curve(span, (slope * (left + end) / 2, slope * span / 2))
-        return [[(left, slope * left, shape)]]
-
-    recorder.store_step(['plant.stock'], fit, since, complete=complete)
-
-
-@pytest.mark.parametrize('landed', [False, True])
-def test_stock_extension_preserves_subdivisions_in_readers_and_aliases(landed):
-    program = model()
-    live = recorder(program)
-    put_stock(live, 0, 1, 1, False)
-    first = observe(live, 1)
-    old = visible(first, 'crossed')
-    assert any(0 < p.t < 1 for p in old)
-    edge, end = 1 + 1e-9, 1 + 3e-9
-    if landed:
-        # A new hard input start shortly after the observation must still land.
-        live.add('plant.offset', edge, -2, 0)
-    put_stock(live, 1, end, 1 + 1e-7, True)
-    second = observe(live, end)
-    # The observation at hour one permanently closed the incoming fit.
-    assert any(p.t == 1 for p in visible(second, 'twice'))
-    for name in ('crossed', 'again'):
-        pieces = visible(second, name)
-        assert [p.t for p in pieces if p.t <= 1] == [p.t for p in old]
-        assert second.history(Key('plant', (name,))).at(end) == (0 if landed else 1)
-
-    def cold():
-        fresh = recorder(program)
-        fresh.pieces = {name: list(rows) for name, rows in live.saved_pieces()}
-        fresh.fits.ends = list(live.fits.ends)
-        fresh._dirty.update(fresh.pieces)
-        return fresh
-
-    # These are the actual saved stock rows, including the new curve's coefficients.
-    # Their cold fit of the old threshold can differ from the witnessed one.
-    if not landed:
-        unwitnessed = visible(observe(cold(), end), 'crossed')
-        assert [p.t for p in unwitnessed] != [p.t for p in visible(second, 'crossed')]
-    fresh = cold()
-    fresh.observe_checkpoint(second)
-    restored = observe(fresh, end)
-    for name in ('crossed', 'again'):
-        assert visible(restored, name) == visible(second, name)
-
-
 def test_preserving_a_start_restricts_the_outgoing_polynomial_to_its_new_interval():
     key = Key('plant', ('reading',))
     prior = History(key, (Piece(0, 0), Piece(0.65, 1)))

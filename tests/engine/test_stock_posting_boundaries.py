@@ -222,37 +222,3 @@ yard.mark.start()
         assert record.failure is None
         ledger = read(record, model.program, ['yard.tank.external'], [0, 0.5, 1])[0]
         assert ledger.values == (0, 1e16, 1)
-
-
-def test_restore_of_an_unposted_legacy_stock_keeps_its_opening_and_incoming_incidence():
-    model = compile_text(
-        """scenario "Old posting cursors"
-    horizon 1 h
-yard:
-    tank: L = 3 L
-    reserve: L = 4000000.0000000001 L
-    got: L = 0 L
-    flow fill: SOURCE -> this.tank
-        request = 2 L/h
-    mark = event():
-        after 0.5 h:
-            move 4000000 L from this.reserve to this.got
-yard.mark.start()
-""",
-        UNITS,
-    )
-    machine = Run(Plan.of(model.program, model.configuration), (Breakpoint('yard.mark.step[0]'),))
-    checkpoint = machine.run()
-    parts = dict(checkpoint.saved)
-    state = dict(parts['run'])
-    state.pop('stock_ranges')
-    state['stocks'] = tuple(
-        (name, entry) for name, entry in state['stocks'] if name not in ('yard.tank', 'yard.reserve')
-    )
-    parts['run'] = tuple(state.items())
-    legacy = loads(dumps(replace(checkpoint, saved=tuple(parts.items()))))
-    restored = Run.restored(Plan.of(model.program, model.configuration), legacy)
-    record = restored.resume()
-    assert record.failure is None
-    assert restored.stock_balance('yard.tank', 1) == 5
-    assert restored.stock_balance('yard.reserve', 1) == Fraction(1, 10**10)

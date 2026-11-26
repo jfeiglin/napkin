@@ -774,7 +774,7 @@ def _run(run, found):
     run.changes = {name: list(times) for name, times in found['changes']}
     run.written = dict(found['written'])
     run.stock_state.balances = dict(found['stocks'])
-    run.stock_state.ranges = dict(found.get('stock_ranges', ()))
+    run.stock_state.ranges = dict(found['stock_ranges'])
     run.stock_state.ends = dict(found['incoming_ends'])
     run.published = dict(found['published'])
     run.saved_arrival = found['arrival']
@@ -782,8 +782,8 @@ def _run(run, found):
         run.arriving = True
         run.opening_levels = dict(run.saved_arrival[2])
     run.contacts, run.bound_at = tuple(found['contacts']), dict(found['bounds_at_arrival'])
-    run.consumed = dict(found.get('consumed', ()))
-    run.clock.separate = found.get('separate')
+    run.consumed = dict(found['consumed'])
+    run.clock.separate = found['separate']
     run.changed, run.moved = set(found['changed']), set(found['moved'])
     run.joined, run.left = list(found['joined']), list(found['left'])
     run.waiting = [_connected(data) for data in found['waiting']]
@@ -796,20 +796,17 @@ def _recorder(recorder, found):
     recorder.tolerance = dict(found['tolerance'])
     recorder.formulas = set(found['formulas'])
     recorder.round = found['round']
-    recorder.fits.ends = list(found.get('fit_ends', (0.0,)))
-    recorder._coverage_starts = dict(found.get('coverage_starts', ()))
-    if found['wanted'] is None:
-        # Older selected checkpoints could stop before any producer asked what to retain.
-        recorder.refresh_needed()
-    else:
-        recorder._wanted = set(found['wanted'])
+    recorder.fits.ends = list(found['fit_ends'])
+    recorder._coverage_starts = dict(found['coverage_starts'])
+    # A full record retains every value (None); a selected one, the values that it saved.
+    recorder._wanted = None if found['wanted'] is None else set(found['wanted'])
     recorder.transfers = {name: (start, list(moved)) for name, start, moved in found['transfers']}
 
 
 def _occurrences(run, found, made):
     occurrences = run.occurrences
     occurrences.made = found['made']
-    occurrences.transferred = dict(found.get('transferred', ()))
+    occurrences.transferred = dict(found['transferred'])
     occurrences.live = {}
     for name, number, started, step, due, version, waiting, active, met in found['live']:
         occurrences.live[name] = Live(

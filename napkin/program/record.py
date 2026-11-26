@@ -72,7 +72,6 @@ from __future__ import annotations
 from bisect import bisect_left, bisect_right
 from dataclasses import dataclass, replace
 from fractions import Fraction
-from math import isfinite
 from typing import Any
 
 from ..core.units import rational
@@ -375,33 +374,22 @@ class Record:
         except LookupError as problem:
             return Unavailable(str(problem))
 
-    def within(self, pieces, *, check_times=None):
+    def within(self, pieces):
         """Return the prefix that fits the piece budget.
 
-        If the full record exceeds the budget, use the last check time whose complete
-        prefix fits. Time zero is always available. Exclude every opening and round at
+        If the full record exceeds the budget, use the last of the manifest's check times whose
+        complete prefix fits. Time zero is always available. Exclude every opening and round at
         the cutoff and keep the original basis of each earlier curve.
-
-        The manifest supplies the run's check times. For an older record the caller can
-        supply them explicitly. With no clock, retain the legacy first-excess cutoff.
         """
+        check_times = self.manifest.check_times
         if check_times is None:
-            check_times = self.manifest.check_times
-        else:
-            check_times = tuple(sorted({0.0, *check_times}))
-            if any(t < 0 or not isfinite(t) for t in check_times):
-                raise ValueError('check times must be finite and nonnegative')
+            raise ValueError('a record without check times cannot be cut to a budget of pieces')
         held = [history for history in self.histories if self.manifest.names(history.key)]
         if sum(history.charged_pieces() for history in held) <= pieces:
             # Tightening a previously trimmed budget can select the same boundary.
             # The earlier excess still ends the record, now under the tighter limit.
             prior = self.failure.detail('budget') if self.failure is not None else None
-            if (
-                check_times is None
-                or prior is None
-                or pieces > prior
-                or (pieces == prior and check_times == self.manifest.check_times)
-            ):
+            if prior is None or pieces >= prior:
                 return self
             end = self.end
         else:
@@ -409,11 +397,10 @@ class Record:
                 float(piece.t) for history in held for piece in history.pieces[: history.charged_pieces()]
             )
             end = times[pieces]
-        if check_times is not None:
-            # All openings at end are excluded. Exactly the check times through
-            # this first excess can therefore have a completed prefix within budget.
-            check_times = check_times[: bisect_right(check_times, end)]
-            end = check_times[-1] if check_times else 0.0
+        # All openings at end are excluded. Exactly the check times through
+        # this first excess can therefore have a completed prefix within budget.
+        check_times = check_times[: bisect_right(check_times, end)]
+        end = check_times[-1] if check_times else 0.0
         histories = []
         for history in self.histories:
             kept = tuple(piece for piece in history.pieces if piece.t < end)
@@ -425,12 +412,7 @@ class Record:
                     histories.append(replace(history, pieces=kept))
         trace = tuple(entry for entry in self.trace if entry.t < end)
         unit = 'piece' if pieces == 1 else 'pieces'
-        if check_times is None:
-            message = (
-                f'from this time the values that it holds would have more than its budget of {pieces} {unit}'
-            )
-        else:
-            message = f'this is the last check whose complete prefix fits the budget of {pieces} {unit}'
+        message = f'this is the last check whose complete prefix fits the budget of {pieces} {unit}'
         failure = Entry(
             end,
             0,

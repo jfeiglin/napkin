@@ -10,8 +10,8 @@ engine has it for one flow at a bound; a flow from a full store into a full stor
 drains, delivers nothing either (`network.py`: room). Each flow is a row of the family:
 
 - `begin(t)` evaluates the rates of every row as columns (`Columns`) and starts their lines;
-- `advance(until)` takes, in time order, each row whose store reaches its bound before `until`: the
-  store is put on its bound exactly, and the flow stops;
+- `peek()` and `step()` take, in time order, each row whose store reaches its bound: the store is put
+  on its bound exactly, and the flow stops;
 - `refresh(t)` evaluates the rates again at a key time and starts again the lines of the rows whose
   rate changed.
 
@@ -422,11 +422,6 @@ class Family(Way):
 
     def cut(self, t):
         """Nothing to commit: a line holds to its next event."""
-
-    def advance(self, until):
-        """Each row whose store reaches its bound at or before `until`, in time order."""
-        while self.peek() <= until:
-            self.step()
 
 
 def due_through(heap, through):

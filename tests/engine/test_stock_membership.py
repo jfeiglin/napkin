@@ -1,8 +1,5 @@
 """Stock ledgers follow their declaration roles through setup, occurrence entry and checkpoint replay."""
 
-from dataclasses import replace
-from fractions import Fraction
-
 import pytest
 
 from napkin.commands.run import Offered
@@ -11,7 +8,6 @@ from napkin.model.compile import compile_text
 from napkin.program import artifact
 from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
 from napkin.program.record import Unavailable
-from tests.engine.resume_parity import assert_resume_parity
 
 UNITS = {'L': {'volume': 1}, 'h': {'time': 1}}
 
@@ -164,31 +160,3 @@ yard.visit.start()
         assert read(record, model.program, ['yard.visit#0.remembered'], [2])[0].values == (6,)
         with pytest.raises(KeyError, match='is no store'):
             read(record, model.program, ['yard.visit#0.remembered.external'], [2])
-
-
-def test_loading_a_checkpoint_from_before_the_first_move_recovers_the_literal_opening():
-    model = compile_text(
-        """scenario "Legacy inventory"
-    horizon 1 h
-yard:
-    tank: L = 10000000.0000000003 L
-    receipt: L = 0 L
-    adjust = event():
-        after 1 h:
-            move 10000000 L from this.tank to this.receipt
-yard.adjust.start()
-""",
-        UNITS,
-    )
-    live = Run(Plan.of(model.program, model.configuration), (Breakpoint('yard.adjust.step[0]'),))
-    paused = live.run()
-    assert isinstance(paused, Checkpoint)
-    saved = dict(paused.saved)
-    state = dict(saved['run'])
-    state.pop('stock_ranges')
-    state['stocks'] = ()  # earlier checkpoints left these unposted until the first move
-    saved['run'] = tuple(state.items())
-    legacy = loads(dumps(replace(paused, saved=tuple(saved.items()))))
-    restored = Run.restored(Plan.of(model.program, model.configuration), legacy)
-    assert_resume_parity(model.program, model.configuration, live.resume(), restored.resume())
-    assert restored.stock_balance('yard.tank', 1) == Fraction(3, 10**10)

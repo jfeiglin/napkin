@@ -430,11 +430,6 @@ class Lines(Way):
     def cut(self, t):
         """Nothing to commit: a line holds to its next event."""
 
-    def advance(self, until):
-        """Each line that reaches its bound at or before `until`, in time order."""
-        while self.peek() <= until:
-            self.step()
-
 
 def asked_of(net, raw, t):
     """The requests of the connections from the values of their request names at time t: a leg of a

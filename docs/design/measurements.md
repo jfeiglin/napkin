@@ -286,19 +286,15 @@ it writes that step's history. A checkpoint takes its own copy of the accepted p
 failure keeps the prefix that the solver has already booked. The public record and the
 checkpoint expose a curve only through the accepted cutoff.
 
-Before an ordinary moment, the recorder first tries to prove that all the pieces will fit.
-Its bound includes requested formulas and their inputs. If necessary, it uses the openings
-of the prepared solver steps to tighten the bound. If the bound still cannot prove room,
-the recorder assembles the actual histories in a private copy and applies the usual first-excess
-rule. Both that copy and the final record use the same fitted coefficients and piece starts
-for a given solver step. Checking the budget does not post a second transfer or insert a
-new boundary into the live trajectory.
+The budget check now counts only the pieces that are already committed before each check point.
+When that count exceeds the budget, the recorder completes that boundary once, in a private
+projection, and cuts the record at the latest check point whose complete prefix fits. Checking
+the budget does not post a second transfer or put a new boundary into the live trajectory.
 
-A private check keeps the rows that it counted for each open step. When the solver later
-writes those rows, the recorder compares the step, row positions, and exact posted values.
-It can reuse counts for intervals that end strictly before the first difference. A shorter
-publication, a replacement step or a reordered posting limits the reuse. A restored run
-starts without this information. The checkpoint format stays the same.
+The rest of this section gives the measurements of `8a0c70f`. Its budget check was different: it
+first tried to prove a bound on the pieces, made an exact private record when the bound was not
+sufficient, and used counts from the private record again for unchanged rows. Later changes removed
+the bound and the reuse.
 
 On the 25-cell case the solver fitted 817 whole steps and no partial step. The budget
 check fitted 437 of those steps first. Each completed step reused its earlier fit.
