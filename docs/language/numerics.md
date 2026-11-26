@@ -309,3 +309,4 @@ The check excludes these settings, including a state that happens to hold a cons
 Each distinct setting counts once from the first installation where it has such a dependency.
 An event occurrence has its own settings. A checkpoint retains the count for occurrences that already finished.
 Read `record.rate_guard_note` in Python or `rate_guard_note` in the output of `napkin run --json`.
+The note is empty when the check excluded no setting.

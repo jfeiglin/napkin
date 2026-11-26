@@ -288,6 +288,9 @@ def save(run, recorder, arrival):
                 ('separate', run.clock.separate),
                 ('bounds_at_arrival', _pairs(run.bound_at)),
                 ('changed', tuple(sorted(run.changed, key=repr))),  # a set, in one order
+                # The rate settings outside the explicit-time check, which the record's note counts: the
+                # run's own, as its record can end before the stop.
+                ('unchecked_time_rates', _pairs(run.unchecked_time_rates)),
                 ('moved', tuple(sorted(run.moved))),
                 ('joined', tuple(run.joined)),
                 ('left', tuple(run.left)),
@@ -787,6 +790,7 @@ def _run(run, found):
     run.consumed = dict(found['consumed'])
     run.clock.separate = found['separate']
     run.changed, run.moved = set(found['changed']), set(found['moved'])
+    run.unchecked_time_rates = dict(found['unchecked_time_rates'])
     run.joined, run.left = list(found['joined']), list(found['left'])
     run.waiting = [_connected(data) for data in found['waiting']]
 

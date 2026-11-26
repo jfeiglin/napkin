@@ -389,7 +389,7 @@ def lines(
         for (text, _), item in zip(times, value.values):
             if unavailable(item):
                 shown.append(f'{value.path} at {text}: unavailable: {item.reason}')
-    if record.manifest.unchecked_time_rates:
+    if found.rate_guard_note:
         shown.append(found.rate_guard_note)
     return shown + near_tie_lines(found.near_ties, full_list)
 

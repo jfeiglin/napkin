@@ -285,8 +285,11 @@ class Record:
 
     @property
     def rate_guard_note(self):
-        """The number of distinct rate settings outside the explicit-time guard in this record."""
+        """The number of distinct rate settings outside the explicit-time guard in this record, in
+        words; empty when the guard excluded none."""
         count = len(self.manifest.unchecked_time_rates)
+        if not count:
+            return ''
         noun = 'setting' if count == 1 else 'settings'
         return (
             f'The explicit-time rate check excluded {count} time-dependent {noun} with state or lookup reads.'

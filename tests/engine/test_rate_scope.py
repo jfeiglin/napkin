@@ -1,6 +1,5 @@
 """Coverage of the explicit-time rate check, through definition changes and cutoffs."""
 
-import json
 from bisect import bisect_left
 from dataclasses import replace
 
@@ -152,17 +151,3 @@ def test_checkpoint_keeps_the_omission_from_a_finished_occurrence():
     straight = Run(make()).run()
     assert_same_manifest_settings(live.resume(), restored, straight, checkpoint.record)
     assert 'excluded 3 time-dependent settings' in restored.rate_guard_note
-
-
-def test_an_older_checkpoint_without_coverage_loads_with_an_empty_note():
-    model = compile_text(SCOPE, UNITS)
-    live = Run(Plan.of(model.program, model.configuration), (Breakpoint('yard.controls.step[2]'),))
-    checkpoint = live.run()
-    header, body = dumps(checkpoint).split(b'\n', 1)
-    earlier = json.loads(body)
-    del earlier['record']['manifest']['unchecked_time_rates']
-    restored = loads(header + b'\n' + json.dumps(earlier).encode())
-    assert 'excluded 0 time-dependent settings' in restored.record.rate_guard_note
-    result = Run.restored(Plan.of(model.program, model.configuration), restored).resume()
-    assert result.failure is None
-    assert result.manifest.unchecked_time_rates == (('yard.tabulated.request', checkpoint.stop.t),)

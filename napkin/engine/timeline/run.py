@@ -1034,7 +1034,6 @@ class Run:
         """The run of a plan that a checkpoint stopped, made again from its saved state (`saved.py`),
         waiting at its stop: `resume` goes on, `edit` edits."""
         made = cls(plan, checkpoint.breakpoints)
-        made.unchecked_time_rates = dict(checkpoint.record.manifest.unchecked_time_rates)
         restore(made, checkpoint.saved)
         made.breaks.restored(checkpoint)
         made.checkpoint = checkpoint
