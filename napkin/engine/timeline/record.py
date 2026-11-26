@@ -486,6 +486,8 @@ class Recorder:
     def __init__(self, plan, constants, tolerance):
         self.plan, self.constants, self.tolerance = plan, constants, tolerance
         self.pieces = {}  # engine name -> [(t, value, rate)]
+        # The raw lists that a projection copied before it wrote them; None: it owns every list.
+        self._owned = None
         # One accepted prefix for each stock whose solver step continues past a moment.
         # Only sealed pieces are appended to pieces. A checkpoint serializes this prefix too.
         self._extended_stock = False
@@ -527,11 +529,15 @@ class Recorder:
         return Entry(t, self.round, 'failure', '', '', (('message', message), *details.items()))
 
     def projection(self, run=None):
-        """A private recorder for an observation that must not change the live history."""
+        """A private recorder for an observation that must not change the live history. It shares
+        the run's raw lists and histories, and copies one the first time that it changes it
+        (`_writable`, `_raw_history`, `_join_history`), so what it does not change it need not build
+        again."""
         view = copy(self)
         if run is not None:
             view.run = run
         view._private = set()
+        view._owned = set()
         view.fits = copy(self.fits)
         view.fits.closed = dict(self.fits.closed)
         view.fits.ends = list(self.fits.ends)
@@ -541,7 +547,7 @@ class Recorder:
         view._raw_positions = dict(self._raw_positions)
         view._counted = dict(self._counted)
         view._raw_due = set(self._raw_due)
-        view.pieces = {name: list(pieces) for name, pieces in self.pieces.items()}
+        view.pieces = dict(self.pieces)
         view.trace = list(self.trace)
         return view
 
@@ -673,9 +679,27 @@ class Recorder:
                 rows = rows[: bisect_right(rows, end, key=lambda row: row[0])]
             yield name, rows
 
+    def _writable(self, name):
+        """The raw list of a value, which this recorder may change: a projection copies the run's
+        list the first time that it changes it."""
+        raw = self.pieces.get(name)
+        if raw is None or (self._owned is not None and name not in self._owned):
+            raw = self.pieces[name] = [] if raw is None else list(raw)
+        if self._owned is not None:
+            self._owned.add(name)
+        return raw
+
+    def cut(self, lengths):
+        """Each raw list back to its length in `lengths` (a savepoint's); a value with None goes."""
+        for name, count in lengths.items():
+            if count is None:
+                self.pieces.pop(name, None)
+            elif len(self.pieces.get(name, ())) > count:
+                del self._writable(name)[count:]
+
     def add(self, name, t, value, rate):
         """One piece of a value, which a run gives as it goes."""
-        self.pieces.setdefault(name, []).append((t, self._posted_value(name, t, value), rate))
+        self._writable(name).append((t, self._posted_value(name, t, value), rate))
         self._raw_due.add(name)
         self._dirty.add(name)
         self._from = min(self._from, t)
@@ -685,7 +709,7 @@ class Recorder:
         if pieces:
             if self.run is not None and name in self.run.stock_state.balances:
                 pieces = [(t, self._posted_value(name, t, value), rate) for t, value, rate in pieces]
-            self.pieces.setdefault(name, []).extend(pieces)
+            self._writable(name).extend(pieces)
             self._raw_due.add(name)
             self._dirty.add(name)
             self._from = min(self._from, pieces[0][0])
@@ -844,6 +868,9 @@ class Recorder:
             kept = self._histories[name].pieces
             if i == len(raw):
                 return self._histories[name]
+            if self._private is not None and name not in self._private:
+                kept = list(kept)  # the run's history, which a projection extends as a copy
+                self._private.add(name)
             retained = len(kept)
         else:
             # A constant's raw rows follow its authored value at 0 h.

@@ -42,6 +42,20 @@ def model(monkeypatch):
     return compile_text(SOURCE, {'L': {'volume': 1}, 'h': {'time': 1}})
 
 
+def test_a_projection_shares_the_raw_lists_that_it_does_not_change(model):
+    run = Run(Plan.of(model.program, model.configuration))
+    run.prepare()
+    recorder = run.recorder
+    recorder.add_pieces('tank.water', [(0.0, 10.0, 0.0)])
+    view = recorder.projection()
+    assert view.pieces['tank.water'] is recorder.pieces['tank.water']
+    view.add('tank.water', 1.0, 12.0, 0.0)
+    view.cut({'tank.water': 1})
+    view.add_pieces('tank.water', [(1.5, 13.0, 0.0)])
+    assert recorder.pieces['tank.water'] == [(0.0, 10.0, 0.0)]
+    assert view.pieces['tank.water'] == [(0.0, 10.0, 0.0), (1.5, 13.0, 0.0)]
+
+
 def test_projected_first_step_has_its_own_raw_and_assembled_history(model):
     run = Run(Plan.of(model.program, model.configuration))
     run.prepare()

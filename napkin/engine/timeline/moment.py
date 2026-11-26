@@ -310,7 +310,7 @@ class _Savepoint:
                 plan.rankings.pop(end, None)
             else:
                 plan.rankings[end] = before
-        _cut(recorder.pieces, self.pieces)
+        recorder.cut(self.pieces)
         _cut(run.changes, self.changes)
         for store, count in self.transfers.items():
             if count is None:
