@@ -1,0 +1,51 @@
+[layout]
+card_width = 185
+stocks = 6
+
+[place]
+cne_proposed               = { column = 1, row = 1 }
+cne_planned                = { column = 2, row = 1 }
+cne_access_established     = { column = 3, row = 1 }
+cne_positioned             = { column = 4, row = 1 }
+cne_collection_active      = { column = 5, row = 1 }
+cne_material_waiting       = { column = 6, row = 1 }
+cne_intelligence_processed = { column = 7, row = 1 }
+
+workforce_rd         = { column = 2, row = 2 }
+workforce_operators  = { column = 3, row = 2 }
+workforce_collection = { column = 5, row = 2 }
+workforce_analysts   = { column = 6, row = 2 }
+
+initial_access_pool   = { column = 2, row = 3 }
+lateral_movement_pool = { column = 3, row = 3 }
+collection_pool       = { column = 5, row = 3 }
+effects_pool          = { column = 6, row = 3 }
+
+cna_proposed            = { column = 1, row = 4 }
+cna_planned             = { column = 2, row = 4 }
+cna_access_established  = { column = 3, row = 4 }
+cna_positioned          = { column = 4, row = 4 }
+cna_ready               = { column = 5, row = 4 }
+cna_awaiting_assessment = { column = 6, row = 4 }
+cna_assessed            = { column = 7, row = 4 }
+
+sketch            = { column = 1, row = 5 }
+external          = { column = 2, row = 5 }
+accounts          = { column = 3, row = 5 }
+inventory_example = { column = 4, row = 5 }
+
+[group]
+"CNE operational pipeline" = [
+    "cne_proposed", "cne_planned", "cne_access_established", "cne_positioned",
+    "cne_collection_active", "cne_material_waiting", "cne_intelligence_processed",
+]
+"Workforce" = ["workforce_rd", "workforce_operators", "workforce_collection", "workforce_analysts"]
+"Capability pools" = ["initial_access_pool", "lateral_movement_pool", "collection_pool", "effects_pool"]
+"CNA operational pipeline" = [
+    "cna_proposed", "cna_planned", "cna_access_established", "cna_positioned",
+    "cna_ready", "cna_awaiting_assessment", "cna_assessed",
+]
+"Model controls and accounting" = ["sketch", "external", "accounts", "inventory_example"]
+
+[arrows]
+bundle = ["reads", "follows", "changes", "fires", "moves"]

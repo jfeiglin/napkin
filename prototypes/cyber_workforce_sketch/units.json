@@ -28,6 +28,13 @@
     "scale": 1,
     "description": "One illustrative unit of collected material."
   },
+  "value_point": {
+    "dimensions": {
+      "outcome_value": 1
+    },
+    "scale": 1,
+    "description": "The illustrative mean value of one material unit collected from a fresh source."
+  },
   "capability": {
     "dimensions": {
       "capability": 1
