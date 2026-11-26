@@ -485,7 +485,12 @@ def numerical(base, other, crossing=1e-8):
 
 
 def _first_difference(x, y):
-    """The first history or trace entry of two records (JSON) that differs."""
+    """The first history or trace entry of two records (JSON) that differs, or of the records of two
+    checkpoints, or else the first field."""
+    if 'histories' not in x:
+        if x.get('record') != y.get('record'):
+            return f'its record: {_first_difference(x["record"], y["record"])}'
+        return next((f'field {field} differs' for field in x if x[field] != y.get(field)), 'the bytes differ')
     for name, pieces in _histories(x).items():
         other = _histories(y).get(name)
         if other != pieces:
