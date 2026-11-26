@@ -15,6 +15,7 @@ from ...core import derivatives, expr, intervals, ops
 from ...core.comparisons import against
 from ...core.errors import ExpressionError
 from ..errors import SimulationError
+from ..solvers import retry_shorter
 
 
 def _bind(run, name, definition, fixed, aliases, operands):
@@ -335,9 +336,7 @@ def step(solver, guard):
     original_limit = solver.max_step
     try:
         while True:
-            # Radau replaces its stage state and dense polynomial on success.
-            # Its evaluation counters include work spent on discarded trials.
-            saved = vars(solver).copy()
+            held = dict(vars(solver))
             message = solver.step()
             if solver.status == 'failed':
                 return message
@@ -346,13 +345,7 @@ def step(solver, guard):
                 if notes:
                     solver.dense_output().rate_warnings = notes
                 return message
-            shorter = _shorter_step(solver.t_old, solver.t)
-            work = {key: getattr(solver, key) for key in ('nfev', 'njev', 'nlu')}
-            vars(solver).update(saved, **work)
-            # Each Newton factor contains 1/h. Keep the Jacobian, but refactor
-            # at the shorter step even if Radau retained factors on entry.
-            solver.LU_real = solver.LU_complex = None
-            solver.max_step = shorter
+            retry_shorter(solver, held, _shorter_step(solver.t_old, solver.t))
     finally:
         solver.max_step = original_limit
 

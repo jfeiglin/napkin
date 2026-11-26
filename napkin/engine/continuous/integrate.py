@@ -15,7 +15,7 @@ from ...core.comparisons import against, band_from_floor_width
 from ...expressions import ExpressionError, compile_program, evaluate, names_in
 from ...program.config import Numerics
 from ..errors import SimulationError
-from ..solvers import radau_rate
+from ..solvers import radau_rate, retry_shorter
 from . import affine, dense, rate_guard
 from .bounds import state_limits
 from .transfers import CollocationRates
@@ -636,10 +636,7 @@ def radau(
                 # The solver as it was at the start of this step, with a shorter limit on its
                 # steps. The counts of its work stay: the step that is not used was work.
                 limit.unused(t - t_old, far)
-                counts = {name: getattr(solver, name) for name in ('nfev', 'njev', 'nlu')}
-                vars(solver).clear()
-                vars(solver).update(held)
-                vars(solver).update(counts)
+                retry_shorter(solver, held, limit.allowed)
                 status = None
                 continue
             halves = count

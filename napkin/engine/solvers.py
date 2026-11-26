@@ -111,6 +111,22 @@ class RadauRate:
         return radau_rate(self.dense, at)
 
 
+def retry_shorter(solver, held, max_step):
+    """Put a SciPy Radau solver back at the start of the step that it has just taken, with no step from
+    there longer than `max_step`: the one rule for retrying a Radau step (the pulse guard, a check
+    interval of `integrate.numerical_segment`, `Run.retake`). `held` is `dict(vars(solver))` from before
+    that step: a step replaces what the solver holds and changes nothing in place
+    (`scipy.integrate._ivp.radau.Radau._step_impl`), so this is the solver at the start of the step
+    again. Its counts keep the work of the forgotten step. Each Newton factor holds 1/h, so the
+    factors go: the next step keeps the Jacobian and factorizes at its own length."""
+    counts = {name: getattr(solver, name) for name in ('nfev', 'njev', 'nlu')}
+    vars(solver).clear()
+    vars(solver).update(held)
+    vars(solver).update(counts)
+    solver.LU_real = solver.LU_complex = None
+    solver.max_step = max_step
+
+
 class _Counted:
     """A function with the number of its calls."""
 
@@ -145,12 +161,7 @@ class _RadauRun(Run):
         self.solver.max_step = max_step
 
     def retake(self, max_step):
-        solver = self.solver
-        counts = {name: getattr(solver, name) for name in ('nfev', 'njev', 'nlu')}
-        vars(solver).clear()
-        vars(solver).update(self.held)
-        vars(solver).update(counts)
-        solver.max_step = max_step
+        retry_shorter(self.solver, self.held, max_step)
         self.finished = False
 
     def counts(self):
