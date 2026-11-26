@@ -182,21 +182,21 @@ def _uncaptured(data):
 
 
 def at_stop(run):
-    """Project the incoming record and physical end states into checkpoint data. The live ways
-    keep their pending segments. A restored run installs the end states after its held stages."""
+    """Project the incoming record and physical end states into checkpoint data. The checkpoint
+    records from a projection of the recorder, so a pause leaves the run's own histories as they
+    were, and the live ways keep their pending segments. A restored run installs the end states
+    after its held stages."""
     run.ways.sample_at_stop(run.now)
     if run.saved_arrival is not None:
-        return run.recorder, run.saved_arrival
+        return run.recorder.projection(), run.saved_arrival
     # A later round can stop after the transfers were booked but before the
     # corresponding histories were requested. Only the checkpoint needs those pieces.
     if not run.arriving and not any(
         isinstance(way, Sparse) and way.pending is not None and way.t < run.now for way in run.ways.instances
     ):
-        if any(isinstance(way, Sparse) and way.has_unrecorded(run.now) for way in run.ways.instances):
-            recorder = run.recorder.projection()
-            run.ways.project_sparse(recorder, run.now)
-            return recorder, None
-        return run.recorder, None
+        recorder = run.recorder.projection()
+        run.ways.project_sparse(recorder, run.now)
+        return recorder, None
     projected = copy(run)
     projected.stock_state = copy(run.stock_state)
     projected.stock_state.run = projected

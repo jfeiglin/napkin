@@ -488,10 +488,6 @@ class Recorder:
         self.pieces = {}  # engine name -> [(t, value, rate)]
         # The raw lists that a projection copied before it wrote them; None: it owns every list.
         self._owned = None
-        # One accepted prefix for each stock whose solver step continues past a moment.
-        # Only sealed pieces are appended to pieces. A checkpoint serializes this prefix too.
-        self._extended_stock = False
-        self._checkpoint_observation = None
         self.trace = []
         self.formulas = set()  # the formulas whose pieces the run gives (the family's settings)
         self.run = None  # the run, which knows the entries that each collection keeps
@@ -788,26 +784,15 @@ class Recorder:
         self._indexed_value_count = len(plan.values)
         self._indexed_version = plan.version
 
-    def observe_checkpoint(self, record):
-        """Use the formula starts already visible in this checkpoint when its run resumes."""
-        self._checkpoint_observation = record.end, {name_of(h.key): h for h in record.histories}
-        self._extended_stock = True
-
     def _advance(self, end):
         """Update only histories whose inputs changed or whose current interval moves."""
         plan = self.plan
-        # A checkpoint or an observed stock tail already owns its closed readings.
-        observed = self._as_of if self._extended_stock else None
-        checkpoint = self._checkpoint_observation
-        self._checkpoint_observation = None
         if not self._index_current():
             self._prepare_histories()
         dirty, self._dirty = self._dirty, set()
         since = min(self._as_of or 0.0, self._from)
         self._from = math.inf
         changed = dirty.intersection(self._order)
-        if checkpoint:
-            changed.update(self._derived.intersection(checkpoint[1]))
         if self._as_of != end:
             changed.update(self._clock)
             changed.update(self._moving)
@@ -815,12 +800,6 @@ class Recorder:
             value = plan.values[name]
             if name in self._derived:
                 start = since if name in self._histories else plan.start_of(name)
-                if checkpoint and name in checkpoint[1]:
-                    start = checkpoint[0]
-                    saved = checkpoint[1][name]
-                    self._histories[name] = History(saved.key, list(saved.pieces))
-                elif observed is not None and name in self._histories:
-                    start = max(start, observed)
                 history = self._derived_history(name, value, end, start)
             else:
                 history = self._raw_history(name, value, end)
