@@ -119,3 +119,39 @@ def test_a_curved_departure_from_rest_turns_the_switch_on_at_once(text):
     assert record.failure is None
     (other,) = read(record, model.program, ['yard.other'], [1])
     assert other.values == pytest.approx((1,))
+
+
+def test_two_values_that_separate_slowly_from_equality_bypass_the_equal_shortcut(monkeypatch):
+    from napkin.engine import read
+    from napkin.engine.continuous.integrate import CurvedMotion
+    from napkin.engine.timeline import Plan, Run
+
+    # 2a and 2b start equal; a curves up from rest, so the refined trial finds a change of about 2e-16.
+    model = compile_text(
+        """scenario "Two values that start equal and separate slowly"
+    horizon 1 h
+yard:
+    a: L = 0 L
+    b: L = 0 L
+    other: L = 0 L
+    flow fill: SOURCE -> this.a
+        request = formula(t * 1 L/h/h)
+    flow tap: SOURCE -> this.other
+        request = formula(1 L/h if 2 * this.a > 2 * this.b else 0 L/h)
+""",
+        UNITS,
+    )
+    shortcut, change = CurvedMotion.unchanged, CurvedMotion.change
+    taken, found = [], []
+    monkeypatch.setattr(
+        CurvedMotion, 'unchanged', staticmethod(lambda *args: taken.append(shortcut(*args)) or taken[-1])
+    )
+    monkeypatch.setattr(
+        CurvedMotion, 'change', lambda self, *args: found.append(change(self, *args)) or found[-1]
+    )
+    record = Run(Plan.of(model.program, model.configuration)).run()
+    assert record.failure is None
+    assert found and all(value > 0 for value in found)
+    assert taken and not any(taken)
+    (other,) = read(record, model.program, ['yard.other'], [1])
+    assert other.values == pytest.approx((1,))

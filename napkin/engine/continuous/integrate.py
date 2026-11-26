@@ -943,16 +943,28 @@ class CurvedMotion:
         error = math.ulp(left) + math.ulp(right) + math.ulp(left + da) + math.ulp(right + db)
         return error + self.factor * (abs(da) + abs(db))
 
+    @staticmethod
+    def unchanged(left, right, both, changes):
+        """Whether a comparison is equal without the refined trial: its two values start equal, its band
+        is zero (they are not two moving values), and each stays exactly at its own starting value in
+        every cheap estimate, the one shifted by the embedded error included. Only that case: any other
+        that the estimates cannot settle takes the refined trial."""
+        return not both and left == right and all(change == 0 for change in changes)
+
     def change(self, a, left, b, right, both):
         """The change of a - b along the trial, zero inside the band of two moving operands. The cheap
         estimates decide only when both predictions lie on the same side outside the band by more than
         CHEAP_SAFETY times their difference plus the embedded error. Two estimates can miss the same turn
-        and agree, which is why the margin holds the embedded error too."""
+        and agree, which is why the margin holds the embedded error too. A comparison that stays exactly
+        where it started is equal (`unchanged`)."""
         if self.cheap is not None:
             one, two, shifted, _ = self.cheap
             da1, db1, da2, db2 = one(a, left), one(b, right), two(a, left), two(b, right)
             p1, p2 = da1 - db1, da2 - db2
-            embedded = abs(shifted(a, left) - da2) + abs(shifted(b, right) - db2)
+            sa, sb = shifted(a, left), shifted(b, right)
+            if self.unchanged(left, right, both, (da1, db1, da2, db2, sa, sb)):
+                return 0
+            embedded = abs(sa - da2) + abs(sb - db2)
             margin = CHEAP_SAFETY * abs(p1 - p2) + embedded
             if (
                 (p1 > 0) == (p2 > 0)
