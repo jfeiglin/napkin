@@ -129,6 +129,7 @@ from .plan import (
     name_of,
 )
 from .reads import Reads, lazily
+from .stocks import exact_posting
 
 # What evaluating a formula can raise: it then holds `Unavailable` with the reason.
 FAILURES = (ExpressionError, ArithmeticError, ValueError, LookupError, SimulationError)
@@ -649,13 +650,9 @@ class Recorder:
 
     def _posted_value(self, name, t, value):
         """Keep a physical posting's exact intercept when its public float loses a remainder."""
-        if self.run is not None:
-            point = self.run.stock_state.balances.get(name)
-            if point is not None and point[2] == t:
-                balance = point[0]
-                if balance != value and float(balance) == value:
-                    return balance
-        return value
+        if self.run is None:
+            return value
+        return exact_posting(self.run.stock_state.balances.get(name), t, value)
 
     def saved_pieces(self, end=None):
         """Raw openings through the checkpoint, each in its original polynomial basis."""

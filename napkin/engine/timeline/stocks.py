@@ -36,6 +36,15 @@ from .reads import Reads
 LEDGER_PROBE = 0
 
 
+def exact_posting(point, t, value):
+    """The exact balance of a stock's posting `point` (balance, cursor, time) in place of `value`, a
+    value of the stock at t, when the posting is at t and its float is `value`: the posting keeps the
+    remainder that the float loses. Else `value`."""
+    if point is not None and point[2] == t and point[0] != value and float(point[0]) == value:
+        return point[0]
+    return value
+
+
 def probed(balance):
     """A ledger balance as a decision or a new trajectory reads it: itself, unless a test moves
     its last places (`LEDGER_PROBE`)."""

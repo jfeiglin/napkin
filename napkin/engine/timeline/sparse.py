@@ -72,6 +72,7 @@ from .plan import DYNAMIC, FORMULA, LOOKUP, REDUCE, Pending, _renamed
 from .reads import Reads, lazily
 from .record import fitted
 from .region import Region, key_surfaces
+from .stocks import exact_posting
 from .way import MovingTransfers, Way
 
 
@@ -1413,9 +1414,9 @@ class Sparse(MovingTransfers, Way):
             group = pieces if first == 0 and limit == len(pieces) else pieces[first:limit]
             if name in self._opening_balances and group[0][0] == start:
                 at, value, shape = group[0]
-                point = self._opening_balances[name]
-                if float(point) == value:
-                    group = [(at, point, shape), *group[1:]]
+                exact = exact_posting(self._opening_balances[name], start, value)
+                if exact is not value:
+                    group = [(at, exact, shape), *group[1:]]
             yield name, group
 
     @property
@@ -1444,17 +1445,17 @@ class Sparse(MovingTransfers, Way):
             self.record_through(min(t, end) if problem is not None else t)
 
     def _history_span(self):
-        """Capture a posted remainder before a later moment can replace its ledger entry."""
+        """Capture the postings at the step's start before a later moment can replace them in the
+        ledger: their exact balances open the stores' histories (`exact_posting`)."""
         start, end = self.pending[:2]
         self._history_end = end
         self._history_rows = None
-        self._opening_balances = {}
         balances = self.run.stock_state.balances
-        for k in self.kept_stores:
-            name = self.stores[k]
-            point = balances.get(name)
-            if point is not None and point[2] == start and point[0] != float(point[0]):
-                self._opening_balances[name] = point[0]
+        self._opening_balances = {
+            name: balances[name]
+            for name in (self.stores[k] for k in self.kept_stores)
+            if name in balances and balances[name][2] == start
+        }
 
     def commit_through(self, t):
         """Pay the physical transfer through t once, independent of history observations."""
