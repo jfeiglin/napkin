@@ -614,7 +614,7 @@ class Recorder:
             not internal
             or len(ways.sampled) + len(ways.moving_solvers) <= 1
             or all(
-                ways.sets[key][1].recorded_through == end
+                ways.sets[key][1].reached(end)
                 for registry in (ways.sampled, ways.moving_solvers)
                 for key in registry
             )
@@ -624,7 +624,7 @@ class Recorder:
         self.fits.advance(end)
         if not self._index_current():
             self._prepare_histories()
-        if not any(ways.pending_sparse(end)):
+        if not any(ways.unrecorded(end)):
             self._advance(end)
         else:
             # A closed raw column can be counted while another solver still owns an open step.
@@ -636,7 +636,7 @@ class Recorder:
         if self.check_budget(end):
             # The strict committed prefix already exceeds the limit. Complete this terminal
             # boundary once, so the ordinary trim can find the latest safe earlier check.
-            ways.project_sparse(self, end)
+            ways.project(self, end)
             prefix = self.record(end, pause=Entry(end, self.round, 'pause', '', ''), ongoing=True)
             if prefix.failure is None:
                 raise AssertionError('a committed overrun must exceed the piece budget')

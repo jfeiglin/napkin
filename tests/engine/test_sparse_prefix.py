@@ -68,7 +68,7 @@ def test_ordinary_observations_book_transfers_without_fitting_a_pending_step(mod
 
     for t in (first, second):
         view = run.recorder.projection()
-        run.ways.project_sparse(view, t)
+        run.ways.project(view, t)
         (row,) = view.pieces['tank.water']
         assert row[0] == 0 and row[2].length == end
         assert way.recorded_through is None and run.recorder.pieces == original_raw

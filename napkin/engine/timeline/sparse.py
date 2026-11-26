@@ -963,6 +963,7 @@ class Sparse(MovingTransfers, Way):
         return Asked(request, capacity, end_request, end_capacity)
 
     sample_on_read = True
+    records_on_arrival = False  # its step is recorded when it ends, or when a reader needs it
 
     def answers_at(self, t, incoming, flows):
         pending = self.pending
@@ -1414,11 +1415,17 @@ class Sparse(MovingTransfers, Way):
                     group = [(at, point, shape), *group[1:]]
             yield name, group
 
+    @property
+    def booked_through(self):
+        """`self.t`: a group with no stores books no ledger, so its `amounts.through` stays put."""
+        return self.t
+
     def record_through(self, t, recorder=None):
-        """Write a pending prefix. A detached recorder leaves the live history frontier unchanged."""
+        """Write a pending prefix, to the booked position at most. A detached recorder leaves the live
+        history frontier unchanged."""
         if not self.has_unrecorded(t):
             return
-        t = min(t, max(self.pending[1], self.t))
+        t = min(t, self.t)
         live = recorder is None or recorder is self.recorder
         target = self.recorder if live else recorder
         for name, rows in self.trajectory_rows(t):
@@ -1515,10 +1522,6 @@ class Sparse(MovingTransfers, Way):
     def retire(self, key):
         """The set leaves the run's ways."""
         self.alive = False
-
-    def refresh(self, t):
-        """At a key time: the steps start again there."""
-        self.cut(t)
 
     def peek(self, limit=None):
         """The end of the next step of the solver, which is made now if it is not yet: a store that
@@ -1709,6 +1712,9 @@ class Sparse(MovingTransfers, Way):
     def _pending_end(self):
         return self.pending[1]
 
+    def _pending_start(self):
+        return self.pending[0]
+
     def _pending_amount(self, row, t):
         prefix = self._transfer_amount(self.pending[2], self.amounts.through, t)
         return prefix if self.amounts.single is not None else prefix[row]
@@ -1716,8 +1722,7 @@ class Sparse(MovingTransfers, Way):
     def step(self, levels=()):
         """Commit the next step: the stores and the rates of the set move through it."""
         _, end, _, y, ended = self.pending
-        self.commit_through(end)
-        self.record_through(end)
+        self.advance(end)
         self.pending, self._history_rows, self._drift = None, None, None
         for name in levels:
             if name in self.place:
@@ -1830,8 +1835,7 @@ class Sparse(MovingTransfers, Way):
         the solver selects its first step. Both runs make the same decisions in the same order.
         Their values agree closely. Inside a long step, the relative difference can exceed rtol."""
         if self.pending is not None:
-            self.commit_through(min(t, self.pending[1]))
-            self.record_through(min(t, self.pending[1]))
+            self.advance(min(t, self.pending[1]))
             self._history_rows = None
             if t > self.pending[0]:
                 self.contacted = ()

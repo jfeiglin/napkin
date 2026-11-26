@@ -67,6 +67,44 @@ def test_event_cut_preserves_each_accepted_leg(method, cycle, monkeypatch):
 
 
 @pytest.mark.parametrize('method', [ComponentWay, Sparse])
+def test_a_moment_books_each_group_before_its_stages_and_never_records_past_that(method, monkeypatch):
+    """Before the stages of a moment, each group's transfers are booked through it, and its history is
+    never recorded past them. A second booking or recording there, or at an earlier time, changes
+    nothing."""
+    monkeypatch.setattr(plan, 'LIMIT', 0 if method is Sparse else 150)
+    source = """plant:
+    donor: L = 10 L
+    pool: L = 4000000 L
+    flow delivery: this.donor -> this.pool
+        request = formula(0.1 L/h * t / (1 h))
+"""
+    machine = Run(Plan.of(compile_text(source + PAUSE, UNITS).program, Configuration(Request(1))))
+    finish = machine.finish_arrival
+    seen = []
+
+    def state(way):
+        pieces = {name: list(rows) for name, rows in machine.recorder.pieces.items()}
+        return way.booked_through, way.recorded_through, way.transferred('plant.delivery', 0.5), pieces
+
+    def observe():
+        if machine.arriving and machine.now == 0.5:
+            way = machine.ways.instance_of('plant.delivery')
+            assert isinstance(way, method) and way.booked_through == 0.5
+            way.advance(0.5)
+            way.record_through(0.75)
+            before = state(way)
+            assert before[1] == 0.5
+            for t in (0.5, 0.25):
+                way.advance(t)
+            assert state(way) == before
+            seen.append(way)
+        finish()
+
+    machine.finish_arrival = observe
+    assert machine.run().failure is None and seen
+
+
+@pytest.mark.parametrize('method', [ComponentWay, Sparse])
 @pytest.mark.parametrize('power', [True, False], ids=['polynomial', 'reciprocal'])
 def test_hidden_circulation_survives_a_serialized_mid_stage_stop(method, power, monkeypatch):
     import math

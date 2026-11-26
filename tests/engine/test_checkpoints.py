@@ -29,7 +29,7 @@ from typing import NamedTuple
 
 import pytest
 
-from napkin.engine.timeline import Plan, Run, paused, read, resume, run
+from napkin.engine.timeline import Plan, Run, paused, read, resume, run, saved
 from napkin.engine.timeline.plan import COMPONENT, DECLARED, FAMILY, LINES, SPARSE
 from napkin.program.artifact import Artifact
 from napkin.program.build import (
@@ -471,6 +471,27 @@ def test_a_component_that_rests_on_its_bound_at_a_stop_is_restored_on_it(tmp_pat
         mark = (('tank.check.when[0]', 'tank.water <= 0 L', float(remaining), level_band),)
         assert firing.detail('near') == firing.detail('band_entry') == mark
         assert not contacts and not placements
+
+
+def test_a_stop_after_its_moment_booked_a_resting_component_keeps_its_incoming_rates():
+    """The tank empties near 0.7 h and then rests on its bound. The stop at 1.5 h comes after the moment
+    booked the component's segment, which still holds there: the checkpoint keeps the rates that come
+    into the moment, which a restored resting store reads."""
+    b = Builder(UNITS)
+    drain = formula(q(2, 'L/h') + this.water / q(1, 'h'))
+    b.entity(
+        'tank',
+        value('water', 'L', 1, lower=0),
+        flow('fill', SOURCE, this.water, request=formula(q(1, 'L/h') + t * q(0, 'L/h/h'))),
+        flow('drain', this.water, SINK, request=drain, capacity=drain),
+        event('look', after(q(1.5, 'h'))),
+    )
+    b.setup(start(named('tank').look))
+    live = Run(Plan.of(b.finish(), Configuration(Request(2))), (Breakpoint('tank.look.step[0]'),))
+    stop = live.run()
+    (way,) = live.ways.instances
+    assert stop.stop.t == way.booked_through == 1.5 and way.resting is not None
+    assert dict(saved._instance(way)[2])['arrival_rates'][0] == 1.5
 
 
 def starts(record, part):

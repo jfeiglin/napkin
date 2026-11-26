@@ -195,7 +195,7 @@ def at_stop(run):
         isinstance(way, Sparse) and way.pending is not None and way.t < run.now for way in run.ways.instances
     ):
         recorder = run.recorder.projection()
-        run.ways.project_sparse(recorder, run.now)
+        run.ways.project(recorder, run.now)
         return recorder, None
     projected = copy(run)
     projected.stock_state = copy(run.stock_state)
@@ -491,7 +491,7 @@ def _instance(instance):
     incoming = getattr(instance, 'arrival_rates', None)
     if instance.resting is not None and getattr(instance, 'pending', None) is not None:
         end = instance.run.now
-        if instance.amounts.through < end or (isinstance(instance, Sparse) and instance.pending[0] < end):
+        if instance.holds_incoming(end):
             left = instance.incoming_rates(math.nextafter(end, -math.inf))
             incoming = end, {name: left(name) for name in instance.resting.incident}
     fields += (

@@ -241,6 +241,8 @@ def test_private_prefix_uses_the_same_joint_fit_as_the_completed_step(model):
     way.t = start
     way.pending = (start, end, solution, solution(end), False)
     way._history_span()
+    # The step is booked through its end, as a moment books it: a record never passes the booked time.
+    way.t = end
 
     def states(times):
         return np.array([solution(t) for t in times])

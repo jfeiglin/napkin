@@ -110,7 +110,7 @@ tank.tick.start()
     check = Recorder.check_budget
 
     def observed(recorder, end, **options):
-        pending = list(live.ways.pending_sparse(end)) if recorder is live.recorder and end == 1 else []
+        pending = list(live.ways.unrecorded(end)) if recorder is live.recorder and end == 1 else []
         before = [(way.recorded_through, tuple(recorder.pieces.get('tank.water', ()))) for way in pending]
         try:
             return check(recorder, end, **options)

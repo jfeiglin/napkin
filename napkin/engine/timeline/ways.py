@@ -222,35 +222,29 @@ class Ways:
         return None
 
     def accept_incoming(self, t):
-        """Book sparse transfers and record the other incoming trajectories before stages run."""
-        for key in self.sampled:
-            way = self.sets[key][1]
-            if isinstance(way, Sparse):
-                way.commit_through(t)
-        for registry in (self.sampled, self.moving_solvers):
-            for key in registry:
-                way = self.sets[key][1]
-                if not isinstance(way, Sparse):
-                    way.incoming_history(t)
+        """Before the stages of a moment at t: every way books its incoming transfers, then each that
+        records on arrival records its incoming step while the inputs that it reads are those of the step
+        (`Way.records_on_arrival`)."""
+        ways = self.cut_order()
+        for way in ways:
+            way.commit_through(t)
+        for way in ways:
+            if way.records_on_arrival:
+                way.record_through(t)
 
-    def pending_sparse(self, t):
-        """Installed sparse groups with unrecorded incoming history at t."""
-        for key in self.sampled:
-            way = self.sets[key][1]
-            if isinstance(way, Sparse) and way.has_unrecorded(t):
-                yield way
+    def unrecorded(self, t):
+        """The ways whose booked history through t has not reached the recorder."""
+        return (way for way in self.cut_order() if way.has_unrecorded(t))
 
-    def project_sparse(self, recorder, t):
-        """Publish the native sparse rows into the terminal or checkpoint recorder."""
-        for way in self.pending_sparse(t):
+    def project(self, recorder, t):
+        """Give `recorder` (the terminal or a checkpoint's) the booked history through t that it lacks."""
+        for way in self.unrecorded(t):
             way.record_through(t, recorder)
 
     def record_accepted(self, t):
-        """Flush history up to each sparse group's last paid coordinate at a terminal failure."""
-        for key in self.sampled:
-            way = self.sets[key][1]
-            if isinstance(way, Sparse):
-                way.record_accepted(t)
+        """At a terminal failure, record what each way booked whose history can be read."""
+        for way in self.cut_order():
+            way.record_accepted(t)
 
     def cut(self, t):
         """Every instance stands at time t. Give the stores brought to a bound by the cut."""
@@ -264,12 +258,7 @@ class Ways:
         changed = set()
         for way in self.cut_order():
             bound = limits.get(way, through) if limits is not None else None
-            if isinstance(way, Sparse):
-                changed.update(way.observe(t, bound) or ())
-            elif bound is not None:
-                changed.update(way.arrive(t, bound))
-            else:
-                changed.update(way.cut(t) or ())
+            changed.update(way.observe(t, bound) or ())
         return changed
 
     def switched(self, t):
@@ -473,9 +462,7 @@ class Ways:
         # A delivered rate can read another retiring group's incoming step.
         # Materialize all outgoing spans while every supplier is still installed.
         for key in retiring:
-            way = self.sets[key][1]
-            if isinstance(way, Sparse):
-                way.record_through(t)
+            self.sets[key][1].advance(t)
         for key in retiring:
             connected, instance = self.sets[key]
             # Both ends consume the same accepted physical leg before its installation retires.

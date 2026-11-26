@@ -1486,9 +1486,12 @@ class Segment:
     contacts on its final accepted step (empty at the end of the window), and whether it is plain: one that ends at
     no event before the end of the window, at the last time that answers before a failure."""
 
-    def __init__(self, start, end, solution, event, plain=False):
+    def __init__(self, start, end, solution, event, plain=False, openings=None):
         self.start, self.end, self.solution, self.event = start, end, solution, event
         self.plain = plain
+        # The balances of the stores at the start of a held problem's segment, which its history opens
+        # with: read when the segment is made, while the ledger stands there (`MovingDeclared._pieces`).
+        self.openings = openings
 
     def due(self, through):
         """Contacts on the last trial step in the settled instant's time band."""
@@ -1875,7 +1878,12 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
                     break
                 solver, until = None, window  # a bound halfway to a failure was met: on to the window
         self.run.now = self.time
-        return Segment(self.time, now, OdeSolution(times, outputs), event, plain)
+        openings = (
+            {store: self.run.stock_balance(store, self.time) for store in self.stores}
+            if self.held_problem
+            else None
+        )
+        return Segment(self.time, now, OdeSolution(times, outputs), event, plain, openings)
 
     def _events(self, solution, start, end, armed):
         """Locate store contacts and switch operands on this smooth step's dense trajectory."""
@@ -1943,8 +1951,7 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
         if self.held_problem:
             rates = self._derivative(start, self.y)
             for store, rate in zip(self.stores, rates):
-                opening = self.run.stock_balance(store, start)
-                yield store, [(start, float(opening), float(rate))]
+                yield store, [(start, float(self.pending.openings[store]), float(rate))]
         else:
             yield from zip(self.stores, fitted(states, start, end, self.atol, self.stores))
         names = [*self.recorded, *self.connected.results]
@@ -1966,23 +1973,33 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
         if names:
             yield from zip(names, fitted(answers, start, end, tolerance, names))
 
-    def incoming_history(self, end):
-        """Record the incoming answer while the trial solves still see their original inputs."""
-        if self.pending is None or end <= self.pending.start or end == self.recorded_through:
+    def commit_through(self, end):
+        """Book the incoming segment through `end`, before the stages of a moment there."""
+        segment = self.pending
+        if segment is None or end <= max(segment.start, self.amounts.through):
+            return
+        # The legs are integrated from the segment's start, so a segment is booked once, from there.
+        assert self.amounts.through == segment.start, (self.amounts.through, segment.start)
+        self.amounts.select_clocks(self.low.__getitem__, self.high.__getitem__)
+        self.accept_amounts(segment.start, end, segment.solution(end)[len(self.stores) :])
+        self.mark_rates(segment.solution, segment.start, end)
+
+    def record_through(self, end, recorder=None):
+        """Record the incoming answer, to the booked position at most, while the trial solves still see
+        their original inputs."""
+        end = min(end, self.amounts.through)
+        if self.pending is None or end <= self.pending.start or self.reached(end):
             return
         pieces = self.prefix[1] if self.prefix is not None and self.prefix[0] == end else self._pieces(end)
+        live = recorder is None or recorder is self.recorder
         for name, fitted_pieces in pieces:
-            self.recorder.add_pieces(name, fitted_pieces)
-        self.recorded_through = end
+            (self.recorder if live else recorder).add_pieces(name, fitted_pieces)
+        if live:
+            self.recorded_through = end
 
     def _commit(self, end):
         """Apply the incoming prefix, then bring the stores to the moment."""
-        self.incoming_history(end)
-        if end > self.amounts.through:
-            start = self.amounts.through
-            self.amounts.select_clocks(self.low.__getitem__, self.high.__getitem__)
-            self.accept_amounts(start, end, self.pending.solution(end)[len(self.stores) :])
-            self.mark_rates(self.pending.solution, start, end)
+        self.advance(end)
         self.y = self._state(end)
         self.time = end
         self.pending = self.prefix = None

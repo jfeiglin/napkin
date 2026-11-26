@@ -641,12 +641,6 @@ class ComponentWay(MovingTransfers, Way):
     def begin(self):
         """Nothing yet: the first segment is made when the run asks for it."""
 
-    def refresh(self, t):
-        """At a key time: the keyed reads by the time take their values there."""
-        self.cut(t)
-        self._stepped(t)
-        self._drift = None
-
     def retire(self, key):
         """The set leaves the run's ways."""
         self.alive = False
@@ -679,17 +673,30 @@ class ComponentWay(MovingTransfers, Way):
         return list(self.stores), list(self.rates), True
 
     def _commit(self, segment):
-        component = self.component
-        if segment.end > segment.start:
-            if self.amounts.clocks:
-                self.amounts.select_clocks(*self._clock_bounds())
-            amount = self._transfer_amount(segment, segment.end)
-            self.accept_amounts(segment.start, segment.end, amount)
-            if segment.numerical is not None:
-                self.mark_rates(segment.solution, segment.start, segment.end)
-        self._record(segment)
-        component.proceed(segment)
+        """Book and record what of the segment is not yet, and go on from its end."""
+        if segment.end > segment.start and segment.end > self.amounts.through:
+            self._book(segment)
+        if segment.start == segment.end or not self.reached(segment.end):
+            # A segment of no length records its point there, as a landing at that instant.
+            self.run.recorder.segment(self.component, segment, self.stores, self.rates)
+            self.recorded_through = segment.end
+        self.component.proceed(segment)
         self._drift = None
+
+    def _book(self, segment):
+        # The legs are integrated from the segment's start, so a segment is booked once, from there.
+        assert self.amounts.through == segment.start, (self.amounts.through, segment.start)
+        if self.amounts.clocks:
+            self.amounts.select_clocks(*self._clock_bounds())
+        amount = self._transfer_amount(segment, segment.end)
+        self.accept_amounts(segment.start, segment.end, amount)
+        if segment.numerical is not None:
+            self.mark_rates(segment.solution, segment.start, segment.end)
+
+    @staticmethod
+    def _prefix(segment, t):
+        """The segment up to t."""
+        return segment if t == segment.end else replace(segment, end=t, numerical=_cut(segment.numerical, t))
 
     def _transfer_amount(self, segment, through):
         """The actual leg integrals on the accepted prefix, in canonical units."""
@@ -745,18 +752,25 @@ class ComponentWay(MovingTransfers, Way):
         bounds = self.component.state.active_bounds
         return lambda k: (k, 'min') in bounds, lambda k: (k, 'max') in bounds
 
-    def _record(self, segment):
-        if segment.start == segment.end or segment.end != self.recorded_through:
-            self.run.recorder.segment(self.component, segment, self.stores, self.rates)
-            self.recorded_through = segment.end
-
-    def incoming_history(self, t):
-        """Record the prepared dense span through the moment before any stage changes its inputs."""
+    def commit_through(self, t):
+        """Book the pending segment through t, before the stages of a moment there."""
         segment = self.pending
-        if segment is not None and segment.start < t and t != self.recorded_through:
-            if t != segment.end:
-                segment = replace(segment, end=t, numerical=_cut(segment.numerical, t))
-            self._record(segment)
+        if segment is not None and t > max(segment.start, self.amounts.through):
+            self._book(self._prefix(segment, t))
+
+    def record_through(self, t, recorder=None):
+        """Record the pending segment through t, to the booked position at most, before any stage
+        changes its inputs."""
+        segment = self.pending
+        t = min(t, self.amounts.through)
+        if segment is None or t <= segment.start or self.reached(t):
+            return
+        live = recorder is None or recorder is self.run.recorder
+        (self.run.recorder if live else recorder).segment(
+            self.component, self._prefix(segment, t), self.stores, self.rates
+        )
+        if live:
+            self.recorded_through = t
 
     def switched_at(self, t):
         state = self.component.state

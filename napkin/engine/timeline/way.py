@@ -118,6 +118,17 @@ class MovingTransfers:
     def _pending_end(self):
         return self.pending.end
 
+    def _pending_start(self):
+        return self.pending.start
+
+    @property
+    def booked_through(self):
+        """The end of the transfers in the ledger (`Way.booked_through`)."""
+        return self.amounts.through
+
+    def holds_incoming(self, end):
+        return self.pending is not None and self._pending_start() < end
+
     @property
     def probe_until(self):
         """A just-after read can follow a prepared trajectory only through its endpoint."""
@@ -140,14 +151,65 @@ class MovingTransfers:
 
 
 class Way:
-    """An engine supplies its answers on its installed trajectory and the contacts it located."""
+    """An engine supplies its answers on its installed trajectory and the contacts it located.
+
+    A way that moves between moments has two positions, which only its own methods move:
+    `booked_through`, the end of the transfers in its ledger (`commit_through`), and `recorded_through`,
+    the end of the history that the recorder holds (`record_through`). Each moves only forward, and the
+    recorded one never passes the booked one, so an observation can book transfers without a fit of the
+    history, and a fit reads only booked transfers. A way that holds its values between moments has
+    neither, and these methods do nothing."""
 
     sample_on_read = False
     probe_until = inf  # a held value or outgoing line supports the full just-after probe
+    # Whether the way records its incoming step at a moment's opening, before the stages change the
+    # inputs that its history reads (`Ways.accept_incoming`), or only when its step ends (Sparse).
+    records_on_arrival = True
 
     resting_rates = None
     resting = None
-    recorded_through = None  # end of the last dense span already given to the recorder
+    recorded_through = None  # end of the history given to the recorder (None: none yet)
+
+    @property
+    def booked_through(self):
+        """The end of the transfers that this way has booked, or None for a way that books none."""
+        return None
+
+    def commit_through(self, t):
+        """Book the transfers of the pending step through t, once: the booked position moves only
+        forward."""
+
+    def record_through(self, t, recorder=None):
+        """Give the recorder the history of the pending step through t, never past the booked position
+        and never twice; into `recorder` (a projection, `Recorder.projection`), the live position stays."""
+
+    def has_unrecorded(self, t):
+        """Whether booked history through t has not reached the recorder."""
+        return False
+
+    def record_accepted(self, t):
+        """At a failure, record what was booked whose history can be read (Sparse only)."""
+
+    def advance(self, t, *, record=True):
+        """Book through t, then, with `record`, record through t: the positions move together."""
+        self.commit_through(t)
+        if record:
+            self.record_through(t)
+
+    def reached(self, t):
+        """Whether the recorder holds this way's history through t."""
+        return self.recorded_through is not None and self.recorded_through >= t
+
+    def holds_incoming(self, end):
+        """Whether a pending step starts before `end`: its incoming rates there are not yet settled."""
+        return False
+
+    def observe(self, t, through=None):
+        """Advance the incoming step to a moment at t: an ordinary arrival (`through` given) snaps the
+        contacts due there and cuts; any other observation cuts."""
+        if through is not None:
+            return self.arrive(t, through)
+        return self.cut(t) or ()
 
     def prepare_clock_rates(self, *, observe):
         """Bind the scope once per installation, including reconstructed checkpoint ways."""
