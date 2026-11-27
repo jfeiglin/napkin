@@ -216,6 +216,23 @@ times. The engine locates it to the crossing tolerance in time.
   make it.
 - A run fails only when a hard rule breaks by more than its band.
 
+A contact can reach the threshold of a condition in a rate, for example
+`formula(1 L/h if this.tank > 5 L else 0 L/h)`. Then the engine selects the side of the condition on
+which the run continues:
+
+- It selects the side toward which the state moves at the contact.
+- It checks that this side holds: with the rates of this side, the state stays on this side.
+- If the side does not hold, it tries the other sides of the conditions that meet at that time, in a
+  fixed order: on the threshold, below it, above it. It selects the first side that holds.
+- If no side holds, the run stops: the rates chatter.
+
+**Known limit: two sides can hold.** Example: tank A fills while tank B is below its mark and drains
+while B is above it, and B does the same with A. When both tanks are at their marks, "A rises and B
+falls" holds, and "A falls and B rises" holds too. The engine selects one side with the rule above. It
+does not tell you that the other side also holds. Each run of the model, and each resumed run, selects
+the same side. If you need a different result, change the model so that only one side can hold: for
+example, use different levels to start and to stop a flow, or give the flows a priority.
+
 The engine pages give the details ([engine/README.md](../engine/README.md)).
 
 ## Near-ties
