@@ -1021,11 +1021,29 @@ class Instant:
         request = asked.request
         place = {f: k for k, f in enumerate(part)}
         n = len(part)
-        rows = Rows(n)
         mine = {f: self._connections(f) for f in part}
         stores = sorted(
             {int(s) for f in part for c in mine[f] for s in (net.source[c], net.sink[c]) if s >= 0}
         )
+        connections = [c for f in part for c in mine[f]]
+        if not (request[connections] > 0).any() and not (asked.end_request[:, stores] > 0).any():
+            # Nothing is asked (no request in a part is below zero: `lines.asked_of`), so there is no
+            # claim, every bound and row holds at the targets, and the selection order gives them
+            # (`selection.select`, through `_serves_in_full`).
+            for c in connections:
+                self.rate_errors.pop(c, None)
+            return np.array(
+                [
+                    float(request[mine[f][0]] - request[mine[f][1]])
+                    if net.kinds[f] == ROUTE
+                    else 0.0
+                    if net.kinds[f] == LEGS
+                    else request[mine[f][0]]
+                    for f in part
+                ],
+                dtype=float,
+            )
+        rows = Rows(n)
 
         def term(connections):
             """The total rate of connections: its linear part over the part's flows, and the
