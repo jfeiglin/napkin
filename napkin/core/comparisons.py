@@ -90,6 +90,19 @@ def composed_floor(operation, sizes, exponent=None):
     return max(sizes, default=1)
 
 
+def _same(a, b):
+    """Whether two values that a floor's walk read are the same: of one type, equal, and of one sign
+    (a zero included). An array is never the same, so its walk always runs."""
+    if type(a) is not type(b):
+        return False
+    try:
+        if not bool(a == b):
+            return False
+    except (TypeError, ValueError):
+        return False
+    return not isinstance(a, float) or math.copysign(1.0, a) == math.copysign(1.0, b)
+
+
 def _magnitude(number):
     return number.copy_abs() if isinstance(number, Decimal) else abs(number)
 
@@ -395,6 +408,7 @@ class Comparisons:
         if cached is not None:
             return cached
         dynamic = False
+        reads = []
 
         def point(node):
             nonlocal dynamic
@@ -404,19 +418,33 @@ class Comparisons:
                 if read is None:
                     raise UnresolvedScale
                 dynamic = True
-                return node.choose(lambda name: read(expr.ref(name)))
-            if not expr.names(node):
+                found = node.choose(lambda name: read(expr.ref(name)))
+            elif not expr.names(node):
                 return value(node, {}, self.units)
-            if read is None:
-                raise UnresolvedScale(node)
-            dynamic = True
-            return read(node)
+            else:
+                if read is None:
+                    raise UnresolvedScale(node)
+                dynamic = True
+                found = read(node)
+            reads.append((node, found))
+            return found
 
+        # A floor that reads the state is a function of the values that its walk reads, in their
+        # order: when each one is the same as at the last walk, the walk takes the same path to the
+        # same floor. The memo lives in `floors`, so whatever clears the floors clears it too.
+        memo = self.floors.get(('reads', left, right)) if read is not None else None
+        if memo is not None:
+            last, result = memo
+            if all(_same(point(node), found) for node, found in last):
+                return result
+            dynamic, reads = False, []
         operands = self.operands(key, point)
         contributors = [item for item in operands if item.terms is not None] or operands
         result = max(item.floor for item in contributors)
         if not dynamic:
             self.floors[key] = result
+        elif read is not None:
+            self.floors['reads', left, right] = tuple(reads), result
         return result
 
     def frozen_floor(self, name, read):
