@@ -102,3 +102,19 @@ def test_a_floor_that_reads_the_state_walks_again_only_when_a_value_that_it_read
     assert floor() == 5 and len(walks) == 2
     policy.floors.clear()  # what clears the floors clears the memo with them
     assert floor() == 5 and len(walks) == 3
+
+
+def test_a_row_keeps_its_policy_and_what_it_learned_until_the_floors_are_cleared():
+    from types import SimpleNamespace
+
+    from napkin.core.arrays import _Pass
+
+    policy = Comparisons(None, named=lambda name: Binding(1, 1))
+    registry = SimpleNamespace(comparisons=policy)
+    run = _Pass({}, registry, 2, {'this.x': ('a.x', 'b.x')}, None)
+    key = (expr.ref('this.x'), expr.const(0), (('this.x', ('a.x', 'b.x')),))
+    first = run.row_policy(0, key)
+    assert run.row_policy(0, key) is first and run.row_policy(1, key) is not first
+    assert run.row_policy(0) is not first  # without a key, a row's policy is made for that read only
+    policy.floors.clear()
+    assert run.row_policy(0, key) is not first

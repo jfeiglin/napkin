@@ -167,7 +167,7 @@ class _Pass:
                     floors = _OPEN
                 policy.floors[key] = floors
             if floors is None or floors is _OPEN:
-                floor = [self.row_floor(left, right, i) for i in self.places(places)]
+                floor = [self.row_floor(left, right, i, key) for i in self.places(places)]
             else:
                 floor = floors if places is None else floors[places]
         else:
@@ -253,26 +253,36 @@ class _Pass:
                         result[j] = against(op, *pairs[i])
         return result
 
-    def row_policy(self, i):
+    def row_policy(self, i, key=None):
+        """The comparison policy of row i. With `key` (a comparison and the bindings of its names, as
+        `band` keys its floors of all rows), the row's policy is kept with the floors, so that what it
+        learns about its floors (`Comparisons.floor`) lasts until the floors are cleared."""
         policy = self.registry.comparisons
         if not self.bindings or policy.named is None:
             return policy
+        if key is not None:
+            kept = policy.floors.get(('row policy', key, i))
+            if kept is not None:
+                return kept
 
         def concrete(name):
             return self.bindings[name][i] if name in self.bindings else name
 
-        return policy.for_row(self.registry, concrete)
+        row = policy.for_row(self.registry, concrete)
+        if key is not None:
+            policy.floors['row policy', key, i] = row
+        return row
 
-    def row_reader(self, i):
+    def row_reader(self, i, key=None):
         """The comparison policy and scalar reader bound to this row."""
-        policy = self.row_policy(i)
+        policy = self.row_policy(i, key)
         units = copy(self.registry)
         units.comparisons = policy
         row = _Row(self.environment, self.read_bound, i)
         return policy, lambda node: scalar_value(node, row, units)
 
-    def row_floor(self, left, right, i):
-        policy, read = self.row_reader(i)
+    def row_floor(self, left, right, i, key=None):
+        policy, read = self.row_reader(i, key)
         return policy.band_floor(left, right, read)
 
     def spread(self, value, chosen):
