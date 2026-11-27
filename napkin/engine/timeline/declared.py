@@ -1637,7 +1637,7 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
             self._cache.clear()
 
         def reversal(name):
-            raise SimulationError(f'chattering at {t:g} h: rates switch back and forth at {name}')
+            raise SimulationError(integrate.stopped(t, integrate.reversal_reason(name)))
 
         _, _, _, self.held_comparisons = integrate.far_sides(
             region.surfaces,

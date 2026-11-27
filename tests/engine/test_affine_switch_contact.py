@@ -8,6 +8,7 @@ import pytest
 
 from napkin.core import expr as nodes
 from napkin.engine import read, run
+from napkin.engine.continuous import integrate
 from napkin.engine.continuous.integrate import consistent_departure
 from napkin.engine.errors import SimulationError
 from napkin.model.compile import compile_text
@@ -103,8 +104,9 @@ def test_feedback_must_support_its_own_outgoing_branch(yes, no, end, method, mon
         assert level() == pytest.approx(end, abs=1e-8)
     else:
         assert record.failure is not None and record.failure.t == 0
-        message = record.failure.detail('message')
-        assert all(word in message for word in ('chattering', 'yard.level', 'yard.target'))
+        # Every method gives the same reason; Sparse adds its advice about chattering after it.
+        reason = integrate.stopped(0, integrate.reversal_reason('yard.level against yard.target'))
+        assert record.failure.detail('message').startswith(reason)
 
 
 @pytest.mark.parametrize('rtol', [1e-9, 1e-7])

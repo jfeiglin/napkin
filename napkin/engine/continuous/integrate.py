@@ -1122,6 +1122,18 @@ def departing_branches(
     return signs
 
 
+def stopped(t, why):
+    """How a method says that the run stops at time t, and why."""
+    return f'The run stops at t = {t:g} h: {why}'
+
+
+def reversal_reason(name):
+    """Why a departure is refused when neither side of a switch holds: the rates on each side take the
+    state back across it (chattering). Every method gives this reason when its `reversal` is called
+    (`far_sides`), framed with the time of its stop (`stopped`)."""
+    return f'chattering: the rates switch back and forth at {name}; neither side of it holds'
+
+
 def consistent_departure(pairs, initial, motion, reversal, at):
     """Test joint proposals on their own fields. Equality keeps the band-exit watch armed.
 
@@ -1160,7 +1172,11 @@ def consistent_departure(pairs, initial, motion, reversal, at):
             and tried.get((0,)) in ((-1,), (1,))
         ):
             reversal(names)
-    raise SimulationError(f'cannot resolve the departing comparisons at {at:g} h: {names}')
+        raise SimulationError(f'cannot resolve the departing comparisons at {at:g} h: {names}')
+    raise SimulationError(
+        f'cannot resolve the departing comparisons at {at:g} h: {len(changed)} of them disagree, and the '
+        f'search tries every combination of 3 at most: {names}'
+    )
 
 
 def branch_expression(source, signs):
@@ -1335,7 +1351,7 @@ def starting_sides(system, run, field):
     moving = s.evolving | {'t'}
 
     def reversal(name):
-        raise SimulationError(f'chattering at {run.time:g} h: rates switch back and forth at {name}')
+        raise SimulationError(stopped(run.time, reversal_reason(name)))
 
     run.switches, run.clock, _, run.held_comparisons = far_sides(
         switching_surfaces(s),

@@ -1100,7 +1100,7 @@ class Sparse(MovingTransfers, Way):
         _, trial = self._held(self.t, self.y)
 
         def reversal(name):
-            raise SimulationError(self._failed(self.t, f'opposing rates on the two sides of {name}'))
+            raise SimulationError(self._failed(self.t, integrate.reversal_reason(name)))
 
         self.sides, self.clock, self.signs, self.held_comparisons = integrate.far_sides(
             self.surfaces,
@@ -1537,7 +1537,7 @@ class Sparse(MovingTransfers, Way):
         """What a failure of the solver at time t says: why, and where a setting reads a store through
         a condition, that the rates switch back and forth there (chattering), with the stores and the
         flows."""
-        found = f'The run stops at t = {t:g} h: {why}'
+        found = integrate.stopped(t, why)
         if not self.switches:
             return found
         stores = ', '.join(sorted(self.switches))
