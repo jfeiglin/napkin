@@ -86,6 +86,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from functools import cached_property
 
 import numpy as np
 
@@ -202,11 +203,9 @@ def carrying(net, request, capacity, end_capacity):
     valve passes neither supply nor room, closes no ring and takes no place in a priority."""
     found = np.asarray(capacity, dtype=float) > 0
     if end_capacity is not None:
-        for side, ends in ((OUT, net.source), (IN, net.sink)):
-            met = np.flatnonzero(ends >= 0)
-            found[met] &= end_capacity[side][ends[met]] > 0
-    legs = np.flatnonzero(net.roles == LEG)
-    found[legs] &= request[legs] > 0
+        for side, (met, stores) in enumerate(net.met):
+            found[met] &= end_capacity[side][stores] > 0
+    found[net.legs] &= request[net.legs] > 0
     return found
 
 
@@ -558,6 +557,15 @@ class Network:
                 np.bincount(self.sink[self.sink >= 0], minlength=count),
             ]
         )
+        # For each side: the connections that meet an endpoint, and those that alone meet theirs,
+        # each with the stores (`carrying`, `Instant`).
+        self.met, self.lone = [], []
+        for side, ends in ((OUT, self.source), (IN, self.sink)):
+            met = np.flatnonzero(ends >= 0)
+            lone = met[self.counts[side][ends[met]] == 1]
+            self.met.append((met, ends[met]))
+            self.lone.append((lone, ends[lone]))
+        self.legs = np.flatnonzero(self.roles == LEG)
         self.classes = dict(classes)
         self._layers = {}
         self.flow_sets = np.asarray(flow_sets, dtype=np.int64)
@@ -679,25 +687,21 @@ class Instant:
         self.extra = np.zeros(len(net.source))
         # With no endpoint there is no competing claim, including a claim of zero.
         self.extra[net.free_pipe] = -math.inf
-        for side, ends in ((OUT, net.source), (IN, net.sink)):
-            met = np.flatnonzero(ends >= 0)
-            alone = met[net.counts[side][ends[met]] == 1]
-            self.capacity[alone] = np.minimum(self.capacity[alone], asked.end_capacity[side][ends[alone]])
-            self.extra[alone] = np.maximum(self.extra[alone], asked.end_request[side][ends[alone]])
-        sets = int(max(net.flow_sets.max(initial=-1), net.store_sets.max(initial=-1))) + 1
-        claimed = np.zeros(sets, dtype=bool)
-        claimed[net.flow_sets[asked.request > 0]] = True
-        for side in (OUT, IN):
-            claimed[net.store_sets[asked.end_request[side] > 0]] = True
-        self.claimed = claimed  # the connected sets that have a claim
+        for side, (alone, stores) in enumerate(net.lone):
+            self.capacity[alone] = np.minimum(self.capacity[alone], asked.end_capacity[side][stores])
+            self.extra[alone] = np.maximum(self.extra[alone], asked.end_request[side][stores])
         self.rate_errors = {}  # numerical differences on legs refined by the general solver
         self.uncertain = {}  # unresolved stock departures at this instant
         self.selected = 0  # the parts that the selection order solved, not a closed form
         self.carries = carrying(
             net, asked.request, asked.capacity, asked.end_capacity
         )  # the connections that can carry flow at the instant
-        self.layer = net.layers(self.carries)  # the priority layer of each flow among them
         self._full = None  # the value of each flow, for the nets of a part's stores (`_nets`)
+
+    @cached_property
+    def layer(self):
+        """The priority layer of each flow among the connections that can carry flow."""
+        return self.net.layers(self.carries)
 
     # ---- the coupled parts ----------------------------------------------------------------------
 
