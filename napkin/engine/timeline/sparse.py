@@ -695,6 +695,9 @@ class Sparse(MovingTransfers, Way):
         self.measured = None
         self.held_rates = set()
         self.selected = False
+        # A stateful way decides its start once for each start state (`_start`): an observation can
+        # decide first, and the step that starts from that decision pays for its evaluations.
+        self.decided, self.decision_cost, self.unpaid = False, 0, None
 
         self.cap_turns = self.capacity_turns() if self.capped or configured_ends else ()
         self.setting_names = tuple(names)
@@ -986,12 +989,12 @@ class Sparse(MovingTransfers, Way):
     @contextmanager
     def _reading_rates(self):
         """Observations of a trajectory use no solver evaluations, even at the limit."""
-        spent = self.evaluations
-        self.evaluations = None
+        spent, unpaid = self.evaluations, self.unpaid
+        self.evaluations = self.unpaid = None
         try:
             yield
         finally:
-            self.evaluations = spent
+            self.evaluations, self.unpaid = spent, unpaid
 
     def values(self, t, y):
         """What the network gives of each flow at time t and state y, with the flags of the segment,
@@ -1000,6 +1003,8 @@ class Sparse(MovingTransfers, Way):
             self.evaluations += 1
             if self.evaluations > self.plan.numerics.max_evaluations:
                 raise SimulationError('Numerical evaluation budget exceeded')
+        elif self.unpaid is not None:
+            self.unpaid += 1
         t, trial = self._held(t, y)
         if self.outputs is not None:
             values = self.outputs(t, trial)
@@ -1193,9 +1198,45 @@ class Sparse(MovingTransfers, Way):
 
     def _start(self):
         """Where a step starts: the entries that the keyed reads hold, the flags of the bounds, and the
-        far sides of the switches that the state crosses there (`_sides`)."""
+        far sides of the switches that the state crosses there (`_sides`). A stateful way decides once
+        for each start state: an observation (a build, a rate read) can decide before the step does, and
+        the step reads that decision and pays for its evaluations then (`_pay_decision`). A way
+        without stores reads its producers just after t, and their steps can change between two calls,
+        so it decides at each call."""
         if self.outputs is not None and self.selected:
             return
+        if not self.stores:
+            self._decide()
+            return
+        if self.decided:
+            return
+        unpaid = self.evaluations is None
+        if unpaid:
+            self.unpaid = 0
+        try:
+            self._decide()
+            cost = self.unpaid
+        finally:
+            if unpaid:
+                self.unpaid = None
+        self.decided, self.decision_cost = True, cost if unpaid else 0
+
+    def _pay_decision(self):
+        """The step that starts from a decision that an observation made pays for its evaluations, as
+        if it had decided itself."""
+        cost, self.decision_cost = self.decision_cost, 0
+        if cost and self.evaluations is not None:
+            limit = self.plan.numerics.max_evaluations
+            if self.evaluations + cost > limit:
+                self.evaluations = limit + 1
+                raise SimulationError('Numerical evaluation budget exceeded')
+            self.evaluations += cost
+
+    def _undecide(self):
+        """The start state changes: its decision and an unpaid cost of it go."""
+        self.decided, self.decision_cost = False, 0
+
+    def _decide(self):
         self.choose({})
         if self.run.consumed:
             self.contact_clocks.update(self.run.consumed_in(self.surfaces, self.t))
@@ -1471,6 +1512,7 @@ class Sparse(MovingTransfers, Way):
         self.t = float(t)
         self.y = self.pending[3] if t == end else np.array(solution(t), dtype=float)
         self._drift = None
+        self._undecide()
 
     def _count(self, start, end):
         """A step of the solver from start to end: after `integrate.STALLED_STEPS` steps in a row
@@ -1587,6 +1629,8 @@ class Sparse(MovingTransfers, Way):
                 self.run.now,
                 self.evaluations,
                 self.pending_evaluations,
+                self.decided,
+                self.decision_cost,
             ),
         )
 
@@ -1608,6 +1652,8 @@ class Sparse(MovingTransfers, Way):
             self.run.now,
             self.evaluations,
             self.pending_evaluations,
+            self.decided,
+            self.decision_cost,
         ) = fields
         if solver and kept is not None:
             vars(kept).clear()
@@ -1655,6 +1701,7 @@ class Sparse(MovingTransfers, Way):
             return end
         if self.solver is None:
             self._start()
+            self._pay_decision()
             numerics = self.plan.numerics
             # Time-keyed rows remain selected until the scheduled key. The incoming trial
             # may extend through its time band to bracket a simultaneous store bound.
@@ -1770,6 +1817,7 @@ class Sparse(MovingTransfers, Way):
             if name in self.place:
                 y[self.place[name]] = levels[name]
         self.t, self.y = end, y
+        self._undecide()
         self.contacted = tuple(pair for at, pair, kind in self._located() if at == end and kind == 'switch')
         self.band_contacts = []
         self.contact_clocks = {pair: at for pair, at in self.contact_clocks.items() if at >= end}
@@ -1890,6 +1938,7 @@ class Sparse(MovingTransfers, Way):
             self.pending = None
             self.pending_evaluations = 0
         self.solver, self._drift, self.band_contacts = None, None, []
+        self._undecide()
 
     def _step_state(self, t, *, incoming=False):
         """Read the pending step. An incoming contact can read beyond its end."""

@@ -353,6 +353,9 @@ class Component:
         self.state = State(0.0, np.array(start, dtype=float), {})
         self.field = Field(system, self.state, context)
         self.field.allocation = Held(system, rigid)
+        # Whether the present start state is settled (`settle`) by an observation that paid nothing;
+        # the next segment then pays its evaluations (`next`).
+        self.decided, self.decision_cost = False, 0
 
     def guards(self, env):
         """The level rules that a segment watches: none, in this slice."""
@@ -363,7 +366,15 @@ class Component:
         that reaches its face within the roundoff of the time is settled there first: that gives a
         segment of no length, whose last state has the face settled."""
         s, state, field = self.system, self.state, self.field
-        self.settle()
+        if self.decided:
+            # An observation settled this state: pay for what it evaluated, as settling here would.
+            cost, self.decided, self.decision_cost = self.decision_cost, False, 0
+            if state.evaluations + cost > s.cfg.max_evaluations:
+                state.evaluations = s.cfg.max_evaluations + 1
+                raise SimulationError('Numerical evaluation budget exceeded', self.context.diagnostics)
+            state.evaluations += cost
+        else:
+            self.settle()
         start = state.time
         found = advance(s, state, field, self, self.context, horizon)
         first = state.y.copy()
@@ -430,6 +441,7 @@ class Component:
     def proceed(self, segment):
         """The next segment starts where this one ended."""
         self.state.time, self.state.y = segment.end, segment.last.copy()
+        self.decided, self.decision_cost = False, 0
         self.state.contact_clocks = {
             pair: at for pair, at in self.state.contact_clocks.items() if at >= segment.end
         }
@@ -850,12 +862,15 @@ class ComponentWay(MovingTransfers, Way):
         the switches that it crosses there, as the next segment finds them (`Component.settle`): a set
         built or restored at a moment, before its rates are read, and at the horizon. The evaluations
         count for no budget of the run."""
-        state = self.component.state
+        component = self.component
+        state = component.state
         evaluations = state.evaluations
         try:
-            self.component.settle()
+            component.settle()
+            cost = state.evaluations - evaluations
         finally:
             state.evaluations = evaluations
+        component.decided, component.decision_cost = True, cost
         self.bounded, self._drift = True, None
         self._resting()
 
