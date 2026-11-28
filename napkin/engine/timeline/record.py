@@ -68,7 +68,8 @@ If the record exceeds the budget, use the latest check time whose completed pref
 (`Record.within`). The prefix includes only pieces and rounds before that time. A piece from
 a solver that publishes later counts at its own start. The manifest keeps time zero and each
 distinct check time at a moment or a common solver boundary. The same rule applies at a
-checkpoint (`checkpoints.Breaks`).
+checkpoint (`checkpoints.Breaks`). A restored run starts its solvers again at the checkpoint, so it
+can count a few more pieces than the run that did not stop (`docs/language/numerics.md`).
 
 Numbers are in the canonical unit of their dimension. `read` gives them in the declared unit of each
 path, from what the record holds and from nothing else (`Record.unavailable`): any other value is

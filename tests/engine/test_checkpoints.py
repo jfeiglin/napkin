@@ -494,6 +494,32 @@ def test_a_stop_after_its_moment_booked_a_resting_component_keeps_its_incoming_r
     assert dict(saved._instance(way)[2])['arrival_rates'][0] == 1.5
 
 
+def test_a_restored_group_starts_its_solver_again_with_the_size_of_its_last_step():
+    """The tank's solver takes one step from about 0.38 h to the end, across the stop at 0.75 h. A
+    restore starts it again at the stop with the size of that step, as a restart inside a run does:
+    the restored history has a piece from the stop and one from the moment at 1 h, and no run of small
+    first steps (docs/language/numerics.md)."""
+    b = Builder(UNITS)
+    b.entity(
+        'tank',
+        value('water', 'L', 10),
+        flow('fill', SOURCE, this.water, request=formula(q(1, 'L/h') + t * q(1, 'L/h/h'))),
+        flow('spare', SOURCE, this.water, request=q(0.1, 'L/h')),
+        flow('drain', this.water, SINK, request=formula(q(0.5, 'L/h') + t * q(0.25, 'L/h/h'))),
+        event('look', after(q(0.75, 'h')), after(q(0.25, 'h'))),
+    )
+    b.setup(start(named('tank').look))
+    program, configuration = b.finish(), Configuration(Request(2))
+    live = Run(Plan.of(program, configuration), (Breakpoint('tank.look.step[0]'),))
+    stop = live.run()
+    (way,) = live.ways.instances
+    again = Run.restored(Plan.of(program, configuration), loads(dumps(stop)))
+    (restored,) = again.ways.instances
+    assert restored.last_step == way.last_step > 1
+    (water,) = [history for history in again.resume().histories if str(history.key) == 'tank.water']
+    assert [float(piece.t) for piece in water.pieces if piece.t >= 0.75] == pytest.approx([0.75, 1, 2])
+
+
 def starts(record, part):
     return [entry.t for entry in record.entries('start', part)]
 

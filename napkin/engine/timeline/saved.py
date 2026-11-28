@@ -656,6 +656,9 @@ def _instance_fields(instance):
                 # A failed trial past the calendar turns them off for good: the same decisions after a
                 # restore need it (`Sparse._local_trial`).
                 ('local_steps', instance.local_steps),
+                # The size of its last committed step, with which its solver starts again, as a
+                # restart inside a run does (`Sparse._prepare_step`).
+                ('last_step', None if instance.last_step is None else float(instance.last_step)),
             ),
         )
     if isinstance(instance, DeclaredWay):
@@ -1030,7 +1033,7 @@ def _made_fields(run, kind, keys, data):
             data['evaluations'],
         )
         instance.switches = {store: list(flows) for store, flows in data['switches']}
-        instance.local_steps = data['local_steps']
+        instance.local_steps, instance.last_step = data['local_steps'], data['last_step']
         if data['selected']:
             signs = {(a, b): sign for a, b, sign in data['signs']}
             instance.signs = {

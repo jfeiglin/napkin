@@ -290,6 +290,12 @@ The engine chooses its own steps. A run that needs finer steps sets `max_step`.
 - A checkpoint saves the number of rate evaluations that the run has used. After a restore, the
   solver can need more rate evaluations to prepare its next step. These evaluations use the remaining
   `max_evaluations` allowance.
+- A restore starts each solver again at the checkpoint (a sparse group with the size of its last
+  step). A solver step that went across the checkpoint time in the uninterrupted run ends there in
+  the restored run. Thus the restored run can record one or two more pieces for each value that the
+  solver integrates. If the uninterrupted run has fewer pieces than that to spare in its piece
+  budget, the restored run can stop at an earlier check. A pause that continues in the same session
+  does not restore, and it changes nothing.
 - A budget of a solver counts work, never seconds. A run that succeeds on one machine succeeds on
   another ([flows-and-solvers.md](flows-and-solvers.md#budgets)).
 - The draws of a sampled run are keyed by the seed, the place of the draw and its owner. Another
