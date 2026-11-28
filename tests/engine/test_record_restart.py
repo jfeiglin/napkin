@@ -46,6 +46,46 @@ def test_a_line_fits_to_the_same_bytes_alone_and_beside_another_value(neighbour)
     assert len(alone) == 1 and repr(beside) == repr(alone)
 
 
+def _fit_or_failure(fit):
+    try:
+        return repr(fit())
+    except SimulationError as problem:
+        return f'failure: {problem}'
+
+
+@pytest.mark.parametrize('seed', range(60))
+def test_the_fit_of_one_value_gives_the_bytes_of_the_fit_of_columns(seed):
+    """The fit of one value in floats (`_fitted_one`, for a formula and the gap of two operands) gives
+    the pieces of `fitted` with one column, byte for byte: a held, a straight, a smooth, a kinked, a
+    jumping and a NaN value, on short and long spans, to small and large tolerances."""
+    rng = np.random.default_rng(seed)
+    start = float(rng.choice([0.0, 2.0, 1000.0]))
+    end = start + float(rng.choice([1e-10, 1e-3, 0.5, 7.0]))
+    tolerance = float(rng.choice([1e-12, 1e-8, 1e-3]))
+    a, b, c = rng.normal(size=3).tolist()
+    middle = start + float(rng.uniform(0.2, 0.8)) * (end - start)
+    shapes = (
+        lambda t: 11.0,
+        lambda t: a + b * t,
+        lambda t: a * np.sin(b * t) + c * t * t,
+        lambda t: a * abs(t - middle),
+        lambda t: a if t < middle else b,
+        lambda t: a if t < middle else float('nan'),
+    )
+    shape = shapes[seed % len(shapes)]
+    columns = _fit_or_failure(
+        lambda: fitted(
+            lambda times: np.array([[float(shape(t))] for t in times]), start, end, np.array([tolerance])
+        )[0]
+    )
+    one = _fit_or_failure(
+        lambda: recording._fitted_one(
+            lambda times: [float(shape(t)) for t in times], start, end, np.float64(tolerance)
+        )
+    )
+    assert one == columns
+
+
 def test_a_value_past_the_cut_limit_is_a_failure_by_its_name(monkeypatch):
     """The cut limit counts the cuts of each value. A value whose fit still misses after them is a
     failure by its name; a smooth value beside it is cut as it would be alone."""

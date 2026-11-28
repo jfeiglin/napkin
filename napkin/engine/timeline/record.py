@@ -287,6 +287,87 @@ def fitted(values, start, end, tolerance, names=None):
     return [sorted(pieces, key=lambda piece: piece[0]) for pieces in found]
 
 
+_FIT_ROWS, _CHECK_ROWS, _AROUND_ROWS = _FIT_MATRIX.tolist(), _CHECK_MATRIX.tolist(), _AROUND.tolist()
+
+
+def _summed(row, column):
+    """One row of `_product` for one column: the products added from the first, in order."""
+    total = row[0] * column[0]
+    for k in range(1, len(column)):
+        total += row[k] * column[k]
+    return total
+
+
+def _largest(numbers):
+    """`np.max(np.abs(numbers))`: a NaN wins, as in numpy."""
+    found = abs(numbers[0])
+    for number in numbers[1:]:
+        size = abs(number)
+        if size > found or size != size:
+            found = size
+    return found
+
+
+def _maximum(a, b):
+    """`np.maximum(a, b)` of two numbers: a NaN wins, as in numpy."""
+    if a != a:
+        return a
+    if b != b:
+        return b
+    return b if b > a else a
+
+
+def _fitted_one(sample, start, end, tolerance, name='a value'):
+    """`fitted` of one value (a formula, or the gap of two operands of a min or a max) in floats: the
+    same samples, the same sums in the same order and the same checks, without numpy's work on
+    arrays of nine numbers, which costs more than the arithmetic. `sample(times)` gives the value at
+    each of the (numpy) `times`, so each input is read at the same times as before."""
+    found, pending, cuts = [], [(start, end)], 0
+    while pending:
+        a, b = pending.pop()
+        times = _times(a, b, _NODES)
+        nodes = sample(times)
+        coefficients = [_summed(row, nodes) for row in _FIT_ROWS]
+        allowed = _maximum(tolerance, RELATIVE * _largest(nodes))
+        if b - a > SHORTEST:
+            checks = sample(_times(a, b, _CHECKS))
+            first = checks[0]
+            allowed = _maximum(allowed, RELATIVE * _largest(checks))
+            made = [_summed(row, coefficients) + first for row in _CHECK_ROWS]
+            # The allowance of each check for the spacing of float times (`_sampled`).
+            spacing = SAMPLED * np.spacing(max(abs(a), abs(b)))
+            slopes = []
+            for k in range(DEGREE):
+                step = times[k + 1] - times[k]
+                slopes.append(abs(nodes[k + 1] - nodes[k]) / step if step > 0 else 0.0)
+            if any(
+                abs(made[k] - checks[k]) > _maximum(allowed, spacing * slopes[_AROUND_ROWS[k]])
+                for k in range(DEGREE + 1)
+            ):
+                if cuts >= MOST:
+                    raise SimulationError(
+                        f'the fit of {name} from {a:g} to {b:g} h needed more than {MOST} cuts'
+                    )
+                middle = 0.5 * (a + b)
+                pending += [(middle, b), (a, middle)]
+                cuts += 1
+                continue
+            constant = all(node == first for node in nodes) and all(check == first for check in checks)
+        else:
+            first = sample(np.array([a]))[0]
+            constant = all(node == first for node in nodes)
+        if constant:
+            # Interpolation roundoff can give an identically held threshold a nonzero slope.
+            found.append((a, float(first), 0.0))
+        elif all(abs(c) <= allowed / 16 for c in coefficients[2:]):
+            slope = float(coefficients[1]) * 2.0 / (b - a) if b > a else 0.0
+            line = Curve(b - a, (float(coefficients[0]), float(coefficients[1])))
+            found.append((a, float(first), 0.0 if slope == 0 else line))
+        else:
+            found.append((a, float(first), Curve(b - a, tuple(float(c) for c in coefficients))))
+    return sorted(found, key=lambda piece: piece[0])
+
+
 def _fit_boundaries(start, end, roots, crossing):
     """Keep the endpoints of this moment span. Coalesce only located roots near a boundary."""
     if not roots:
@@ -320,12 +401,9 @@ def _bend_times(layers, operand, start, end, tolerance, crossing):
                     raise ValueError('a difference of branch operands is not finite')
                 return difference
 
-            def values(times):
-                return np.array([[gap(t)] for t in times])
-
             for a, b in pairwise(bounds):
                 try:
-                    (pieces,) = fitted(values, a, b, tolerance)
+                    pieces = _fitted_one(lambda times: [gap(t) for t in times], a, b, tolerance[0])
                     for origin, _, curve in pieces:
                         if not isinstance(curve, Curve):
                             continue
@@ -1436,7 +1514,7 @@ def _numbers(at, tried, a, b, first, tolerance, crossing):
 
     def fit(c, d):
         try:
-            return fitted(lambda ts: np.array([[float(at(t))] for t in ts]), c, d, tolerance)[0]
+            return _fitted_one(lambda ts: [float(at(t)) for t in ts], c, d, tolerance[0])
         except FAILURES as problem:
             return [(c, Unavailable(str(problem)), 0.0)]
 
