@@ -568,6 +568,7 @@ class Network:
         self.legs = np.flatnonzero(self.roles == LEG)
         self.classes = dict(classes)
         self._layers = {}
+        self.plans = {}  # the plans of local sharing, one for each structure (`Instant.values`)
         self.flow_sets = np.asarray(flow_sets, dtype=np.int64)
         self.store_sets = np.asarray(store_sets, dtype=np.int64)
 
@@ -811,21 +812,65 @@ class Instant:
 
     def values(self, after=False):
         """The value of every flow: a rate, a signed rate or a served fraction; with `after`, as they
-        hold just after the instant (`settle`)."""
-        net, asked = self.net, self.asked
+        hold just after the instant (`settle`).
+
+        The parts and how each is solved depend only on the structure of the instant (`_structure`),
+        which stays the same over most evaluations of a network, so the network keeps them, one plan
+        for each structure (`Network.plans`). A plan is kept only when each of its parts is solved: a
+        part that fails fails again at the next instant of the same structure."""
+        net = self.net
         values = self.alone(np.arange(len(net.flows)))
+        if after:
+            for part in self.parts(self._seeds()):
+                values[part] = self.settle(part)  # the flags change as it settles
+            return values
+        key = self._structure()
+        plan = net.plans.get(key)
+        if plan is not None:
+            for part, prepared in plan:
+                values[part] = self._solved(part, prepared)
+            return values
+        plan = []
+        for part in self.parts(self._seeds()):
+            plan.append((part, self._prepare(part)))
+            values[part] = self._solved(*plan[-1])
+        if len(net.plans) > 64:
+            net.plans.clear()
+        net.plans[key] = plan
+        return values
+
+    def _seeds(self):
+        """A flow of each store that couples its connections and of each endpoint that couples its own:
+        the coupled parts hold these (`parts`)."""
+        net, asked = self.net, self.asked
         stores = np.flatnonzero((self.lower & (net.counts[OUT] > 0)) | (self.upper & (net.counts[IN] > 0)))
         ends = (net.counts >= 2) & (np.isfinite(asked.end_capacity) | (asked.end_request > 0))
-        if not len(stores) and not ends.any():
-            return values  # no flow meets a bound or shares an endpoint
         seeds = [
             int(net.of[c]) for s in stores.tolist() for side in (OUT, IN) for c in net.ends[side].of(s)[:1]
         ]
         for side, s in np.argwhere(ends).tolist():
             seeds.append(int(net.of[net.ends[side].of(s)[0]]))
-        for part in self.parts(seeds):
-            values[part] = self.settle(part) if after else self.solve(part)
-        return values
+        return seeds
+
+    def _structure(self):
+        """What the parts of the instant and how each is solved read of it, other than the network:
+        the stores at their bounds, the connections that can carry flow, which requests are above
+        zero and which are claims, which endpoints ask and which have a capacity, and which
+        connections carry no more than they ask (`_groups`). A general part reads more, and solves
+        from the values at each instant (`_general`)."""
+        asked, capacity = self.asked, self.capacity
+        return np.concatenate(
+            (
+                self.lower,
+                self.upper,
+                self.carries,
+                asked.request > 0,
+                is_claim(asked.request),
+                (asked.end_request > 0).ravel(),
+                np.isfinite(asked.end_capacity).ravel(),
+                (capacity <= asked.request) | (capacity == 0),
+            )
+        ).tobytes()
 
     def settle(self, part):
         """The values of the flows of one coupled part as they hold just after the instant (the rule
@@ -910,10 +955,19 @@ class Instant:
 
     def solve(self, part):
         """The values of the flows of one coupled part, in its order."""
+        return self._solved(part, self._prepare(part))
+
+    def _prepare(self, part):
+        """How a part is solved, from the structure of the instant only (`values`): the name of the
+        method and what it reads besides the part."""
         if len(part) == 1 and not self.coupled(part[0]):
-            return self.alone(part)
+            return ('alone',)
         found = self._groups(part) if (self.net.kinds[part] == DIRECTED).all() else None
-        return found if found is not None else self._general(part)
+        return ('_general',) if found is None else found
+
+    def _solved(self, part, prepared):
+        how, *arguments = prepared
+        return getattr(self, how)(part, *arguments)
 
     def _name(self, s):
         return self.net.stores[s]
@@ -924,8 +978,9 @@ class Instant:
         return supply_depths(self.net, self.lower, self.carries)
 
     def _groups(self, part):
-        """The rates of a part of directed flows by groups in supply order (see the module), or None
-        where that form does not hold. It reads connections: each flow of the part is one."""
+        """How a part of directed flows is solved by groups in supply order (see the module), or None
+        where that form does not hold: one inlet and one outlet of a store (`_paired`), or the groups
+        in their order (`_grouped`). It reads connections: each flow of the part is one."""
         net, asked, lower, upper = self.net, self.asked, self.lower, self.upper
         request, capacity = asked.request, self.capacity
         part = [int(c) for c in (part if net.plain else net.first[part])]
@@ -949,11 +1004,7 @@ class Instant:
                 s = constrained[0]
                 ins, outs = net.ends[IN].of(s), net.ends[OUT].of(s)
                 if len(ins) == len(outs) == 1 and {ins[0], outs[0]} == set(part):
-                    inlet, outlet = int(ins[0]), int(outs[0])
-                    incoming, outgoing = paired_rates(
-                        request[inlet], request[outlet], capacity[inlet], capacity[outlet], lower[s], upper[s]
-                    )
-                    return np.array([incoming if c == inlet else outgoing for c in part])
+                    return ('_paired', part, int(ins[0]), int(outs[0]), s)
         groups, member = [], {}
         for s in stores:
             outs, ins = net.ends[OUT].of(s), net.ends[IN].of(s)
@@ -976,24 +1027,42 @@ class Instant:
                 if f in member:
                     return None  # a flow in two groups
                 member[f] = k
-        rates = {f: float(min(request[f], capacity[f])) for f in part if f not in member}
         depth = self.depths()
         order = []
         for k, (kind, s, members) in enumerate(groups):
             claimed = bool((request[members] > 0).any())
             order.append((0 if kind != 'supply' or not claimed else depth(s), k))
+        steps = []
         for _, k in sorted(order):
             kind, s, members = groups[k]
             members = members.tolist()
-            for f in members:
-                rates[f] = 0.0  # a member that flows into its own store brings nothing
             # What flows in through a connection that can carry flow (a closed one brings nothing,
             # and the depths that order the groups do not read it).
             supplied = (
                 [g for g in net.ends[IN].of(s).tolist() if self.carries[g]] if kind == 'supply' else None
             )
-            rates.update(self.fill(members, IN if kind == 'in' else OUT, s, rates.__getitem__, supplied))
-        return np.array([rates[f] for f in part])
+            steps.append((members, IN if kind == 'in' else OUT, s, supplied, self._tiers(members)))
+        return ('_grouped', part, [f for f in part if f not in member], steps)
+
+    def _paired(self, part, connections, inlet, outlet, s):
+        """The rates of one inlet and one outlet of a store (`paired_rates`), in the order of the
+        `connections` of the part."""
+        request, capacity = self.asked.request, self.capacity
+        incoming, outgoing = paired_rates(
+            request[inlet], request[outlet], capacity[inlet], capacity[outlet], self.lower[s], self.upper[s]
+        )
+        return np.array([incoming if c == inlet else outgoing for c in connections])
+
+    def _grouped(self, part, connections, free, steps):
+        """The rates of a part by its groups in order (`_groups`): each connection in no group at its
+        request within its capacity, and each group by its fill."""
+        request, capacity = self.asked.request, self.capacity
+        rates = {f: float(min(request[f], capacity[f])) for f in free}
+        for members, side, s, supplied, tiers in steps:
+            for f in members:
+                rates[f] = 0.0  # a member that flows into its own store brings nothing
+            rates.update(self._fill(tiers, members, side, s, rates.__getitem__, supplied))
+        return np.array([rates[f] for f in connections])
 
     def fill(self, members, side, s, rate_of, supplied=None):
         """The rates of the connections `members` of one group at the endpoint (side, s): its claims
@@ -1001,17 +1070,28 @@ class Instant:
         store at its lower bound, within what its inflows `supplied` bring (`rate_of` gives their
         rates), each tier by equal served fractions within the capacities (water-filling). A member
         that asks nothing gets nothing; when none asks, what flows in does not matter."""
-        net, asked = self.net, self.asked
+        return self._fill(self._tiers(members), members, side, s, rate_of, supplied)
+
+    def _tiers(self, members):
+        """The claims of `members` (`is_claim`), tier by tier by layer: an array of connections each."""
+        net, request = self.net, self.asked.request
+        claims = [f for f in members if is_claim(request[f])]
+        return [
+            np.array([f for f in claims if self.layer[net.of[f]] == layer], dtype=np.int64)
+            for layer in sorted({int(self.layer[net.of[f]]) for f in claims})
+        ]
+
+    def _fill(self, tiers, members, side, s, rate_of, supplied):
+        """`fill` with the tiers of its claims (`_tiers`)."""
+        asked = self.asked
         request, capacity = asked.request, self.capacity
         rates = dict.fromkeys(members, 0.0)
-        claims = [f for f in members if is_claim(request[f])]
-        if not claims:
+        if not tiers:
             return rates
         available = float(asked.end_capacity[side][s])
         if supplied is not None:
             available = min(available, sum(rate_of(g) for g in supplied))
-        for layer in sorted({int(self.layer[net.of[f]]) for f in claims}):
-            tier = np.array([f for f in claims if self.layer[net.of[f]] == layer], dtype=np.int64)
+        for tier in tiers:
             given = water(request[tier], capacity[tier], available)
             for f, rate in zip(tier.tolist(), given.tolist()):
                 rates[f] = rate
