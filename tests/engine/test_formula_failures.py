@@ -153,3 +153,34 @@ def test_the_run_store_gives_the_same_values_cold_and_warm_at_each_horizon(case,
             assert agrees(record.value(key, t), expected(stretches, t)), (t, record.value(key, t))
         for t, value in zip(at, read(record, model.program, [path], at)[0].values, strict=True):
             assert agrees(value, expected(stretches, t)), (t, value)
+
+
+FALLS = """
+    scenario "A value that falls to zero"
+        horizon 2 h
+
+    tank:
+        x: L = 1 L
+        ratio = formula((t / 1 h) / (this.x / 1 L))
+        safe = formula((t / 1 h) / (this.x / 1 L) if this.x > 0 L else 0)
+        empty = event():
+            after 1 h:
+                this.x = 0 L
+    tank.empty.start()
+    """
+
+
+def test_a_fitted_formula_fails_where_it_divides_by_zero_and_not_on_a_side_that_it_does_not_take():
+    """The record fits each formula from 0 h (`Recorder.formula`). From 1 h, x is 0 L: `ratio` holds
+    `Unavailable` with the expression and the words of its failure, and `safe` takes its other side and
+    holds 0."""
+    model = compiled(FALLS)
+    record = run(model.program, model.configuration)
+    assert record.failure is None, record.failure.detail('message')
+    ratio = record.history(Key('tank', ('ratio',))).pieces
+    safe = record.history(Key('tank', ('safe',))).pieces
+    assert [float(piece.t) for piece in ratio] == [0.0, 1.0]
+    assert not isinstance(ratio[0].value, Unavailable)
+    assert isinstance(ratio[1].value, Unavailable) and 'a division by zero' in ratio[1].value.reason
+    assert '/' in ratio[1].value.reason  # it names the expression
+    assert [(float(piece.t), piece.value) for piece in safe][1:] == [(1.0, 0.0)]

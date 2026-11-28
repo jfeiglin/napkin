@@ -103,10 +103,12 @@ from operator import attrgetter, itemgetter
 import numpy as np
 from numpy.polynomial import chebyshev
 
+from ...core import evaluation
 from ...core import expr as nodes
 from ...core.comparisons import Comparisons
 from ...core.errors import ExpressionError
-from ...core.units import rational
+from ...core.evaluation import ARITHMETIC, failure
+from ...core.units import UnitRegistry, UnitSystem, rational
 from ...expressions import evaluate
 from ...program import parts as p
 from ...program.config import Configuration, Numerics, Request
@@ -1195,9 +1197,7 @@ class Recorder:
         authored = compute is None and point is None
         layers = None  # built only if a numeric authored expression actually moves
         if compute is None:
-
-            def compute(env):
-                return evaluate(node, env, plan.units)
+            compute = _prepared(node, plan.units)
 
         boolean = value.boolean if boolean is None else boolean
         openings = {float(start), *(anchors or ())}
@@ -1216,13 +1216,7 @@ class Recorder:
         starts = sorted(anchors or ())
 
         def environment(t):
-            # Resolving a comparison can also require a selector inside a named operand.
-            def read(key):
-                if key not in readers:
-                    readers[key] = _reader(histories[key])
-                return readers[key](t)
-
-            return Reads(names, read, t)
+            return _Inputs(names, readers, histories, t)
 
         def at(t):
             place = bisect_right(starts, t) - 1
@@ -1254,8 +1248,13 @@ class Recorder:
 
         scale = self.run.own_scale(name) if not discrete else 1.0
 
+        operands = {}  # an operand of a min or a max -> its prepared evaluation
+
         def operand(expression, t):
-            return evaluate(expression, environment(t), plan.units)
+            found = operands.get(id(expression))
+            if found is None:
+                found = operands[id(expression)] = _prepared(expression, plan.units)
+            return found(environment(t))
 
         def tolerance_at(t):
             begin = first if t == a else tried(t)
@@ -1452,6 +1451,62 @@ def _numbers(at, tried, a, b, first, tolerance, crossing):
     for (c, available, _), d in zip(stretches, [*(stretch[0] for stretch in stretches[1:]), b]):
         pieces += fit(c, d) if available else [(c, tried(c), 0.0)]
     return pieces
+
+
+def _prepared(node, units):
+    """`evaluate(node, environment, units)` of one node, with its compiled code found once: each call
+    only runs it, with the same failures (`evaluation.checked_value`)."""
+    if not isinstance(node, nodes.Node):
+        return lambda environment: evaluate(node, environment, units)
+    function = evaluation.function(node)
+    registry = units if isinstance(units, UnitRegistry) else UnitSystem(units)
+
+    def compute(environment):
+        try:
+            return function(environment, registry)
+        except ExpressionError:
+            raise
+        except ARITHMETIC as exc:
+            raise ExpressionError(f'`{nodes.notation(node)}`: {failure(exc)}') from exc
+
+    return compute
+
+
+_UNREAD = object()
+
+
+class _Inputs(Reads):
+    """`Reads` of a formula's inputs at one time `t`: each from the reader of its history (`_reader`),
+    at `t` as the fit gives it, the first time that the evaluation asks for it. Resolving a comparison
+    can also need a selector inside a named operand (`for_scale`)."""
+
+    __slots__ = ('histories', 'readers', 'time')
+
+    def __init__(self, names, readers, histories, t):
+        self.names, self.readers, self.histories, self.time = names, readers, histories, t
+        self.found = {'t': float(t)}
+
+    def __getitem__(self, name):
+        found = self.found.get(name, _UNREAD)
+        if found is _UNREAD:
+            if name not in self.names:
+                raise KeyError(name)
+            reader = self.readers.get(name)
+            if reader is None:
+                reader = self.readers[name] = _reader(self.histories[name])
+            found = reader(self.time)
+            if isinstance(found, Unavailable):
+                raise ExpressionError(found.reason)
+            self.found[name] = found
+        return found
+
+    def for_scale(self, node):
+        names = nodes.names(node)
+        if names <= self.names:
+            return self
+        extended = _Inputs(self.names | names, self.readers, self.histories, self.time)
+        extended.found = self.found
+        return extended
 
 
 def _reader(history):
